@@ -1011,10 +1011,22 @@ export class WorldView {
   private prev = performance.now();
   private fwd = new Vector3(); private right = new Vector3(); private delta = new Vector3();
 
+  /** limite de quadros por segundo (0 = o da tela): telas de 120 Hz desenhando sem parar esquentam notebooks */
+  maxFps = 0;
+  private lastDraw = 0;
+
   start() {
     const frame = (now: number) => {
-      try { this.frame(now); } catch (e) { console.error(e); }
       requestAnimationFrame(frame);
+      // com limite: pula os quadros da tela que chegam antes da hora (folga de 1 ms para a variação do relógio) e guarda a
+      // sobra, para telas de 144/165 Hz também darem 60/30 certinho; depois de uma pausa longa recomeça do agora
+      if (this.maxFps > 0) {
+        const iv = 1000 / this.maxFps, el = now - this.lastDraw;
+        if (el < iv - 1) return;
+        const rest = el % iv;
+        this.lastDraw = el > iv * 2 ? now : now - (rest < iv - 1 ? rest : 0);
+      }
+      try { this.frame(now); } catch (e) { console.error(e); }
     };
     requestAnimationFrame(frame);
   }

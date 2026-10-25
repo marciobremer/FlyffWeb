@@ -685,7 +685,7 @@ const sayLogin = message($('loginMsg')), saySelect = message($('selectMsg')), sa
  * senha; no servidor fica só o hash dele.
  */
 interface SavedLogin { name: string; remember?: string }
-const prefs = (() => { try { return JSON.parse(localStorage.getItem('flyff.game') ?? '{}') as { saved?: (SavedLogin | string)[]; last?: string; quality?: string }; } catch { return {}; } })();
+const prefs = (() => { try { return JSON.parse(localStorage.getItem('flyff.game') ?? '{}') as { saved?: (SavedLogin | string)[]; last?: string; quality?: string; fps?: number }; } catch { return {}; } })();
 const savePrefs = () => { try { localStorage.setItem('flyff.game', JSON.stringify(prefs)); } catch { /* sem armazenamento */ } };
 // versões antigas guardavam só o nome (string)
 const saved: SavedLogin[] = (prefs.saved ?? []).map((x) => (typeof x === 'string' ? { name: x } : x)).filter((x) => x && typeof x.name === 'string');
@@ -780,17 +780,24 @@ function flyHud(p: { flySpeed: number; flyAcc: boolean; flyTurbo: boolean } | nu
 }
 
 // ---------- qualidade ----------
-/** baixa = menos tiles, sem sombra e resolução 1×: ajuda máquinas fracas (ex.: celular/notebook) */
+/**
+ * alta = sombras e resolução da tela (Retina 2×); média = resolução da tela sem sombras; baixa = menos tiles, sem sombra e
+ * resolução 1× (ajuda máquinas fracas, ex.: celular/notebook)
+ */
 function applyQuality(q: string) {
   const low = q === 'low';
   view.radius = low ? 2 : 3;
-  view.settings = { ...view.settings, shadows: !low };
+  view.settings = { ...view.settings, shadows: q === 'high' };
   view.renderer.setPixelRatio(low ? 1 : Math.min(devicePixelRatio, 2));
   view.resize();
   view.invalidate();
 }
 applyQuality($<HTMLSelectElement>('quality').value);
 $('quality').addEventListener('change', () => { prefs.quality = $<HTMLSelectElement>('quality').value; savePrefs(); applyQuality(prefs.quality); });
+/** limite de FPS (padrão 60: telas de 120 Hz desenhariam o dobro e esquentam notebooks) */
+$<HTMLSelectElement>('fps').value = String(prefs.fps ?? 60);
+view.maxFps = Number($<HTMLSelectElement>('fps').value) || 0;
+$('fps').addEventListener('change', () => { prefs.fps = Number($<HTMLSelectElement>('fps').value) || 0; savePrefs(); view.maxFps = prefs.fps; });
 
 // ---------- carregamento do mundo (atrás da tela de login) ----------
 const loginBtn = $<HTMLButtonElement>('loginBtn');
