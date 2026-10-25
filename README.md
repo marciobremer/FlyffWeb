@@ -21,7 +21,7 @@ Cliente (Three.js), servidor multiplayer, painel admin e site (Next.js), tudo le
 | `data/` | taxas do servidor, edições do mundo, anúncios do painel, nomes dos itens |
 | `database/flyffweb-limpo.dump` | banco limpo: estrutura completa + 9 itens da loja do site |
 | `Dockerfile`, `docker-compose.yml`, `.env.example`, `DOCKER.md` | rodar tudo em containers |
-| `Iniciar Servidor.bat` | liga tudo no Windows com dois cliques |
+| `.Iniciar Servidor.bat` | liga tudo no Windows com dois cliques |
 
 **Não está aqui** (o repositório é público): guarde estas pastas por conta própria (HD externo, Google Drive…) e copie para dentro do projeto na restauração.
 
@@ -104,7 +104,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 
 ### 3.6 Ligar
 
-Dê dois cliques em **`Iniciar Servidor.bat`**. Na primeira vez ele instala as dependências e compila o site, o que leva alguns minutos.
+Dê dois cliques em **`.Iniciar Servidor.bat`**. Na primeira vez ele instala as dependências e compila o site, o que leva alguns minutos.
 Ele aplica as migrações do banco e liga o painel, o site e o jogo:
 
 | Endereço | O que é |
@@ -172,7 +172,7 @@ Um dump com contas de jogadores **não deve ir para este repositório público**
 
 | comando | o que faz |
 |---|---|
-| `Iniciar Servidor.bat` | liga tudo (banco + painel + jogo + site) |
+| `.Iniciar Servidor.bat` | liga tudo (banco + painel + jogo + site) |
 | `npm run build` | compila cliente e editor para `dist/` |
 | `npm start` | só o servidor do jogo (porta 8080; precisa do `dist/`) |
 | `npm run dev` | modo desenvolvimento do Vite (5173) — é um mundo separado do 8080 |

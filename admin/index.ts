@@ -12,7 +12,7 @@ import { AdminError, banAccount, createAccount, dbStatus, listAccounts, setPassw
 /**
  * Painel admin (local): inicia/para/compila o servidor do jogo e administra contas.
  *   npm run admin            → http://127.0.0.1:8090 (abre o navegador; `--no-open` não abre; `--start-game` já liga o
- *                              servidor do jogo, compilando antes se faltar o dist/ — usado pelo "Iniciar Servidor.bat")
+ *                              servidor do jogo, compilando antes se faltar o dist/ — usado pelo ".Iniciar Servidor.bat")
  * Variáveis: ADMIN_PORT (8090), GAME_PORT (8080), ADMIN_HOST (127.0.0.1).
  * Segurança: escuta só na própria máquina; a API exige o cabeçalho `x-admin: 1` (outros sites não conseguem enviá-lo sem CORS,
  * que o painel não libera) e confere o Host (contra DNS rebinding). Sem login — não exponha na rede.
