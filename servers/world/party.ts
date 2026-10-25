@@ -5,17 +5,18 @@
  *   (só se a média de nível dos membros perto não passar o nível do mob em 5 ou mais); até o 10 segue a tabela
  *   (200, 200, 250, 300, 350, 400, 450, 500, 500) e dá 15 pontos por nível; do 10 em diante vira party avançada:
  *   INT((50+nível)×nível/13)×10 por nível e 15 pontos;
- * - habilidades de party (propTroupeSkill.txt): o líder gasta pontos e liga um buff para a party por um tempo.
+ * - habilidades de party (propTroupeSkill.txt): o líder gasta pontos e liga um buff para a party por 1 minuto; usar de novo
+ *   com ela ligada soma mais 1 minuto ao tempo que falta.
  */
 export interface PartySkillDef { key: string; name: string; desc: string; icon: string; reqLv: number; cost: number; ms: number }
 
 /** buffs de party (as ordens Call Out/Blitz/Retreat não entram) */
 export const PARTY_SKILLS: PartySkillDef[] = [
   { key: 'ST_SPHERECIRCLE', name: 'Precision', desc: 'Ataques dos membros com chance quase certa de crítico.', icon: 'skill_TroSpherecircle.dds', reqLv: 17, cost: 1, ms: 60_000 },
-  { key: 'ST_LINKATTACK', name: 'Link Attack', desc: 'Dano dos membros aumenta ao atacar.', icon: 'skill_TroLinkattack.dds', reqLv: 20, cost: 1, ms: 300_000 },
-  { key: 'ST_FORTUNECIRCLE', name: 'Lucky Drop', desc: 'Mais chance de itens raros caírem.', icon: 'skill_TroFortunecircle.dds', reqLv: 25, cost: 5, ms: 300_000 },
-  { key: 'ST_STRETCHING', name: 'Resting', desc: 'Membros recuperam HP/MP/FP 1,5× mais rápido.', icon: 'skill_TroStretching.dds', reqLv: 30, cost: 2, ms: 120_000 },
-  { key: 'ST_GIFTBOX', name: 'Treasure Hunter', desc: 'Mais itens caem dos monstros.', icon: 'skill_TroGiftbox.dds', reqLv: 40, cost: 8, ms: 300_000 },
+  { key: 'ST_LINKATTACK', name: 'Link Attack', desc: 'Dano dos membros aumenta ao atacar.', icon: 'skill_TroLinkattack.dds', reqLv: 20, cost: 1, ms: 60_000 },
+  { key: 'ST_FORTUNECIRCLE', name: 'Lucky Drop', desc: 'Mais chance de itens raros caírem.', icon: 'skill_TroFortunecircle.dds', reqLv: 25, cost: 5, ms: 60_000 },
+  { key: 'ST_STRETCHING', name: 'Resting', desc: 'Membros recuperam HP/MP/FP 1,5× mais rápido.', icon: 'skill_TroStretching.dds', reqLv: 30, cost: 2, ms: 60_000 },
+  { key: 'ST_GIFTBOX', name: 'Treasure Hunter', desc: 'Mais itens caem dos monstros.', icon: 'skill_TroGiftbox.dds', reqLv: 40, cost: 8, ms: 60_000 },
 ];
 
 export const PARTY_MAX = 8, MAX_PARTYLEVEL = 10;
@@ -84,7 +85,7 @@ export class PartyManager {
     if (p.level < s.reqLv) return `${s.name} precisa da party no nível ${s.reqLv}.`;
     if (p.points < s.cost) return `${s.name} custa ${s.cost} ponto(s) de party.`;
     p.points -= s.cost;
-    p.skills.set(key, now + s.ms);
+    p.skills.set(key, Math.max(now, p.skills.get(key) ?? 0) + s.ms); // ligada: acumula
     return null;
   }
 

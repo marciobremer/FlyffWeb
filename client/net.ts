@@ -1,3 +1,4 @@
+import { PLAYER_LABEL_LIFT } from '../shared/rank';
 import { Matrix4, Mesh, type Object3D } from 'three';
 import type { WorldView } from '../shared/world';
 import { MoverInstance, preloadMotions } from '../shared/movers';
@@ -80,7 +81,7 @@ export class RemotePlayers {
     inst.owner = 'players';
     inst.blendTime = 0.1;
     applyEnchantGlow(inst, r.view.eq ?? [], sex, d, false);
-    inst.setLabel(r.view.name, r.view.rank);
+    inst.setLabel(r.view.name, r.view.rank, PLAYER_LABEL_LIFT);
     inst.setGuildTag(r.view.guild);
     if (this.partyIds.has(r.view.id)) inst.label?.element.classList.add('party');
     inst.play(...motionOf(r.s, r.view.mt ?? 0));

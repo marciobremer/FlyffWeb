@@ -15,6 +15,7 @@ import { ShopWindow } from './shop';
 import { SkillWindow } from './skillwnd';
 import { JobWindow } from './jobwnd';
 import { BuffBar } from './buffbar';
+import { PartyBuffs } from './partybuffs';
 import { TeleportWindow } from './teleport';
 import { MotionWindow } from './motionwnd';
 import { lookSymbol } from '../shared/look';
@@ -25,7 +26,7 @@ import { NpcMenu, type NpcMenuOption } from './npcmenu';
 import { GameAudio } from './audio';
 import type { MoverInstance } from '../shared/movers';
 import { OT } from '../shared/formats/types';
-import { rankOf } from '../shared/rank';
+import { PLAYER_LABEL_LIFT, rankOf } from '../shared/rank';
 import { lookList, type LookPiece } from '../shared/look';
 import { netStats } from '../shared/netstats';
 
@@ -127,6 +128,7 @@ const shopWnd = new ShopWindow(document.body);
 const skillWnd = new SkillWindow(document.body);
 const jobWnd = new JobWindow(document.body);
 const buffBar = new BuffBar(document.body);
+const partyBuffs = new PartyBuffs(document.body);
 const audio = new GameAudio();
 audio.listener = () => view.player?.pos ?? null;
 jobWnd.onChoose = (job) => { if (!net.jobChange(job)) chat.system('Sem conexão com o servidor.'); };
@@ -323,7 +325,7 @@ net.onChangeWorld = (w, p) => {
     if (w !== curWorld) { await openWorld(w, p[0], p[2]); mapLoading.show(w); }
     await view.spawnPlayer(p[0], p[2], p[1], sex, look);
     const ch = characters.find((c) => c.slot === selectedSlot);
-    if (ch) { view.player?.inst?.setLabel(ch.name, rankOf(account?.authority)); view.player?.inst?.setGuildTag(myGuild); }
+    if (ch) { view.player?.inst?.setLabel(ch.name, rankOf(account?.authority), PLAYER_LABEL_LIFT); view.player?.inst?.setGuildTag(myGuild); }
     void view.player?.setCombat(combatMt);
     view.playerControl = true;
     net.resume();
@@ -456,7 +458,7 @@ net.onStats = (s) => {
   charWnd.setStats(s);
   jobWnd.setOptions(s.jobOpts ?? []);
 };
-net.onReset = () => { deathScreen(false); view.moverMgr.clearExternal(); ground.clear(); friendsWnd.clear(); partyWnd.set(null, 0); guildWnd.set(null, 0); myGuild = null; };
+net.onReset = () => { deathScreen(false); view.moverMgr.clearExternal(); ground.clear(); friendsWnd.clear(); partyWnd.set(null, 0); partyBuffs.set(null); guildWnd.set(null, 0); myGuild = null; };
 /** guild (tecla G); o nome da sua guild fica acima do seu nome */
 const guildWnd = new GuildWindow(document.body);
 let myGuild: string | null = null;
@@ -482,6 +484,7 @@ partyListWnd.onRefresh = () => net.party('partyList');
 net.onParty = (p) => {
   const was = partyWnd.current;
   partyWnd.set(p, net.myId);
+  partyBuffs.set(p);
   remotes.setParty(new Set(p?.members.map((m) => m.id).filter((id) => id !== net.myId) ?? []));
   if (p && !was && !partyWnd.visible) partyWnd.show(); // entrou numa party: abre a janela
 };
@@ -622,7 +625,7 @@ async function restyle(eq: string[]) {
   lookNow = eq;
   const inst = await view.player?.restyle(eq);
   const ch = characters.find((c) => c.slot === selectedSlot);
-  if (inst && ch) { inst.setLabel(ch.name, rankOf(account?.authority)); inst.setGuildTag(myGuild); }
+  if (inst && ch) { inst.setLabel(ch.name, rankOf(account?.authority), PLAYER_LABEL_LIFT); inst.setGuildTag(myGuild); }
   updateInvPreview();
 }
 /** boneco do inventário: o mesmo modelo do jogador (template já montado) */
@@ -1037,7 +1040,7 @@ async function backToLogin() {
   view.player?.remove();
   view.labelRenderer.domElement.hidden = false;
   hud.hide();
-  inventory.hide(); inventory.clear(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); shopWnd.hide(); skillWnd.hide(); teleportWnd.hide(); jobWnd.setOptions([]); buffBar.clear();
+  inventory.hide(); inventory.clear(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); shopWnd.hide(); skillWnd.hide(); teleportWnd.hide(); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
   $('help').hidden = true;
   $('charScreen').hidden = true;
   $('loginScreen').hidden = false;
@@ -1131,7 +1134,7 @@ async function enter() {
   let queue: (BarItem | null)[] = [];
   try { queue = JSON.parse(localStorage.getItem(`flyff.queue.${ch.id}`) ?? '[]') as (BarItem | null)[]; } catch { /* sem armazenamento */ }
   actionBar.setQueue(Array.isArray(queue) ? queue : []);
-  view.player?.inst?.setLabel(ch.name, rankOf(account.authority));
+  view.player?.inst?.setLabel(ch.name, rankOf(account.authority), PLAYER_LABEL_LIFT);
   view.player?.inst?.setGuildTag(myGuild);
   view.labelRenderer.domElement.hidden = false;
   view.playerControl = true;

@@ -5,3 +5,6 @@ export function rankOf(authority: string | null | undefined): Rank | undefined {
   if (!authority || authority === 'F') return undefined;
   return authority === 'Z' ? 'admin' : 'gm';
 }
+
+/** altura do nome dos jogadores acima da cabeça (m) — NPCs usam 0,6 */
+export const PLAYER_LABEL_LIFT = 0.2;

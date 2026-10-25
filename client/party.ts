@@ -15,13 +15,16 @@ export interface PartyView {
 export interface PartyListRow { id: number; name: string; leader: string; level: number; size: number; max: number; skills: string[] }
 
 /** buffs de party (mesma lista do servidor) */
-const SKILLS: Record<string, { name: string; desc: string; icon: string; reqLv: number; cost: number }> = {
+export const SKILLS: Record<string, { name: string; desc: string; icon: string; reqLv: number; cost: number }> = {
   ST_SPHERECIRCLE: { name: 'Precision', desc: 'Ataques com chance quase certa de crítico.', icon: 'skill_TroSpherecircle.dds', reqLv: 17, cost: 1 },
   ST_LINKATTACK: { name: 'Link Attack', desc: 'Dano dos membros aumenta ao atacar.', icon: 'skill_TroLinkattack.dds', reqLv: 20, cost: 1 },
   ST_FORTUNECIRCLE: { name: 'Lucky Drop', desc: 'Mais chance de itens raros.', icon: 'skill_TroFortunecircle.dds', reqLv: 25, cost: 5 },
   ST_STRETCHING: { name: 'Resting', desc: 'Recupera HP/MP/FP 1,5× mais rápido.', icon: 'skill_TroStretching.dds', reqLv: 30, cost: 2 },
   ST_GIFTBOX: { name: 'Treasure Hunter', desc: 'Mais itens caem dos monstros.', icon: 'skill_TroGiftbox.dds', reqLv: 40, cost: 8 },
 };
+
+/** tempo que falta em segundos → '45s', '12m', '3h', '1d' */
+export const partyTime = (s: number) => s >= 86400 ? `${Math.floor(s / 86400)}d` : s >= 3600 ? `${Math.floor(s / 3600)}h` : s >= 60 ? `${Math.floor(s / 60)}m` : `${Math.max(0, s)}s`;
 
 const icon = (file: string, title: string) => {
   const img = document.createElement('img');
@@ -114,11 +117,11 @@ export class PartyWindow extends GameWindow {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'pt-skill' + (on ? ' on' : '') + (p.level < s.reqLv ? ' locked' : '');
-      const tip = `${s.name} — ${s.desc}\nParty nível ${s.reqLv} · ${s.cost} ponto(s)${on ? `\nLigada: ${Math.ceil(on.left / 60)} min` : ''}`;
+      const tip = `${s.name} — ${s.desc}\nParty nível ${s.reqLv} · ${s.cost} ponto(s) · 1 min (clicar de novo soma 1 min)${on ? `\nLigada: ${partyTime(on.left)}` : ''}`;
       btn.title = tip;
       btn.setAttribute('aria-label', tip);
       btn.append(icon(s.icon, s.name));
-      if (on) { const t = document.createElement('span'); t.textContent = on.left >= 60 ? `${Math.ceil(on.left / 60)}m` : `${on.left}s`; btn.append(t); }
+      if (on) { const t = document.createElement('span'); t.textContent = partyTime(on.left); btn.append(t); }
       btn.disabled = !leader || p.level < s.reqLv || p.points < s.cost;
       btn.addEventListener('click', () => this.onSkill(k));
       grid.append(btn);

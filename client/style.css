@@ -376,6 +376,9 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 .buff { position: relative; width: 28px; height: 28px; background: rgba(0, 0, 0, .55); border: 1px solid #b9a35a; border-radius: 3px; }
 .buff img { width: 26px; height: 26px; display: block; }
 .buff span { position: absolute; right: 0; bottom: -1px; font: 700 9px/10px Tahoma, sans-serif; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; }
+/* habilidades de party ligadas: no alto, à esquerda da janela do alvo (client/partybuffs.ts) */
+.party-buffs { position: fixed; top: 24px; right: calc(50% + 146px); z-index: 50; display: flex; gap: 3px; pointer-events: auto; }
+.party-buffs .buff { border-color: #4cff6a; }
 
 /* Teleporter (tecla V): lista à esquerda, imagem e descrição do destino à direita */
 .gwnd-body.tp { flex-direction: row; gap: 8px; }
