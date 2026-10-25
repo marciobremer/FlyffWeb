@@ -1,0 +1,696 @@
+
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  
+  /* Legion Flyff Color Palette – gold/metallic + electric blue */
+  --dreamer-blue-light: #87CEEB;
+  --dreamer-blue: #1E90FF;
+  --dreamer-blue-dark: #00008B;
+  --dreamer-cyan: #00CED1;
+  --dreamer-royal: #4169E1;
+  /* Legion branding: metallic gold & electric blue */
+  --legion-gold: #D4AF37;
+  --legion-gold-light: #F4E4BC;
+  --legion-gold-dark: #8B6914;
+  --legion-electric: #00D4FF;
+  --legion-electric-dark: #0099CC;
+  --dreamer-gold-light: #FFD700;
+  --dreamer-gold: #FFA500;
+  --dreamer-gold-dark: #8B4513;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.element::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+.element {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* Legion Flyff Custom Animations */
+@layer utilities {
+  @keyframes fade-in-up {
+    0% {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Enhanced Logo Animations */
+  @keyframes logo-glow {
+    0%, 100% {
+      transform: translateY(0) scale(1);
+      filter: drop-shadow(0 0 1px rgba(30, 144, 255, 0.4))
+              drop-shadow(0 0 2px rgba(135, 206, 235, 0.3));
+    }
+    50% {
+      transform: translateY(-10px) scale(1.03);
+      filter: drop-shadow(0 0 5px rgba(30, 144, 255, 0.9)) 
+              drop-shadow(0 0 10px rgba(135, 206, 235, 0.8))
+              drop-shadow(0 0 15px rgba(0, 206, 209, 0.6));
+    }
+  }
+
+  /* New: Mystical Glow Animation */
+  @keyframes logo-mystical-glow {
+    0% {
+      transform: scale(1) rotate(0deg);
+      filter: drop-shadow(0 0 5px rgba(30, 144, 255, 0.6))
+              drop-shadow(0 0 10px rgba(135, 206, 235, 0.4))
+              drop-shadow(0 0 15px rgba(0, 206, 209, 0.3))
+              drop-shadow(0 0 20px rgba(70, 130, 180, 0.2));
+    }
+    25% {
+      transform: scale(1.02) rotate(1deg);
+      filter: drop-shadow(0 0 8px rgba(30, 144, 255, 0.8))
+              drop-shadow(0 0 15px rgba(135, 206, 235, 0.6))
+              drop-shadow(0 0 22px rgba(0, 206, 209, 0.5))
+              drop-shadow(0 0 30px rgba(70, 130, 180, 0.4));
+    }
+    50% {
+      transform: scale(1.05) rotate(0deg);
+      filter: drop-shadow(0 0 12px rgba(30, 144, 255, 1))
+              drop-shadow(0 0 20px rgba(135, 206, 235, 0.8))
+              drop-shadow(0 0 28px rgba(0, 206, 209, 0.7))
+              drop-shadow(0 0 35px rgba(70, 130, 180, 0.6));
+    }
+    75% {
+      transform: scale(1.02) rotate(-1deg);
+      filter: drop-shadow(0 0 8px rgba(30, 144, 255, 0.8))
+              drop-shadow(0 0 15px rgba(135, 206, 235, 0.6))
+              drop-shadow(0 0 22px rgba(0, 206, 209, 0.5))
+              drop-shadow(0 0 30px rgba(70, 130, 180, 0.4));
+    }
+    100% {
+      transform: scale(1) rotate(0deg);
+      filter: drop-shadow(0 0 5px rgba(30, 144, 255, 0.6))
+              drop-shadow(0 0 10px rgba(135, 206, 235, 0.4))
+              drop-shadow(0 0 15px rgba(0, 206, 209, 0.3))
+              drop-shadow(0 0 20px rgba(70, 130, 180, 0.2));
+    }
+  }
+
+  /* New: Neon Pulse Animation */
+  @keyframes logo-neon-pulse {
+    0%, 100% {
+      transform: scale(1);
+      filter: drop-shadow(0 0 2px rgba(30, 144, 255, 0.8))
+              drop-shadow(0 0 4px rgba(30, 144, 255, 0.6))
+              drop-shadow(0 0 6px rgba(30, 144, 255, 0.4))
+              drop-shadow(0 0 8px rgba(30, 144, 255, 0.2));
+    }
+    50% {
+      transform: scale(1.03);
+      filter: drop-shadow(0 0 4px rgba(30, 144, 255, 1))
+              drop-shadow(0 0 8px rgba(30, 144, 255, 0.8))
+              drop-shadow(0 0 12px rgba(30, 144, 255, 0.6))
+              drop-shadow(0 0 16px rgba(30, 144, 255, 0.4))
+              drop-shadow(0 0 20px rgba(30, 144, 255, 0.2));
+    }
+  }
+
+  /* New: Ethereal Float Animation */
+  @keyframes logo-ethereal-float {
+    0% {
+      transform: translateY(0px) scale(1) rotate(0deg);
+      filter: drop-shadow(0 0 3px rgba(135, 206, 235, 0.6))
+              drop-shadow(0 0 6px rgba(0, 206, 209, 0.4))
+              drop-shadow(0 0 9px rgba(30, 144, 255, 0.3));
+    }
+    33% {
+      transform: translateY(-8px) scale(1.02) rotate(1deg);
+      filter: drop-shadow(0 0 5px rgba(135, 206, 235, 0.8))
+              drop-shadow(0 0 10px rgba(0, 206, 209, 0.6))
+              drop-shadow(0 0 15px rgba(30, 144, 255, 0.5));
+    }
+    66% {
+      transform: translateY(-12px) scale(1.04) rotate(-1deg);
+      filter: drop-shadow(0 0 7px rgba(135, 206, 235, 1))
+              drop-shadow(0 0 14px rgba(0, 206, 209, 0.8))
+              drop-shadow(0 0 21px rgba(30, 144, 255, 0.7));
+    }
+    100% {
+      transform: translateY(0px) scale(1) rotate(0deg);
+      filter: drop-shadow(0 0 3px rgba(135, 206, 235, 0.6))
+              drop-shadow(0 0 6px rgba(0, 206, 209, 0.4))
+              drop-shadow(0 0 9px rgba(30, 144, 255, 0.3));
+    }
+  }
+
+  /* New: Cosmic Rotation Animation */
+  @keyframes logo-cosmic-rotation {
+    0% {
+      transform: rotate(0deg) scale(1);
+      filter: drop-shadow(0 0 4px rgba(30, 144, 255, 0.7))
+              drop-shadow(0 0 8px rgba(135, 206, 235, 0.5))
+              drop-shadow(0 0 12px rgba(0, 206, 209, 0.3))
+              drop-shadow(0 0 16px rgba(70, 130, 180, 0.2));
+    }
+    25% {
+      transform: rotate(90deg) scale(1.02);
+      filter: drop-shadow(0 0 6px rgba(30, 144, 255, 0.9))
+              drop-shadow(0 0 12px rgba(135, 206, 235, 0.7))
+              drop-shadow(0 0 18px rgba(0, 206, 209, 0.5))
+              drop-shadow(0 0 24px rgba(70, 130, 180, 0.4));
+    }
+    50% {
+      transform: rotate(180deg) scale(1.05);
+      filter: drop-shadow(0 0 8px rgba(30, 144, 255, 1))
+              drop-shadow(0 0 16px rgba(135, 206, 235, 0.8))
+              drop-shadow(0 0 24px rgba(0, 206, 209, 0.6))
+              drop-shadow(0 0 32px rgba(70, 130, 180, 0.5));
+    }
+    75% {
+      transform: rotate(270deg) scale(1.02);
+      filter: drop-shadow(0 0 6px rgba(30, 144, 255, 0.9))
+              drop-shadow(0 0 12px rgba(135, 206, 235, 0.7))
+              drop-shadow(0 0 18px rgba(0, 206, 209, 0.5))
+              drop-shadow(0 0 24px rgba(70, 130, 180, 0.4));
+    }
+    100% {
+      transform: rotate(360deg) scale(1);
+      filter: drop-shadow(0 0 4px rgba(30, 144, 255, 0.7))
+              drop-shadow(0 0 8px rgba(135, 206, 235, 0.5))
+              drop-shadow(0 0 12px rgba(0, 206, 209, 0.3))
+              drop-shadow(0 0 16px rgba(70, 130, 180, 0.2));
+    }
+  }
+
+  /* New: Rainbow Spectrum Animation */
+  @keyframes logo-rainbow-spectrum {
+    0% {
+      transform: scale(1);
+      filter: drop-shadow(0 0 5px rgba(255, 0, 0, 0.8))
+              drop-shadow(0 0 10px rgba(255, 165, 0, 0.6))
+              drop-shadow(0 0 15px rgba(255, 255, 0, 0.4));
+    }
+    16.66% {
+      transform: scale(1.02);
+      filter: drop-shadow(0 0 5px rgba(255, 165, 0, 0.8))
+              drop-shadow(0 0 10px rgba(255, 255, 0, 0.6))
+              drop-shadow(0 0 15px rgba(0, 255, 0, 0.4));
+    }
+    33.33% {
+      transform: scale(1.04);
+      filter: drop-shadow(0 0 5px rgba(255, 255, 0, 0.8))
+              drop-shadow(0 0 10px rgba(0, 255, 0, 0.6))
+              drop-shadow(0 0 15px rgba(0, 255, 255, 0.4));
+    }
+    50% {
+      transform: scale(1.06);
+      filter: drop-shadow(0 0 5px rgba(0, 255, 0, 0.8))
+              drop-shadow(0 0 10px rgba(0, 255, 255, 0.6))
+              drop-shadow(0 0 15px rgba(0, 0, 255, 0.4));
+    }
+    66.66% {
+      transform: scale(1.04);
+      filter: drop-shadow(0 0 5px rgba(0, 255, 255, 0.8))
+              drop-shadow(0 0 10px rgba(0, 0, 255, 0.6))
+              drop-shadow(0 0 15px rgba(238, 130, 238, 0.4));
+    }
+    83.33% {
+      transform: scale(1.02);
+      filter: drop-shadow(0 0 5px rgba(0, 0, 255, 0.8))
+              drop-shadow(0 0 10px rgba(238, 130, 238, 0.6))
+              drop-shadow(0 0 15px rgba(255, 0, 0, 0.4));
+    }
+    100% {
+      transform: scale(1);
+      filter: drop-shadow(0 0 5px rgba(238, 130, 238, 0.8))
+              drop-shadow(0 0 10px rgba(255, 0, 0, 0.6))
+              drop-shadow(0 0 15px rgba(255, 165, 0, 0.4));
+    }
+  }
+
+  /* New: Electric Arc Animation */
+  @keyframes logo-electric-arc {
+    0%, 100% {
+      transform: scale(1);
+      filter: drop-shadow(0 0 2px rgba(30, 144, 255, 0.8))
+              drop-shadow(0 0 4px rgba(135, 206, 235, 0.6))
+              drop-shadow(0 0 6px rgba(0, 206, 209, 0.4));
+    }
+    10% {
+      transform: scale(1.01);
+      filter: drop-shadow(0 0 4px rgba(30, 144, 255, 1))
+              drop-shadow(0 0 8px rgba(135, 206, 235, 0.8))
+              drop-shadow(0 0 12px rgba(0, 206, 209, 0.6))
+              drop-shadow(0 0 16px rgba(70, 130, 180, 0.4));
+    }
+    20% {
+      transform: scale(1.02);
+      filter: drop-shadow(0 0 6px rgba(30, 144, 255, 1))
+              drop-shadow(0 0 12px rgba(135, 206, 235, 0.8))
+              drop-shadow(0 0 18px rgba(0, 206, 209, 0.6))
+              drop-shadow(0 0 24px rgba(70, 130, 180, 0.5));
+    }
+    30% {
+      transform: scale(1.03);
+      filter: drop-shadow(0 0 8px rgba(30, 144, 255, 1))
+              drop-shadow(0 0 16px rgba(135, 206, 235, 0.8))
+              drop-shadow(0 0 24px rgba(0, 206, 209, 0.6))
+              drop-shadow(0 0 32px rgba(70, 130, 180, 0.6));
+    }
+    40% {
+      transform: scale(1.04);
+      filter: drop-shadow(0 0 10px rgba(30, 144, 255, 1))
+              drop-shadow(0 0 20px rgba(135, 206, 235, 0.8))
+              drop-shadow(0 0 30px rgba(0, 206, 209, 0.6))
+              drop-shadow(0 0 40px rgba(70, 130, 180, 0.7));
+    }
+    50% {
+      transform: scale(1.05);
+      filter: drop-shadow(0 0 12px rgba(30, 144, 255, 1))
+              drop-shadow(0 0 24px rgba(135, 206, 235, 0.8))
+              drop-shadow(0 0 36px rgba(0, 206, 209, 0.6))
+              drop-shadow(0 0 48px rgba(70, 130, 180, 0.8));
+    }
+    60% {
+      transform: scale(1.04);
+      filter: drop-shadow(0 0 10px rgba(30, 144, 255, 1))
+              drop-shadow(0 0 20px rgba(135, 206, 235, 0.8))
+              drop-shadow(0 0 30px rgba(0, 206, 209, 0.6))
+              drop-shadow(0 0 40px rgba(70, 130, 180, 0.7));
+    }
+    70% {
+      transform: scale(1.03);
+      filter: drop-shadow(0 0 8px rgba(30, 144, 255, 1))
+              drop-shadow(0 0 16px rgba(135, 206, 235, 0.8))
+              drop-shadow(0 0 24px rgba(0, 206, 209, 0.6))
+              drop-shadow(0 0 32px rgba(70, 130, 180, 0.6));
+    }
+    80% {
+      transform: scale(1.02);
+      filter: drop-shadow(0 0 6px rgba(30, 144, 255, 1))
+              drop-shadow(0 0 12px rgba(135, 206, 235, 0.8))
+              drop-shadow(0 0 18px rgba(0, 206, 209, 0.6))
+              drop-shadow(0 0 24px rgba(70, 130, 180, 0.5));
+    }
+    90% {
+      transform: scale(1.01);
+      filter: drop-shadow(0 0 4px rgba(30, 144, 255, 1))
+              drop-shadow(0 0 8px rgba(135, 206, 235, 0.8))
+              drop-shadow(0 0 12px rgba(0, 206, 209, 0.6))
+              drop-shadow(0 0 16px rgba(70, 130, 180, 0.4));
+    }
+  }
+
+  @keyframes logo-float-rotate {
+    0% {
+      transform: translateY(0) rotate(0deg) scale(1);
+      filter: drop-shadow(0 0 2px rgba(30, 144, 255, 0.3))
+              drop-shadow(0 0 4px rgba(135, 206, 235, 0.2));
+    }
+    25% {
+      transform: translateY(-8px) rotate(2deg) scale(1.02);
+      filter: drop-shadow(0 0 6px rgba(30, 144, 255, 0.6))
+              drop-shadow(0 0 8px rgba(135, 206, 235, 0.4))
+              drop-shadow(0 0 12px rgba(0, 206, 209, 0.3));
+    }
+    50% {
+      transform: translateY(-12px) rotate(0deg) scale(1.05);
+      filter: drop-shadow(0 0 8px rgba(30, 144, 255, 0.8))
+              drop-shadow(0 0 12px rgba(135, 206, 235, 0.6))
+              drop-shadow(0 0 16px rgba(0, 206, 209, 0.5));
+    }
+    75% {
+      transform: translateY(-8px) rotate(-2deg) scale(1.02);
+      filter: drop-shadow(0 0 6px rgba(30, 144, 255, 0.6))
+              drop-shadow(0 0 8px rgba(135, 206, 235, 0.4))
+              drop-shadow(0 0 12px rgba(0, 206, 209, 0.3));
+    }
+    100% {
+      transform: translateY(0) rotate(0deg) scale(1);
+      filter: drop-shadow(0 0 2px rgba(30, 144, 255, 0.3))
+              drop-shadow(0 0 4px rgba(135, 206, 235, 0.2));
+    }
+  }
+
+  @keyframes dreamer-glow {
+    0%, 100% {
+      text-shadow: 0 0 5px rgba(30, 144, 255, 0.5),
+                   0 0 10px rgba(135, 206, 235, 0.3);
+    }
+    50% {
+      text-shadow: 0 0 10px rgba(30, 144, 255, 0.8),
+                   0 0 20px rgba(135, 206, 235, 0.6),
+                   0 0 30px rgba(255, 215, 0, 0.4);
+    }
+  }
+
+  @keyframes dreamer-title-mystical {
+    0% {
+      text-shadow: 
+        0 0 5px rgba(30, 144, 255, 0.6),
+        0 0 10px rgba(135, 206, 235, 0.4),
+        0 0 15px rgba(0, 206, 209, 0.3),
+        0 0 20px rgba(30, 144, 255, 0.2);
+      filter: drop-shadow(0 0 2px rgba(30, 144, 255, 0.8))
+              drop-shadow(0 0 4px rgba(135, 206, 235, 0.6));
+    }
+    25% {
+      text-shadow: 
+        0 0 8px rgba(30, 144, 255, 0.8),
+        0 0 15px rgba(135, 206, 235, 0.6),
+        0 0 22px rgba(0, 206, 209, 0.5),
+        0 0 30px rgba(30, 144, 255, 0.4);
+      filter: drop-shadow(0 0 4px rgba(30, 144, 255, 0.9))
+              drop-shadow(0 0 8px rgba(135, 206, 235, 0.7))
+              drop-shadow(0 0 12px rgba(0, 206, 209, 0.5));
+    }
+    50% {
+      text-shadow: 
+        0 0 12px rgba(30, 144, 255, 1),
+        0 0 20px rgba(135, 206, 235, 0.8),
+        0 0 28px rgba(0, 206, 209, 0.7),
+        0 0 35px rgba(30, 144, 255, 0.6);
+      filter: drop-shadow(0 0 6px rgba(30, 144, 255, 1))
+              drop-shadow(0 0 12px rgba(135, 206, 235, 0.8))
+              drop-shadow(0 0 18px rgba(0, 206, 209, 0.6))
+              drop-shadow(0 0 24px rgba(30, 144, 255, 0.4));
+    }
+    75% {
+      text-shadow: 
+        0 0 8px rgba(30, 144, 255, 0.8),
+        0 0 15px rgba(135, 206, 235, 0.6),
+        0 0 22px rgba(0, 206, 209, 0.5),
+        0 0 30px rgba(30, 144, 255, 0.4);
+      filter: drop-shadow(0 0 4px rgba(30, 144, 255, 0.9))
+              drop-shadow(0 0 8px rgba(135, 206, 235, 0.7))
+              drop-shadow(0 0 12px rgba(0, 206, 209, 0.5));
+    }
+    100% {
+      text-shadow: 
+        0 0 5px rgba(30, 144, 255, 0.6),
+        0 0 10px rgba(135, 206, 235, 0.4),
+        0 0 15px rgba(0, 206, 209, 0.3),
+        0 0 20px rgba(30, 144, 255, 0.2);
+      filter: drop-shadow(0 0 2px rgba(30, 144, 255, 0.8))
+              drop-shadow(0 0 4px rgba(135, 206, 235, 0.6));
+    }
+  }
+
+  @keyframes wings-flutter {
+    0%, 100% {
+      transform: rotate(0deg) scale(1);
+      filter: drop-shadow(0 0 3px rgba(30, 144, 255, 0.6))
+              drop-shadow(0 0 6px rgba(135, 206, 235, 0.4));
+    }
+    25% {
+      transform: rotate(2deg) scale(1.02);
+      filter: drop-shadow(0 0 5px rgba(30, 144, 255, 0.8))
+              drop-shadow(0 0 10px rgba(135, 206, 235, 0.6));
+    }
+    50% {
+      transform: rotate(-1deg) scale(1.05);
+      filter: drop-shadow(0 0 8px rgba(30, 144, 255, 1))
+              drop-shadow(0 0 15px rgba(135, 206, 235, 0.8));
+    }
+    75% {
+      transform: rotate(1deg) scale(1.02);
+      filter: drop-shadow(0 0 5px rgba(30, 144, 255, 0.8))
+              drop-shadow(0 0 10px rgba(135, 206, 235, 0.6));
+    }
+  }
+
+  @keyframes crystal-pulse {
+    0%, 100% {
+      transform: scale(1) rotate(0deg);
+      filter: drop-shadow(0 0 5px rgba(30, 144, 255, 0.4))
+              drop-shadow(0 0 10px rgba(135, 206, 235, 0.3))
+              drop-shadow(0 0 15px rgba(0, 206, 209, 0.2));
+    }
+    25% {
+      transform: scale(1.03) rotate(1deg);
+      filter: drop-shadow(0 0 8px rgba(30, 144, 255, 0.6))
+              drop-shadow(0 0 15px rgba(135, 206, 235, 0.5))
+              drop-shadow(0 0 22px rgba(0, 206, 209, 0.4));
+    }
+    50% {
+      transform: scale(1.06) rotate(0deg);
+      filter: drop-shadow(0 0 12px rgba(30, 144, 255, 0.8))
+              drop-shadow(0 0 20px rgba(135, 206, 235, 0.7))
+              drop-shadow(0 0 28px rgba(0, 206, 209, 0.6));
+    }
+    75% {
+      transform: scale(1.03) rotate(-1deg);
+      filter: drop-shadow(0 0 8px rgba(30, 144, 255, 0.6))
+              drop-shadow(0 0 15px rgba(135, 206, 235, 0.5))
+              drop-shadow(0 0 22px rgba(0, 206, 209, 0.4));
+    }
+  }
+
+  @keyframes energy-field {
+    0% {
+      transform: scale(1) rotate(0deg);
+      opacity: 0.3;
+    }
+    50% {
+      transform: scale(1.1) rotate(180deg);
+      opacity: 0.7;
+    }
+    100% {
+      transform: scale(1) rotate(360deg);
+      opacity: 0.3;
+    }
+  }
+
+  .animate-logo-glow {
+    animation: logo-glow 3s ease-in-out infinite;
+  }
+
+  .animate-logo-mystical-glow {
+    animation: logo-mystical-glow 4s ease-in-out infinite;
+  }
+
+  .animate-logo-neon-pulse {
+    animation: logo-neon-pulse 2s ease-in-out infinite;
+  }
+
+  .animate-logo-ethereal-float {
+    animation: logo-ethereal-float 5s ease-in-out infinite;
+  }
+
+  .animate-logo-cosmic-rotation {
+    animation: logo-cosmic-rotation 8s linear infinite;
+  }
+
+  .animate-logo-rainbow-spectrum {
+    animation: logo-rainbow-spectrum 6s ease-in-out infinite;
+  }
+
+  .animate-logo-electric-arc {
+    animation: logo-electric-arc 3s ease-in-out infinite;
+  }
+
+  .animate-logo-float-rotate {
+    animation: logo-float-rotate 4s ease-in-out infinite;
+  }
+
+  .animate-dreamer-glow {
+    animation: dreamer-glow 3s ease-in-out infinite;
+  }
+
+  .animate-dreamer-title-mystical {
+    animation: dreamer-title-mystical 4s ease-in-out infinite;
+  }
+
+  .animate-wings-flutter {
+    animation: wings-flutter 3.5s ease-in-out infinite;
+  }
+
+  .animate-crystal-pulse {
+    animation: crystal-pulse 5s ease-in-out infinite;
+  }
+
+  .animate-energy-field {
+    animation: energy-field 6s linear infinite;
+  }
+
+  /* Legion hero logo – gold + electric blue pulse & float */
+  @keyframes logo-legion-pulse {
+    0%, 100% {
+      filter: drop-shadow(0 0 20px rgba(212, 175, 55, 0.4))
+              drop-shadow(0 0 40px rgba(212, 175, 55, 0.2))
+              drop-shadow(0 0 60px rgba(0, 212, 255, 0.15));
+    }
+    50% {
+      filter: drop-shadow(0 0 30px rgba(212, 175, 55, 0.6))
+              drop-shadow(0 0 60px rgba(212, 175, 55, 0.35))
+              drop-shadow(0 0 80px rgba(0, 212, 255, 0.25));
+    }
+  }
+
+  @keyframes logo-legion-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+
+  @keyframes logo-legion-ring {
+    0%, 100% { opacity: 0.4; transform: scale(1.05); }
+    50% { opacity: 0.7; transform: scale(1.12); }
+  }
+
+  @keyframes logo-legion-shine {
+    0% { opacity: 0; left: -20%; }
+    50% { opacity: 0.5; left: 120%; }
+    100% { opacity: 0; left: 120%; }
+  }
+
+  .animate-logo-legion-pulse {
+    animation: logo-legion-pulse 3s ease-in-out infinite;
+  }
+
+  .animate-logo-legion-float {
+    animation: logo-legion-float 4s ease-in-out infinite;
+  }
+
+  .animate-logo-legion-ring {
+    animation: logo-legion-ring 3s ease-in-out infinite;
+  }
+
+  .animate-logo-legion-shine {
+    animation: logo-legion-shine 4s ease-in-out 1s infinite;
+  }
+
+  /* Lightning effect – visible electric blue flash */
+  @keyframes logo-lightning-flash {
+    0%, 70%, 100% { opacity: 0.2; filter: brightness(1); }
+    2%, 8% { opacity: 1; filter: brightness(1.8); }
+    4%, 12% { opacity: 0.6; filter: brightness(1.4); }
+    25%, 32% { opacity: 0.95; filter: brightness(1.7); }
+    28%, 35% { opacity: 0.5; filter: brightness(1.3); }
+    50%, 58% { opacity: 0.9; filter: brightness(1.6); }
+  }
+
+  @keyframes lightning-bolt {
+    0%, 75%, 100% { opacity: 0; }
+    1%, 10%, 15% { opacity: 1; }
+    5%, 12% { opacity: 0.5; }
+    30%, 38% { opacity: 0.95; }
+    35%, 42% { opacity: 0.3; }
+    55%, 62% { opacity: 0.85; }
+  }
+
+  @keyframes lightning-strike {
+    0%, 80%, 100% { opacity: 0; }
+    2%, 6% { opacity: 1; }
+    4% { opacity: 0.6; }
+    40%, 46% { opacity: 0.9; }
+    44% { opacity: 0.4; }
+  }
+
+  .animate-logo-lightning-flash {
+    animation: logo-lightning-flash 2.5s ease-in-out infinite;
+  }
+
+  .animate-lightning-bolt {
+    animation: lightning-bolt 2.5s ease-in-out infinite;
+  }
+
+  .animate-lightning-strike {
+    animation: lightning-strike 3s ease-in-out infinite;
+  }
+
+  /* Legion Flyff Gradient Text */
+  .text-dreamer-blue {
+    background: linear-gradient(135deg, var(--dreamer-blue-light) 0%, var(--dreamer-blue) 50%, var(--dreamer-blue-dark) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-dreamer-gold {
+    background: linear-gradient(135deg, var(--dreamer-gold-light) 0%, var(--dreamer-gold) 50%, var(--dreamer-gold-dark) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Legion Flyff Button Styles */
+  .btn-dreamer-primary {
+    background: linear-gradient(135deg, var(--dreamer-blue) 0%, var(--dreamer-royal) 100%);
+    border: 2px solid var(--dreamer-blue-dark);
+    box-shadow: 0 0 10px rgba(30, 144, 255, 0.3);
+    transition: all 0.3s ease;
+  }
+
+  .btn-dreamer-primary:hover {
+    background: linear-gradient(135deg, var(--dreamer-royal) 0%, var(--dreamer-blue) 100%);
+    box-shadow: 0 0 20px rgba(30, 144, 255, 0.6);
+    transform: translateY(-2px);
+  }
+
+  .btn-dreamer-secondary {
+    background: linear-gradient(135deg, var(--dreamer-gold) 0%, var(--dreamer-gold-light) 100%);
+    border: 2px solid var(--dreamer-gold-dark);
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+    transition: all 0.3s ease;
+  }
+
+  .btn-dreamer-secondary:hover {
+    background: linear-gradient(135deg, var(--dreamer-gold-light) 0%, var(--dreamer-gold) 100%);
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.6);
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.animate-blink {
+  animation: blink 1s infinite;
+}
+
+/* Legion FlyFF progress bar – amber theme (overridable by LoadingBar.js) */
+#nprogress {
+  pointer-events: none;
+}
+#nprogress .bar {
+  background: linear-gradient(90deg, #b45309 0%, #f59e0b 50%, #fbbf24 100%);
+  height: 3px;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+}
+#nprogress .peg {
+  box-shadow: 0 0 10px #f59e0b, 0 0 5px #fbbf24;
+}

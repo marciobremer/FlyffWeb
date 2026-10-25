@@ -1,0 +1,18 @@
+# Só o necessário para o servidor, o painel e o site entra na imagem.
+# Ficam de fora: dependências (são instaladas no build), builds, dados do FlyFF (montados), backups e cópias antigas.
+node_modules
+htdocs/node_modules
+htdocs/.next
+htdocs/.next-*
+htdocs/WEBSITE_DBF.bak
+htdocs/Build
+dist
+Original
+Original_testar
+data
+backups
+_backup_antes_fase1
+WEBSITE_DBF.bak
+*.log
+.claude
+htdocs/.env

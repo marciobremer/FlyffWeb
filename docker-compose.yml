@@ -1,0 +1,42 @@
+# ReactioN MMO em Docker: banco (PostgreSQL) + jogo/painel/site.
+#   docker compose up -d --build      liga tudo (a primeira vez compila a imagem: alguns minutos)
+#   docker compose logs -f app        acompanha o servidor
+#   docker compose down               desliga (os dados do banco ficam no volume "pgdata")
+# Senha do banco: crie um arquivo .env ao lado deste com  PGPASSWORD=sua-senha  (veja .env.example).
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: flyffweb
+      POSTGRES_USER: flyffweb_app
+      POSTGRES_PASSWORD: ${PGPASSWORD:?Defina PGPASSWORD no arquivo .env}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flyffweb_app -d flyffweb"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGDATABASE: flyffweb
+      PGUSER: flyffweb_app
+      PGPASSWORD: ${PGPASSWORD}
+    ports:
+      - "${GAME_PORT:-8080}:8080"              # site em / e jogo em /game/
+      - "127.0.0.1:${ADMIN_PORT:-8090}:8090"   # painel admin: só nesta máquina
+    volumes:
+      - ./Original:/app/original:ro           # arquivos do FlyFF (somente leitura)
+      - ./data:/app/data                      # taxas, edições do mundo, mensagens do painel, extras
+
+volumes:
+  pgdata:

@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" href="data:," />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FlyFF Web World Editor</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <canvas id="view"></canvas>
+  <aside id="panel">
+    <h1>FlyFF World Editor</h1>
+    <div id="status">Carregando…</div>
+
+    <fieldset>
+      <legend>Mundo</legend>
+      <label>Mapa <input id="worldName" value="WdMadrigal" /></label>
+      <button id="reload">Abrir</button>
+      <label>Raio de tiles <input id="radius" type="range" min="1" max="8" value="3" /> <span id="radiusVal">3</span></label>
+      <label>Cor do terreno
+        <select id="colorMode">
+          <option value="textures">Texturas reais</option>
+          <option value="layers">Camadas (cores)</option>
+          <option value="attrs">Atributos (NoWalk/NoFly/NoMove/Die)</option>
+          <option value="height">Altura</option>
+        </select>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Ambiente</legend>
+      <label>Hora <input id="hour" type="range" min="0" max="23.75" step="0.25" value="12" /> <span id="envInfo">12:00</span></label>
+      <label><input type="checkbox" id="worldLight" checked /> Iluminação do mundo</label>
+      <label><input type="checkbox" id="shadows" checked /> Sombras</label>
+      <label>Inclinação do sol <input id="sunTilt" type="range" min="0" max="70" step="5" value="30" /></label>
+      <label><input type="checkbox" id="worldFog" /> Névoa do mundo (.wld/continente)</label>
+      <label><input type="checkbox" id="showSky" checked /> Skybox e nuvens</label>
+      <label><input type="checkbox" id="showWater" checked /> Água e nuvens do mar</label>
+      <div>
+        <button id="envSave" title="Grava o que está marcado aqui como padrão deste mundo (vale também no jogo)">Salvar ambiente</button>
+        <button id="envClear" title="Volta ao ambiente original do mundo">Limpar salvo</button>
+      </div>
+      <div id="envInfo2" style="color:var(--dim);font-size:11px"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Filtro</legend>
+      <label>Filtro
+        <select id="filterType">
+          <option value="none">Nenhum</option>
+          <option value="zelda">Zelda (Breath of the Wild)</option>
+        </select>
+      </label>
+      <label>Intensidade <input id="filterStrength" type="range" min="0" max="1" step="0.05" value="1" /> <span id="filterStrengthVal">100%</span></label>
+      <label>Saturação <input id="filterSaturation" type="range" min="0" max="1.5" step="0.05" value="1" /> <span id="filterSaturationVal">100%</span></label>
+      <label><input type="checkbox" id="filterOutline" checked /> Contorno (cel)</label>
+      <div style="margin-top:6px;color:var(--dim);font-size:11px">Sombra do sol</div>
+      <label>Nitidez (área) <input id="shadowArea" type="range" min="40" max="260" step="10" value="120" /> <span id="shadowAreaVal">120</span></label>
+      <label>Resolução
+        <select id="shadowRes">
+          <option value="2048">2048 (leve)</option>
+          <option value="4096" selected>4096</option>
+          <option value="8192">8192 (pesada)</option>
+        </select>
+      </label>
+      <label>Suavidade <input id="shadowSoft" type="range" min="0" max="4" step="0.25" value="1.5" /> <span id="shadowSoftVal">1.5</span></label>
+      <div style="color:var(--dim);font-size:11px">Área menor = sombra mais nítida, mas ela some mais perto da câmera.</div>
+      <div style="color:var(--dim);font-size:11px">"Salvar ambiente" grava o filtro e a sombra junto (vale no jogo).</div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Camadas visíveis</legend>
+      <label><input type="checkbox" id="showTerrain" checked /> Terreno</label>
+      <label><input type="checkbox" id="showObjs" checked /> Objetos</label>
+      <label><input type="checkbox" id="showSfx" checked /> SFX</label>
+      <label><input type="checkbox" id="showMovers" checked /> Movers (.dyo)</label>
+      <label><input type="checkbox" id="showSpawns" checked /> Spawns (.rgn)</label>
+      <label><input type="checkbox" id="showRegions" /> Regiões (.rgn)</label>
+      <label><input type="checkbox" id="showContinents" /> Continentes</label>
+      <label><input type="checkbox" id="showGrid" /> Grade de tiles</label>
+      <label><input type="checkbox" id="wireframe" /> Wireframe</label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Edição de mundo</legend>
+      <button id="editToggle">✏ Entrar no modo edição</button>
+      <div id="editPanel" hidden>
+        <div>
+          <button data-tool="translate" class="tool active">Mover (1)</button>
+          <button data-tool="rotate" class="tool">Girar (2)</button>
+          <button data-tool="scale" class="tool">Escala (3)</button>
+        </div>
+        <div>
+          <button id="editGround">Ao chão (G)</button>
+          <button id="editDup">Duplicar (Ctrl+D)</button>
+          <button id="editDel">Apagar (Del)</button>
+        </div>
+        <div>
+          <button id="editUndo">Desfazer (Ctrl+Z)</button>
+          <button id="editExport">Exportar alterações (.json)</button>
+        </div>
+        <div id="editInfo" style="color:var(--dim);font-size:11px">Clique em um objeto estático para editar.</div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>NPCs</legend>
+      <button id="npcToggle">👤 Editar NPCs</button>
+      <div id="npcPanel" hidden>
+        <div>
+          <button data-npctool="translate" class="npctool active">Mover</button>
+          <button data-npctool="rotate" class="npctool">Girar</button>
+          <button id="npcGround">Ao chão (G)</button>
+        </div>
+        <div>
+          <button id="npcDup">Duplicar</button>
+          <button id="npcDel">Remover (Del)</button>
+          <button id="npcUndo">Desfazer (Ctrl+Z)</button>
+        </div>
+        <input id="npcFilter" type="search" placeholder="Adicionar NPC: filtrar (nome ou chave)…" style="width:100%" />
+        <select id="npcList" size="6" style="width:100%"></select>
+        <div>
+          <button id="npcAdd">Adicionar na mira da câmera</button>
+        </div>
+        <div>
+          <button id="npcSave">💾 Salvar NPCs</button>
+          <button id="npcRevert">Descartar</button>
+        </div>
+        <div id="npcInfo" style="color:var(--dim);font-size:11px">Clique em um NPC para selecionar.</div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Personagem</legend>
+      <label>Sexo <select id="playerSex"><option value="male">Male</option><option value="female">Female</option></select></label>
+      <button id="spawnFlaris">Spawnar em Flaris</button>
+      <button id="spawnHere">Spawnar aqui</button>
+      <label><input type="checkbox" id="playerMode" checked /> Controlar personagem (WASD · Espaço pula · Alt anda)</label>
+      <div id="playerInfo" style="color:var(--dim);font-size:11px"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Locais (teleporte)</legend>
+      <input id="placeFilter" type="search" placeholder="Filtrar: flaris, saint, darkon…" style="width:100%" />
+      <div id="places"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Ir para</legend>
+      <label>Tile <input id="gotoX" type="number" min="0" value="13" /> , <input id="gotoY" type="number" min="0" value="5" /></label>
+      <button id="goto">Ir</button>
+    </fieldset>
+
+    <fieldset>
+      <legend>Exportar (Three.js)</legend>
+      <button id="exportLoaded">Tiles carregados (.zip)</button>
+      <button id="exportAll">Mapa completo (.zip)</button>
+    </fieldset>
+
+    <fieldset>
+      <legend>Seleção</legend>
+      <pre id="info">Clique em um objeto.</pre>
+    </fieldset>
+    <div id="hint">Botão esquerdo: orbitar · direito: mover · roda: zoom · WASD/QE: voar · Shift: rápido</div>
+  </aside>
+  <div id="hud"></div>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

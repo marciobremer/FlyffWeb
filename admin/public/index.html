@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
+  <title>ReactioN Admin</title>
+  <link rel="stylesheet" href="/admin.css" />
+</head>
+<body>
+  <aside id="side">
+    <div class="brand">⚔️ <b>Reactio<span>N</span></b> <em>ADMIN</em></div>
+    <nav>
+      <h6>Operação</h6>
+      <a href="#dashboard" data-view="dashboard">📊 <span>Dashboard</span></a>
+      <a href="#account" data-view="account">👥 <span>Account</span></a>
+      <a href="#world" data-view="world">🌐 <span>World</span></a>
+      <h6>Conteúdo</h6>
+      <a class="off" title="Em breve">📍 <span>Zones</span></a>
+      <a class="off" title="Em breve">📦 <span>Items</span></a>
+      <a class="off" title="Em breve">🏰 <span>Guild</span></a>
+      <a class="off" title="Em breve">😈 <span>Mobs</span></a>
+      <h6>Sistemas</h6>
+      <a class="off" title="Em breve">⚡ <span>Skills</span></a>
+      <a class="off" title="Em breve">🛡️ <span>Characters</span></a>
+    </nav>
+  </aside>
+
+  <main>
+    <!-- ================= DASHBOARD ================= -->
+    <section id="view-dashboard" class="view">
+      <header class="top">
+        <div><h1>Dashboard</h1><p>Visão geral em tempo real do servidor do jogo</p></div>
+        <div class="actions">
+          <button class="btn go" id="btnStart">▶ Iniciar</button>
+          <button class="btn stop" id="btnStop">■ Parar</button>
+          <button class="btn" id="btnRestart">⟳ Reiniciar</button>
+          <button class="btn" id="btnBuild" title="npm run build — necessário depois de mudar o código do jogo">🔨 Compilar</button>
+          <button class="btn" id="btnRefresh">↻ Atualizar</button>
+        </div>
+      </header>
+      <p id="dashMsg" class="msg" role="status"></p>
+
+      <div class="cards">
+        <div class="card stat"><h5>Players online</h5><b id="sPlayers">0</b><small>no servidor do jogo</small><i>👤</i></div>
+        <div class="card stat"><h5>Serviços online</h5><b id="sServices">0/2</b><small>JOGO · BANCO</small><i>🩺</i></div>
+        <div class="card stat"><h5>Conexões WS</h5><b id="sConns">0</b><small>total desde o boot</small><i>🔌</i></div>
+        <div class="card stat"><h5>Uptime do jogo</h5><b id="sUptime">—</b><small id="sStatus">parado</small><i>⏱️</i></div>
+      </div>
+
+      <div class="card chart">
+        <div class="chead"><h5>Tráfego WebSocket (tempo real)</h5><span id="chartNote" class="dim">aguardando dados…</span></div>
+        <canvas id="chart" height="190" aria-label="Gráfico de mensagens por segundo e jogadores online"></canvas>
+        <div class="legend"><span class="l1">Mensagens/s (entrada + saída)</span><span class="l2">Jogadores online</span></div>
+      </div>
+
+      <div class="cards two">
+        <div class="card svc" id="svcGame">
+          <div class="shead"><span class="dot"></span><h4>Servidor do jogo</h4><span class="port" id="gPort">:8080</span></div>
+          <dl>
+            <dt>Latência</dt><dd id="gLat">—</dd><dt>RAM (RSS)</dt><dd id="gRam">—</dd>
+            <dt>Uptime</dt><dd id="gUp">—</dd><dt>PID</dt><dd id="gPid">—</dd>
+            <dt>Sessões</dt><dd id="gSess">—</dd><dt>Msg/s</dt><dd id="gMsg">—</dd>
+            <dt>Mobs</dt><dd id="gMobs">—</dd>
+          </dl>
+        </div>
+        <div class="card svc" id="svcDb">
+          <div class="shead"><span class="dot"></span><h4>Banco PostgreSQL</h4><span class="port">flyffweb</span></div>
+          <dl>
+            <dt>Latência</dt><dd id="dLat">—</dd><dt>Tamanho</dt><dd id="dSize">—</dd>
+            <dt>Contas</dt><dd id="dAcc">—</dd><dt>Personagens</dt><dd id="dChar">—</dd>
+          </dl>
+        </div>
+      </div>
+
+      <div class="card">
+        <h5>Jogadores online</h5>
+        <table class="grid"><thead><tr><th>Personagem</th><th>Nível</th><th>Conta</th><th>Posição (x, z)</th></tr></thead><tbody id="onlineRows"><tr><td colspan="4" class="empty">Ninguém online.</td></tr></tbody></table>
+      </div>
+
+      <div class="card logs">
+        <div class="chead"><h5>Logs</h5><label class="dim"><input type="checkbox" id="logFollow" checked /> acompanhar</label></div>
+        <pre id="logBox" tabindex="0" aria-label="Logs do servidor"></pre>
+      </div>
+    </section>
+
+    <!-- ================= WORLD ================= -->
+    <section id="view-world" class="view" hidden>
+      <header class="top">
+        <div><h1>World</h1><p>Configurações do mundo do jogo</p></div>
+      </header>
+      <p id="worldMsg" class="msg" role="status"></p>
+
+      <form class="card rates" id="ratesForm" autocomplete="off">
+        <h5>⚙️ Taxas do servidor</h5>
+        <p class="dim">Multiplicadores sobre as taxas originais do FlyFF (1 = original, 2 = em dobro, 0.5 = metade). Valem na hora, sem reiniciar o jogo.</p>
+        <div class="row">
+          <label>EXP <input id="rExp" type="number" step="0.1" min="0.1" max="1000" required /></label>
+          <label>Penya <input id="rPenya" type="number" step="0.1" min="0.1" max="1000" required /></label>
+          <label>Drop <input id="rDrop" type="number" step="0.1" min="0.1" max="1000" required /></label>
+          <button class="btn teal" type="submit">Salvar taxas</button>
+        </div>
+        <p class="dim small">Arquivo: <code id="rFile">data/server-rates.json</code> (também dá para editar à mão).</p>
+      </form>
+
+      <form class="card announce" id="announceForm" autocomplete="off">
+        <h5>📢 Mensagem para todos os jogadores</h5>
+        <p class="dim">Aparece no meio da tela de quem está online, correndo da direita para a esquerda.</p>
+        <div class="row">
+          <input id="annText" maxlength="200" placeholder="Ex.: Evento de EXP em dobro começa às 20h!" aria-label="Mensagem para todos os jogadores" required />
+          <label>Passagens <select id="annLoops" aria-label="Quantas vezes a mensagem passa"><option>1</option><option selected>2</option><option>3</option><option>5</option></select></label>
+          <button class="btn teal" type="submit">Enviar</button>
+        </div>
+        <div class="ann-preview" aria-hidden="true"><span id="annPreview" draggable="true" title="Arraste para um slot para guardar">Prévia da mensagem</span></div>
+        <p class="dim small"><span id="annCount">0</span>/200 caracteres</p>
+        <div class="ann-loop">
+          <label class="ann-check"><input type="checkbox" id="annLoop" /> Repetir sozinho a cada</label>
+          <select id="annEvery" aria-label="Intervalo do loop"><option value="1">1 min</option><option value="2">2 min</option><option value="5" selected>5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">1 hora</option><option value="120">2 horas</option></select>
+          <span id="annLoopState" class="dim small" role="status"></span>
+          <button class="btn" type="button" id="annStop" hidden>Parar loop</button>
+        </div>
+        <h6 class="ann-slots-title">Mensagens guardadas <span class="dim small">— arraste a prévia (ou o texto selecionado) para um slot; clique no slot para usar</span></h6>
+        <div class="ann-slots" id="annSlots"></div>
+      </form>
+    </section>
+
+    <!-- ================= ACCOUNT ================= -->
+    <section id="view-account" class="view" hidden>
+      <header class="top">
+        <div><h1>Account</h1><p>Gerenciamento de contas: criar, banir, desconectar e trocar senha</p></div>
+        <div class="actions"><button class="btn teal" id="btnSync">↻ Sincronizar</button></div>
+      </header>
+      <p id="accMsg" class="msg" role="status"></p>
+
+      <form class="searchbar" id="searchForm">
+        <input id="qNick" placeholder="Buscar por personagem…" aria-label="Buscar por personagem" />
+        <input id="qUser" placeholder="Buscar por usuário…" aria-label="Buscar por usuário" />
+        <button class="btn" type="submit">Buscar</button>
+        <button class="btn" type="button" id="btnClear">Limpar filtros</button>
+      </form>
+
+      <form class="card create" id="createForm" autocomplete="off">
+        <h5>🆕 Criar nova conta</h5>
+        <div class="row">
+          <input id="cUser" placeholder="Nome de usuário…" aria-label="Nome de usuário" required />
+          <input id="cPass" type="password" placeholder="Senha (opcional)…" aria-label="Senha" autocomplete="new-password" />
+          <input id="cNick" placeholder="Personagem (opcional)…" aria-label="Nome do personagem" />
+          <select id="cAuth" aria-label="Tipo de conta"><option value="F">Jogador (F)</option><option value="Z">Administrador (Z)</option></select>
+          <button class="btn teal" type="submit">Criar conta</button>
+        </div>
+      </form>
+
+      <div class="card">
+        <table class="grid">
+          <thead><tr><th>Usuário</th><th>Personagens</th><th>Tipo</th><th>Nível</th><th>Online</th><th>Ban</th><th>Ações</th></tr></thead>
+          <tbody id="accRows"><tr><td colspan="7" class="empty">Carregando…</td></tr></tbody>
+        </table>
+        <div class="pager">
+          <button class="btn" id="pgPrev">← Anterior</button>
+          <span id="pgInfo">Página 1 de 1</span>
+          <select id="pgSize" aria-label="Contas por página"><option>10</option><option selected>25</option><option>50</option></select>
+          <button class="btn" id="pgNext">Próxima →</button>
+        </div>
+      </div>
+
+      <form class="card" id="unbanForm">
+        <h5>🔓 Desbanir jogador</h5>
+        <p class="dim">Remove o ban pelo nome da conta ou do personagem.</p>
+        <input id="unbanName" placeholder="usuário ou personagem" aria-label="Usuário ou personagem para desbanir" />
+        <button class="btn ok" type="submit">Remover ban</button>
+      </form>
+    </section>
+  </main>
+
+  <!-- diálogos de ação (banir / trocar senha) -->
+  <dialog id="dlgBan">
+    <form method="dialog">
+      <h4>Banir <span class="who"></span></h4>
+      <label>Duração <select id="banDays"><option value="1">1 dia</option><option value="7">7 dias</option><option value="30">30 dias</option><option value="0">Permanente</option></select></label>
+      <p class="dim">Se estiver online, a conta é desconectada na hora.</p>
+      <div class="dactions"><button class="btn" value="cancel">Cancelar</button><button class="btn stop" value="ok">Banir</button></div>
+    </form>
+  </dialog>
+  <dialog id="dlgPass">
+    <form method="dialog">
+      <h4>Nova senha para <span class="who"></span></h4>
+      <input id="newPass" type="password" minlength="4" placeholder="pelo menos 4 caracteres" aria-label="Nova senha" autocomplete="new-password" />
+      <div class="dactions"><button class="btn" value="cancel">Cancelar</button><button class="btn teal" value="ok">Salvar</button></div>
+    </form>
+  </dialog>
+
+  <script src="/admin.js"></script>
+</body>
+</html>

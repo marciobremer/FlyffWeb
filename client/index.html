@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" href="data:," />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FlyFF Web</title>
+  <!-- fonte arredondada do "MMO" do logo (sem internet, cai para fontes do sistema) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&display=swap" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <canvas id="view"></canvas>
+
+  <!-- tela de carregamento: baixa tabelas, o tile de Flaris e os modelos/texturas em volta ANTES de mostrar o login -->
+  <div id="bootScreen" role="progressbar" aria-label="Carregando o jogo" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+    <div id="bootLogo">
+      <img src="./logo-reaction.webp" alt="ReactioN" width="760" height="299" />
+      <div class="logo-sub">MMO</div>
+    </div>
+    <div id="bootBox">
+      <div id="bootBar"><i id="bootFill"></i></div>
+      <div id="bootInfo"><span id="bootStep">Preparando…</span><span id="bootPct">0%</span></div>
+      <div id="bootBytes"></div>
+    </div>
+  </div>
+
+  <!-- tela de login no estilo da janela do cliente (imagens de Data/Theme/Default) -->
+  <div id="loginScreen">
+    <!-- logo ReactioN (imagem enviada pelo usuário) com "MMO" embaixo -->
+    <div id="logo">
+      <img src="./logo-reaction.webp" alt="ReactioN" width="760" height="299" />
+      <div class="logo-sub">MMO</div>
+    </div>
+    <form id="loginWnd" class="fwnd" autocomplete="on">
+      <div class="fwnd-title">Login</div>
+      <div class="fwnd-body">
+        <div class="fcol">
+          <label class="pill" for="username">Conta</label>
+          <input id="username" name="username" class="fedit" maxlength="32" autocomplete="username" spellcheck="false" />
+          <label class="pill" for="password">Senha</label>
+          <input id="password" name="password" class="fedit" type="password" maxlength="128" autocomplete="current-password" />
+          <label class="fcheck"><input type="checkbox" id="saveAccount" /><span></span>Salvar conta</label>
+          <label class="fcheck fsel">Qualidade
+            <select id="quality"><option value="high">Alta</option><option value="low">Baixa</option></select>
+          </label>
+          <button type="submit" id="loginBtn" class="fbtn" data-img="ButtLogin.bmp" data-frames="4" aria-label="Login"><span>Login</span></button>
+          <button type="button" id="quitBtn" class="fbtn" data-img="ButtQuit.bmp" data-frames="4" aria-label="Sair"><span>Sair</span></button>
+        </div>
+        <div class="fcol">
+          <div class="pill">Contas salvas</div>
+          <ul id="savedList" class="fedit flist" role="listbox" aria-label="Contas salvas"></ul>
+          <button type="button" id="saveLogin" class="fbtn" data-img="ButtSaveLogin.bmp" data-frames="4" aria-label="Salvar conta"><span>Salvar conta</span></button>
+          <div class="frow">
+            <button type="button" id="loadLogin" class="fbtn" data-img="ButtLoad.bmp" data-frames="4" aria-label="Carregar"><span>Carregar</span></button>
+            <button type="button" id="deleteLogin" class="fbtn" data-img="ButtDelete.bmp" data-frames="4" aria-label="Apagar"><span>Apagar</span></button>
+          </div>
+        </div>
+      </div>
+      <p id="loginMsg" class="fmsg" role="status">Carregando o mundo…</p>
+    </form>
+  </div>
+
+  <!-- seleção de personagem (3 vagas) e criação; o personagem aparece em 3D no centro da tela -->
+  <div id="charScreen" class="sidescreen" hidden>
+    <div id="charSelect" class="fwnd side">
+      <div class="fwnd-title">Personagens</div>
+      <div class="fwnd-body one">
+        <div class="pill" id="accountName">Conta</div>
+        <ul id="slotList" class="slots" role="listbox" aria-label="Personagens da conta"></ul>
+        <div class="frow3">
+          <button type="button" id="enterBtn" class="fbtn" data-img="ButtOk.tga" aria-label="Entrar"><span>Entrar</span></button>
+          <button type="button" id="newCharBtn" class="fbtn" data-img="ButtCreate.tga" aria-label="Criar"><span>Criar</span></button>
+          <button type="button" id="logoutBtn" class="fbtn" data-img="ButtBack.tga" aria-label="Voltar"><span>Voltar</span></button>
+        </div>
+      </div>
+      <p class="fmsg" id="selectMsg" role="status"></p>
+    </div>
+
+    <form id="charCreate" class="fwnd side" hidden autocomplete="off">
+      <div class="fwnd-title">Criar personagem</div>
+      <div class="fwnd-body one">
+        <label class="pill" for="newName">Nome</label>
+        <input id="newName" class="fedit" maxlength="16" spellcheck="false" />
+        <div class="pill">Aparência</div>
+        <div class="picker" data-key="sex"><span class="plabel">Sexo</span><button type="button" class="fbtn arrow" data-img="ButtLeft.tga" data-step="-1" aria-label="Anterior"><span>‹</span></button><output></output><button type="button" class="fbtn arrow" data-img="ButtRight.tga" data-step="1" aria-label="Próximo"><span>›</span></button></div>
+        <div class="picker" data-key="hair"><span class="plabel">Cabelo</span><button type="button" class="fbtn arrow" data-img="ButtLeft.tga" data-step="-1" aria-label="Anterior"><span>‹</span></button><output></output><button type="button" class="fbtn arrow" data-img="ButtRight.tga" data-step="1" aria-label="Próximo"><span>›</span></button></div>
+        <div class="picker" data-key="head"><span class="plabel">Rosto</span><button type="button" class="fbtn arrow" data-img="ButtLeft.tga" data-step="-1" aria-label="Anterior"><span>‹</span></button><output></output><button type="button" class="fbtn arrow" data-img="ButtRight.tga" data-step="1" aria-label="Próximo"><span>›</span></button></div>
+        <div class="frow">
+          <button type="submit" id="createBtn" class="fbtn" data-img="ButtCreate.tga" aria-label="Criar"><span>Criar</span></button>
+          <button type="button" id="createBackBtn" class="fbtn" data-img="ButtBack.tga" aria-label="Voltar"><span>Voltar</span></button>
+        </div>
+      </div>
+      <p class="fmsg" id="createMsg" role="status"></p>
+    </form>
+  </div>
+
+  <div id="help" hidden>WASD anda · Espaço pula · Alt caminha · clique no chão para andar · clique no mob para selecionar · Esc desmarca · I inventário · H personagem · K skills · Enter chat</div>
+  <div id="netStatus" role="status" hidden></div>
+  <div id="hud"></div>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

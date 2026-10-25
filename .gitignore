@@ -1,0 +1,37 @@
+# dependências e builds (recriados por npm install / npm run build)
+node_modules/
+dist/
+htdocs/.next/
+htdocs/.next-*/
+htdocs/out/
+*.tsbuildinfo
+
+# segredos — NUNCA versionar (modelos em .env.example e htdocs/.env.example)
+.env
+.env.*
+!.env.example
+htdocs/.env
+htdocs/.env.*
+!htdocs/.env.example
+*.pem
+
+# arquivos do FlyFF original (vários GB, com direitos autorais) — ficam só no computador / backup local
+Original/
+original/
+Original_testar/
+data/res-extra/Data/
+
+# backups locais (contêm contas de jogadores) e restos antigos
+backups/
+_backup_antes_fase1/
+*.bak
+
+# configuração local do Claude Code / logs / lixo
+.claude/
+*.log
+&1
+.DS_Store
+Thumbs.db
+
+# contas de teste locais
+*.local.json

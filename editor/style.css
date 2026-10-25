@@ -1,0 +1,29 @@
+:root { color-scheme: dark; --bg: #14161a; --panel: #1d2026; --line: #2d323b; --fg: #d8dde6; --dim: #8a93a3; --accent: #4da3ff; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.4 system-ui, sans-serif; overflow: hidden; }
+#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#panel { position: fixed; top: 0; left: 0; bottom: 0; width: 280px; overflow-y: auto; padding: 12px; background: color-mix(in srgb, var(--panel) 92%, transparent); border-right: 1px solid var(--line); }
+h1 { font-size: 15px; margin: 0 0 6px; }
+#status { color: var(--dim); margin-bottom: 8px; min-height: 18px; }
+fieldset { border: 1px solid var(--line); border-radius: 6px; margin: 0 0 10px; padding: 6px 10px 8px; }
+legend { color: var(--dim); padding: 0 4px; }
+label { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+input[type=number] { width: 52px; }
+input, select, button { background: #262b33; color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; font: inherit; }
+input[type=range] { flex: 1; padding: 0; }
+input[type=checkbox] { padding: 0; }
+button { cursor: pointer; margin: 3px 4px 0 0; }
+button:hover { border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+pre { margin: 0; white-space: pre-wrap; word-break: break-word; font: 12px/1.4 ui-monospace, Consolas, monospace; }
+#places { max-height: 240px; overflow-y: auto; margin-top: 6px; }
+#places h4 { margin: 6px 0 2px; font-size: 11px; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: .04em; }
+#places button { display: block; width: 100%; text-align: left; margin: 1px 0; padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+button.active, button.on { border-color: var(--accent); color: #fff; background: #2b4a6b; }
+[hidden] { display: none !important; }
+#hint { color: var(--dim); font-size: 11px; }
+#hud { position: fixed; right: 10px; bottom: 8px; color: #fff; text-shadow: 0 0 3px #000; font: 12px ui-monospace, Consolas, monospace; pointer-events: none; }
+@media (max-width: 700px) { #panel { width: 200px; } }
+
+/* janela do alvo deslocada para o centro da área fora do painel (280 px) */
+body #targetWnd { left: calc(50% + 140px); }

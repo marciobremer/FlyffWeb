@@ -1,0 +1,266 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { parseDefines } from '../../shared/formats/inc';
+import { decodeText } from '../../shared/formats/rgn';
+import { nameTable } from './names';
+
+/**
+ * Catálogo de itens lido da pasta Resource: `Spec_Item.txt` (o propItem novo; cai para `propItem.txt` se não existir),
+ * nomes de `propItem.txt.txt` (IDS_PROPITEM_TXT_* → texto) e os números dos símbolos II_* / PARTS_* / IK* dos defines.
+ * As colunas são achadas pelo cabeçalho (`//dwID`, `szName`, `szIcon`…), então funciona com as duas versões do arquivo.
+ */
+export interface ItemDef {
+  id: number; symbol: string; name: string; icon: string;
+  /** quantos empilham num slot (1 = não empilha) */
+  packMax: number;
+  /** PARTS_* onde equipa; -1 = não é equipamento */
+  parts: number;
+  /** 0 masculino, 1 feminino, -1 qualquer */
+  sex: number;
+  /** nível pedido para usar (dwLimitLevel1; sem ele, dwItemLV) */
+  level: number; kind1: number; kind2: number; kind3: number; cost: number;
+  /** dwAbilityMin/Max: ataque da arma ou defesa da armadura */
+  abilityMin: number; abilityMax: number;
+  /** dwWeaponType (WT_*) e dwAttackSpeed (fator de velocidade da arma) */
+  weaponType: number; attackSpeed: number;
+  /** dwItemRare: "nível de raridade" usado pelo DropKind dos mobs e pelas lojas por categoria (AddVendorItem) */
+  rare: number;
+  /** dwShopAble: -1 = não aparece nas lojas por categoria */
+  shopAble: number;
+  /** efeitos ao usar: dwDestParam1–3 (DST_*) com nAdjParamVal1–3, e a espera dwSkillReady (ms) */
+  dest: number[]; adj: number[]; ready: number;
+  /** nAdjHitRate e dwParry: precisão e esquiva extras do equipamento */
+  adjHit: number; parry: number;
+  /** dwSndAttack1 (ao golpear) e dwSndAttack2 (ao acertar): ids SND_* (-1 = nenhum) */
+  snd1: number; snd2: number;
+  /** dwAttackRange (AR_*): alcance do golpe da arma — ver attackRangeOf */
+  attackRange: number;
+  /** dwItemJob (JOB_*): classe que pode usar (-1 = qualquer) — ver jobCanUse; dwHanded: 1 uma mão, 2 duas mãos */
+  job: number; handed: number;
+  /** prancha/vassoura (IK3_BOARD/IK3_STICK): fFlightSpeed (velocidade), fFlightLRAngle e fFlightTBAngle (giro para os lados e
+   * para cima/baixo, graus por tique) — undefined nos outros itens */
+  fly?: [number, number, number];
+  /** voo: conjunto de movimentos (dwUseMotion MTI_FSTAND1_X → 'X': A vassoura, B prancha, C bike, D asas, F outros) */
+  rideMotion?: string;
+  /** dwBasePartsIgnore: peça base (PARTS_*) que o item esconde ao equipar — ex. chapéu/cabelo de cash esconde o cabelo; -1 = nenhuma */
+  ignorePart: number;
+  /** dwItemGrade (defineItemGrade.h): 100 comum, 200 unique (verde), 300 ultimate, 400 baruna */
+  grade: number;
+}
+
+/**
+ * Arma que ocupa as duas mãos (não deixa usar escudo). O bastão (IK3_CHEERSTICK) vem como HD_TWO nos dados, mas neste
+ * servidor Assist/Ringmaster/Billposter usam bastão (ou knuckle) com escudo — então ele conta como uma mão.
+ */
+export const twoHanded = (d: ItemDef) => d.handed === 2 && d.kind3 !== 4;
+
+/**
+ * CMover::IsInteriorityJob: a classe `job` pode usar um item da classe `need`? Vagrant e a própria classe sempre; a 2ª classe
+ * usa os da 1ª que a originou; Master/Hero/Legend Hero usam os da linha deles (mesmas contas do original).
+ */
+export function jobCanUse(need: number, job: number): boolean {
+  if (need < 0 || need === 0 || need === job) return true;
+  if (job >= 6 && job < 16 && need < 6) return need * 2 + 4 === job || need * 2 + 5 === job;
+  if (job >= 16 && job < 24) return need < 6 ? need * 2 + 14 === job || need * 2 + 15 === job : need < 16 && need + 10 === job;
+  if (job >= 24 && job < 32) return need < 6 ? need * 2 + 22 === job || need * 2 + 23 === job : need < 16 ? need + 18 === job : need < 24 && need + 8 === job;
+  if (job >= 32 && job < 40) return need < 6 ? need * 2 + 30 === job || need * 2 + 31 === job : need < 16 ? need + 26 === job : need < 24 ? need + 16 === job : need < 32 && need + 8 === job;
+  return false;
+}
+
+/**
+ * Conjunto (SetItem do propItemEtc.inc): peças (item + PARTS_* onde precisa estar equipada) e bônus por quantidade
+ * equipada — cada linha do Avail vale quando há `n` ou mais peças, e as linhas se somam (CSetItem::GetItemAvail, bAll).
+ */
+export interface SetDef { id: number; name: string; elems: { item: number; part: number }[]; avail: { dst: number; adj: number; n: number }[] }
+
+/**
+ * Colunas do Spec_Item.txt das versões novas (FLSpecManager::LoadSpecItem), que vem sem a linha de nomes — só descrições em
+ * coreano. Mesma ordem do arquivo; MAX_ITEM_PARAM = 6.
+ */
+const SPEC_COLUMNS = [
+  'ver', 'dwID', 'szName', 'dwNum', 'dwPackMax', 'dwItemKind1', 'dwItemKind2', 'dwItemKind3', 'dwItemJob', 'bPermanence', 'dwUseable', 'dwItemSex',
+  'dwCost', 'dwEndurance', 'nAbrasion', 'nMaxRepair', 'dwHanded', 'dwFlag', 'dwParts', 'dwPartsub', 'bPartFile', 'dwExclusive', 'dwBasePartsIgnore',
+  'dwItemLV', 'dwItemRare', 'dwShopAble', 'bLog', 'bCharged', 'dwLinkKindBullet', 'dwLinkKind', 'dwAbilityMin', 'dwAbilityMax', 'eItemType',
+  'wItemEAtk', 'dwParry', 'dwBlockRating', 'dwAddSkillMin', 'dwAddSkillMax', 'dwAtkStyle', 'dwWeaponType', 'dwItemAtkOrder1', 'dwItemAtkOrder2',
+  'dwItemAtkOrder3', 'dwItemAtkOrder4', 'bContinuousPain', 'dwShellQuantity', 'dwRecoil', 'dwLoadingTime', 'nAdjHitRate', 'dwAttackSpeed',
+  'dwDmgShift', 'dwAttackRange', 'nProbability',
+  ...[1, 2, 3, 4, 5, 6].map((i) => `dwDestParam${i}`), ...[1, 2, 3, 4, 5, 6].map((i) => `nAdjParamVal${i}`),
+  ...[1, 2, 3, 4, 5, 6].map((i) => `dwChgParamVal${i}`), ...[1, 2, 3, 4, 5, 6].map((i) => `nDestData1_${i}`),
+  'dwActiveSkill', 'dwActiveSkillLv', 'dwActiveSkillRate', 'dwReqMp', 'dwReqFp', 'dwReqDisLV', 'dwReSkill1', 'dwReSkillLevel1', 'dwReSkill2',
+  'dwReSkillLevel2', 'dwSkillReadyType', 'dwSkillReady', 'dwSkillRange', 'dwSfxElemental', 'dwSfxObj', 'dwSfxObj2', 'dwSfxObj3', 'dwSfxObj4',
+  'dwSfxObj5', 'dwUseMotion', 'dwCircleTime', 'dwSkillTime', 'dwExeTarget', 'dwUseChance', 'dwSpellRegion', 'dwSpellType', 'dwReferStat1',
+  'dwReferStat2', 'dwReferTarget1', 'dwReferTarget2', 'dwReferValue1', 'dwReferValue2', 'dwSkillType', 'fResistElecricity', 'fResistFire',
+  'fResistWind', 'fResistWater', 'fResistEarth', 'nEvildoing', 'dwExpertLV', 'ExpertMax', 'dwSubDefine', 'dwExp', 'dwComboStyle', 'fFlightSpeed',
+  'fFlightLRAngle', 'fFlightTBAngle', 'dwFlightLimit', 'dwFFuelReMax', 'dwAFuelReMax', 'dwFuelRe', 'dwLimitLevel1', 'nReflect', 'dwSndAttack1',
+  'dwSndAttack2', 'szIcon', 'dwQuestID', 'szTextFile', 'szComment', 'nMinLimitLevel', 'nMaxLimitLevel',
+];
+
+const DEFINE_FILES = ['defineSound.h', 'defineObj.h', 'define.h', 'defineNeuz.h', 'defineItem.h', 'defineItemkind.h', 'defineJob.h', 'defineWorld.h', 'defineAttribute.h', 'defineSkill.h', 'defineItemGrade.h'];
+
+/** PARTS_* que aparecem na janela de inventário (os demais não são equipáveis por aqui ainda) */
+export const EQUIP_PARTS = new Set([2, 4, 5, 6, 8, 9, 10, 11, 12, 13, 19, 20, 21, 22, 23, 25, 26, 27, 28, 29]);
+/** peças com dois espaços (anel e brinco): qualquer um dos dois serve */
+const PAIR: Record<number, number> = { 20: 21, 21: 20, 22: 23, 23: 22 };
+/** espaço do inventário aceita o item? */
+export const fitsPart = (itemParts: number, slot: number) => itemParts === slot || PAIR[itemParts] === slot;
+
+export class ItemCatalog {
+  readonly byId = new Map<number, ItemDef>();
+  readonly bySymbol = new Map<string, ItemDef>();
+  /** todos os #define dos .h lidos (II_*, JOB_*, WT_*…) */
+  readonly defines = new Map<string, number>();
+  /** conjuntos (SetItem) e, para cada item que faz parte de um, o conjunto dele */
+  readonly sets: SetDef[] = [];
+  readonly setByItem = new Map<number, SetDef>();
+
+  /** `useNames`: aplica a tabela de nomes por símbolo (servers/common/names.ts); false = só os textos do Resource */
+  constructor(readonly resDir: string, private useNames = true) {}
+
+  private read(file: string): string | null {
+    try { const b = fs.readFileSync(path.join(this.resDir, file)); return decodeText(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer, 'windows-1252'); } catch { return null; }
+  }
+
+  load() {
+    const defines = this.defines;
+    for (const f of DEFINE_FILES) { const t = this.read(f); if (t) parseDefines(t, defines); }
+    const names = new Map<string, string>();
+    const nt = this.read('propItem.txt.txt');
+    if (nt) for (const line of nt.split(/\r?\n/)) { const i = line.indexOf('\t'); if (i > 0 && !line.slice(i + 1).trim().startsWith('IDS_')) names.set(line.slice(0, i).trim(), line.slice(i + 1).trim()); }
+
+    const text = this.read('Spec_Item.txt') ?? this.read('propItem.txt');
+    if (!text) { console.warn('Itens: Spec_Item.txt/propItem.txt não encontrado'); return this; }
+    const lines = text.split(/\r?\n/);
+    // o cabeçalho é a linha com os nomes das colunas (`dwID`…); versões mais novas têm antes linhas de descrição em coreano
+    // sem essa linha (Spec_Item novo, só descrições), usa a ordem do FLSpecManager::LoadSpecItem
+    const found = lines.findIndex((l) => /(^|\t)(\/\/)?dwID(\t|$)/.test(l));
+    const hi = found >= 0 ? found : lines.findIndex((l) => !l.startsWith('//')) - 1;
+    const head = found >= 0 ? lines[hi].split('\t').map((h) => h.replace(/^\/\//, '').trim()) : SPEC_COLUMNS;
+    const col = (n: string) => head.indexOf(n);
+    const C = {
+      id: col('dwID'), name: col('szName'), pack: col('dwPackMax'), k1: col('dwItemKind1'), k2: col('dwItemKind2'), k3: col('dwItemKind3'),
+      sex: col('dwItemSex'), cost: col('dwCost'), parts: col('dwParts'), lv: col('dwItemLV'), limit: col('dwLimitLevel1'), icon: col('szIcon'),
+      amin: col('dwAbilityMin'), amax: col('dwAbilityMax'), wt: col('dwWeaponType'), aspd: col('dwAttackSpeed'), rare: col('dwItemRare'), shop: col('dwShopAble'),
+      d1: col('dwDestParam1'), d2: col('dwDestParam2'), d3: col('dwDestParam3'), d4: col('dwDestParam4'), d5: col('dwDestParam5'), d6: col('dwDestParam6'),
+      a1: col('nAdjParamVal1'), a2: col('nAdjParamVal2'), a3: col('nAdjParamVal3'), a4: col('nAdjParamVal4'), a5: col('nAdjParamVal5'), a6: col('nAdjParamVal6'),
+      ready: col('dwSkillReady'), range: col('dwAttackRange'), job: col('dwItemJob'), hand: col('dwHanded'), hit: col('nAdjHitRate'), parry: col('dwParry'), sa1: col('dwSndAttack1'), sa2: col('dwSndAttack2'),
+      ignore: col('dwBasePartsIgnore'), grade: col('dwItemGrade'), fs: col('fFlightSpeed'), flr: col('fFlightLRAngle'), ftb: col('fFlightTBAngle'),
+    };
+    const float = (v: string | undefined) => { const n = Number((v ?? '').trim()); return Number.isFinite(n) ? n : 0; };
+    if (C.id < 0 || C.icon < 0) { console.warn('Itens: cabeçalho do arquivo de itens não reconhecido'); return this; }
+    /** número ou símbolo; '=' (vazio) → def */
+    const num = (v: string | undefined, def: number) => {
+      const s = (v ?? '').trim();
+      if (!s || s === '=') return def;
+      if (/^-?\d+$/.test(s)) return Number(s);
+      return defines.get(s) ?? def;
+    };
+    for (const line of lines.slice(hi + 1)) {
+      if (line.startsWith('//')) continue;
+      const c = line.split('\t');
+      if (c.length <= C.icon) continue;
+      const symbol = c[C.id].trim();
+      const id = defines.get(symbol);
+      if (id === undefined) continue;
+      const def: ItemDef = {
+        id, symbol, name: names.get(c[C.name]?.trim()) || symbol, icon: c[C.icon].replace(/"/g, '').trim(),
+        packMax: Math.max(1, num(c[C.pack], 1)), parts: num(c[C.parts], -1), sex: num(c[C.sex], -1), level: (C.limit >= 0 && num(c[C.limit], 0) > 0 && num(c[C.limit], 0) < 1000 ? num(c[C.limit], 0) : num(c[C.lv], 0)),
+        kind1: num(c[C.k1], 0), kind2: num(c[C.k2], 0), kind3: num(c[C.k3], 0), cost: num(c[C.cost], 0),
+        abilityMin: num(c[C.amin], 0), abilityMax: num(c[C.amax], 0), weaponType: num(c[C.wt], 0), attackSpeed: float(c[C.aspd]), rare: num(c[C.rare], 0), shopAble: C.shop < 0 ? 1 : num(c[C.shop], -1),
+        dest: [C.d1, C.d2, C.d3, C.d4, C.d5, C.d6].map((k) => (k < 0 ? -1 : num(c[k], -1))), adj: [C.a1, C.a2, C.a3, C.a4, C.a5, C.a6].map((k) => (k < 0 ? 0 : num(c[k], 0))), ready: Math.max(0, num(c[C.ready], 0)),
+        adjHit: C.hit < 0 ? 0 : num(c[C.hit], 0), parry: C.parry < 0 ? 0 : num(c[C.parry], 0),
+        snd1: C.sa1 < 0 ? -1 : num(c[C.sa1], -1), snd2: C.sa2 < 0 ? -1 : num(c[C.sa2], -1),
+        attackRange: C.range < 0 ? 0 : num(c[C.range], 0),
+        job: C.job < 0 ? -1 : num(c[C.job], -1), handed: C.hand < 0 ? 1 : num(c[C.hand], 1),
+        ignorePart: C.ignore < 0 ? -1 : num(c[C.ignore], -1),
+        // a raridade vem como símbolo ITEM_GRADE_*; várias linhas têm colunas a mais/menos, então procura o símbolo na linha
+        grade: num(c.find((v) => /^ITEM_GRADE_[A-Z]+$/.test(v.trim())) ?? (C.grade >= 0 ? c[C.grade] : undefined), 100) || 100,
+      };
+      if (def.parts === 13) { // PARTS_RIDE: prancha, vassoura, bike, asas…
+        def.fly = [float(c[C.fs]), float(c[C.flr]), float(c[C.ftb])];
+        // como a raridade, procura o símbolo na linha (algumas têm colunas a mais/menos)
+        def.rideMotion = /^MTI_FSTAND1_([A-Z])$/.exec((c.find((v) => /^MTI_FSTAND1_[A-Z]$/.test(v.trim())) ?? '').trim())?.[1];
+      }
+      if (def.ignorePart > 40) def.ignorePart = -1; // NULL_ID (0xffffffff) e afins
+      if (def.job > 40) def.job = -1; // coluna com lixo (NULL_ID e afins): sem restrição
+      if (def.sex !== 0 && def.sex !== 1) def.sex = -1;
+      this.byId.set(id, def);
+      this.bySymbol.set(symbol, def);
+    }
+    this.loadSets();
+    const table = this.useNames ? nameTable() : null;
+    if (table) {
+      for (const d of this.byId.values()) { const n = table.items[d.symbol]; if (n) d.name = n; }
+      for (const s of this.sets) { const first = this.byId.get(s.elems[0]?.item)?.symbol; const n = first && table.sets[first]; if (n) s.name = n; }
+    }
+    return this;
+  }
+
+  /** SetItem <id> <IDS_…> { Elem { II_* PARTS_* … } Avail { DST_* valor peças … } } do propItemEtc.inc */
+  private loadSets() {
+    const text = this.read('propItemEtc.inc');
+    if (!text) return;
+    const names = new Map<string, string>();
+    const nt = this.read('propItemEtc.txt.txt');
+    if (nt) for (const line of nt.split(/\r?\n/)) { const i = line.indexOf('\t'); if (i > 0 && !line.slice(i + 1).trim().startsWith('IDS_')) names.set(line.slice(0, i).trim(), line.slice(i + 1).trim()); }
+    const tok = text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ').match(/[{}]|[^\s{}]+/g) ?? [];
+    const D = (s: string) => (/^-?\d+$/.test(s) ? Number(s) : this.defines.get(s));
+    /** pula um bloco { … } (com aninhados) a partir do índice do '{' e devolve o índice depois do '}' */
+    const skip = (i: number) => { let depth = 0; do { if (tok[i] === '{') depth++; else if (tok[i] === '}') depth--; i++; } while (depth > 0 && i < tok.length); return i; };
+    for (let i = 0; i < tok.length; i++) {
+      if (tok[i] !== 'SetItem') continue;
+      const id = Number(tok[i + 1]), ids = tok[i + 2];
+      i += 3;
+      if (tok[i] !== '{') continue;
+      const end = skip(i);
+      const set: SetDef = { id, name: names.get(ids) || ids, elems: [], avail: [] };
+      for (let j = i + 1; j < end - 1; j++) {
+        if ((tok[j] !== 'Elem' && tok[j] !== 'Avail') || tok[j + 1] !== '{') continue;
+        const kind = tok[j], close = skip(j + 1) - 1;
+        const body = tok.slice(j + 2, close);
+        if (kind === 'Elem') {
+          for (let k = 0; k + 1 < body.length; k += 2) { const item = D(body[k]), part = D(body[k + 1]); if (item !== undefined && part !== undefined) set.elems.push({ item, part }); }
+        } else {
+          for (let k = 0; k + 2 < body.length; k += 3) { const dst = D(body[k]), adj = Number(body[k + 1]), n = Number(body[k + 2]); if (dst !== undefined && dst > 0 && Number.isFinite(adj) && n > 0) set.avail.push({ dst, adj, n }); }
+        }
+        j = close;
+      }
+      i = end - 1;
+      if (!set.elems.length) continue;
+      this.sets.push(set);
+      for (const e of set.elems) this.setByItem.set(e.item, set);
+    }
+  }
+
+  /**
+   * Busca para o painel de GM: nome ou símbolo contendo `q` (sem diferenciar maiúsculas), filtrado por categoria
+   * (weapon, armor, general…: dwItemKind1), no máximo `max`, os nomes "de verdade" primeiro e por nível.
+   */
+  /** busca do painel de GM: nome/símbolo, categoria (kind1) e raridade (`grade` 100–400; 0 = todas) */
+  search(q: string, kind: string, grade = 0, max = 200): ItemDef[] {
+    const k = ({ weapon: [1], armor: [2], general: [3], ride: [4], system: [5], charged: [6] } as Record<string, number[]>)[kind];
+    const s = q.trim().toLowerCase();
+    const out: ItemDef[] = [];
+    for (const d of this.byId.values()) {
+      if (k && !k.includes(d.kind1)) continue;
+      if (grade && d.grade !== grade) continue;
+      if (s && !d.name.toLowerCase().includes(s) && !d.symbol.toLowerCase().includes(s)) continue;
+      out.push(d);
+    }
+    out.sort((a, b) => Number(a.name === a.symbol) - Number(b.name === b.symbol) || a.level - b.level || a.name.localeCompare(b.name));
+    return out.slice(0, max);
+  }
+
+  /** o que o cliente precisa para desenhar (nome, ícone, empilhamento, onde equipa) */
+  /** dados do item para o cliente (inclui o que a dica do item mostra: ataque/defesa, velocidade, classe, bônus de atributo) */
+  static view(d: ItemDef) {
+    const fx = d.dest.map((k, i) => [k, d.adj[i]]).filter(([k, v]) => k > 0 && v !== 0);
+    return { id: d.id, sym: d.symbol, name: d.name, icon: d.icon, pack: d.packMax, parts: d.parts, sex: d.sex, lv: d.level, cost: d.cost,
+      k1: d.kind1, k2: d.kind2, k3: d.kind3, amin: d.abilityMin, amax: d.abilityMax, aspd: d.attackSpeed, rare: d.rare, wt: d.weaponType, gr: d.grade, job: d.job, hand: d.handed, fx, ...(d.fly ? { fly: d.fly } : {}) };
+  }
+
+  /** `view` + o conjunto do item (nome, peças e bônus por quantidade) — para a dica completa (inventário, loja, painel de GM) */
+  viewFull(d: ItemDef) {
+    const s = this.setByItem.get(d.id);
+    return { ...ItemCatalog.view(d), ...(s ? { set: { name: s.name, pieces: s.elems.length, avail: s.avail.map((a) => [a.n, a.dst, a.adj] as [number, number, number]) } } : {}) };
+  }
+}
