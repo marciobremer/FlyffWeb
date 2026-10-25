@@ -39,7 +39,7 @@ Cliente (Three.js), servidor multiplayer, painel admin e site (Next.js), tudo le
 
 | Programa | Versão usada | Download | Para quê |
 |---|---|---|---|
-| **Git** | 2.54 | https://git-scm.com/download/win | baixar este repositório |
+| **Git** (com **Git LFS**, já incluso no Git para Windows) | 2.54 | https://git-scm.com/download/win | baixar este repositório (o vídeo do site vem pelo LFS) |
 | **Node.js** (vem com o npm) | **24.15** (npm 11.12) — use a linha 24 LTS | https://nodejs.org | rodar o jogo, o painel e o site |
 | **PostgreSQL** | **18.3** | https://www.postgresql.org/download/windows/ | banco de dados (só no modo sem Docker) |
 | **Docker Desktop** *(opcional)* | 29.8 | https://www.docker.com/products/docker-desktop/ | rodar tudo em containers (dispensa Node e PostgreSQL) |
