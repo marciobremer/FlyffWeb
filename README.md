@@ -117,7 +117,7 @@ Se o jogo disser que falta o `dist/`, rode `npm run build` uma vez.
 
 ### 3.7 Criar a conta de administrador
 
-O banco começa vazio. Crie a sua conta pelo site (ou `npm run account -- create SEU_USUARIO`) e dê poder de administrador:
+O banco começa vazio. Crie a sua conta pelo site (ou `npm run account -- create SEU_USUARIO`) e marque-a como dono do servidor (**Z** = dono, nick preto · **G** = GM, nick roxo · **F** = jogador):
 
 ```bash
 npm run account -- set-authority SEU_USUARIO Z
