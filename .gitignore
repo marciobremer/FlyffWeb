@@ -35,3 +35,8 @@ Thumbs.db
 
 # contas de teste locais
 *.local.json
+
+# arquivos compactados (ex.: Original/data para o Google Drive)
+*.rar
+*.zip
+*.7z

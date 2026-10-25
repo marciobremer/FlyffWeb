@@ -41,7 +41,7 @@ export async function createAccount(input: { username?: string; password?: strin
   if (!/^[A-Za-z0-9_]{3,32}$/.test(username)) throw new AdminError('Usuário: 3 a 32 letras, números ou _.');
   const password = input.password ?? '';
   if (password && password.length < 4) throw new AdminError('Senha: pelo menos 4 caracteres (ou deixe vazia e defina depois).');
-  const authority = input.authority === 'Z' ? 'Z' : 'F';
+  const authority = input.authority === 'Z' || input.authority === 'G' ? input.authority : 'F';
   const nickname = (input.nickname ?? '').trim();
   if (nickname && !/^[A-Za-z0-9]{2,16}$/.test(nickname)) throw new AdminError('Personagem: 2 a 16 letras ou números.');
   try {

@@ -10,7 +10,7 @@ import { hideItemTip, moveItemTip, showItemTip } from './itemtip';
  * - Jogador: alvo por nick (vazio = você), ir até / trazer, teleporte por coordenada, nível, classe e penya;
  * - Itens: busca no catálogo (nome ou símbolo II_*, por categoria) com ícones, e criar o item na bolsa do alvo com
  *   quantidade, enchant (joias +0–20, o resto +0–10), elemento (+0–10) e furos de piercing (suit, 0–4);
- * - Jogador: também devolve os pontos de atributo do alvo (reset de status).
+ * - Jogador: também devolve os pontos de atributo do alvo (reset de status) e mata / revive o alvo (`//kill`, `//revive`).
  * - Monstros: lista dos monstros do jogo (nome, MI_*, nível; boss em vermelho) com busca — clicar escolhe e "Invocar"
  *   cria a quantidade pedida perto de você (`//mob`); os invocados não renascem.
  * Tudo vira comando `//…` mandado pelo chat (mesmas regras e log do servidor); as respostas aparecem na linha de status.
@@ -185,6 +185,10 @@ export class GmPanel extends GameWindow {
         const who = this.nick() || 'você';
         if (confirm(`Devolver os pontos de atributo de ${who}? STR, STA, DEX e INT voltam a 15.`)) this.send(this.withTarget('reset-stats', ''));
       })),
+      el('h4', { textContent: 'Vida' }),
+      el('div', { className: 'gm-row' },
+        btn('Matar', () => this.send(this.withTarget('kill', ''))),
+        btn('Reviver', () => this.send(this.withTarget('revive', '')))),
     );
   }
 

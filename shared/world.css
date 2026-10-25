@@ -9,9 +9,9 @@
 #targetWnd .tw-level img { width: 10px; height: 16px; }
 #targetWnd .tw-bar { position: absolute; left: 73px; top: 35px; width: 175px; height: 11px; }
 #targetWnd .tw-hp { height: 100%; box-sizing: border-box; border-style: solid; border-width: 0 5px; border-image-slice: 0 5 fill; border-image-repeat: stretch; min-width: 10px; }
-/* nome de quem tem conta de admin ou GM (shared/rank.ts) */
-.npc-label.admin { color: #FF0000; }
-.npc-label.gm { color: #4169E1; }
+/* nome do dono do servidor (Z: preto com contorno claro) e de GM (G) — shared/rank.ts */
+.npc-label.admin { color: #000; text-shadow: 0 0 3px #fff, 0 0 2px #fff, 0 1px 1px #fff; }
+.npc-label.gm { color: #9200ba; }
 .npc-label.selected { color: #ffe066; }
 /* boss: nome vermelho (agressivo — ataca quem passa perto) */
 .npc-label.boss { color: #ff3b30; }
@@ -20,7 +20,7 @@
 .place-cursor::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: #ff5a3c; }
 .npc-label.boss.selected { color: #ff8a80; }
 /* nome da guild acima do nome do jogador */
-.npc-label .guild-tag { display: block; font-size: 12px; font-weight: 600; color: #e0b8ff; text-align: center; }
+.npc-label .guild-tag { display: block; font-size: 14px; font-weight: 600; color: #e0b8ff; text-align: center; }
 /* membro da sua party */
 .npc-label.party { color: #4cff6a; }
 /* balão de fala do chat acima do nome (MoverInstance.say) */

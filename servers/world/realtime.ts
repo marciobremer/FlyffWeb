@@ -1154,13 +1154,30 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (r.hit) { cb.hp = Math.max(0, cb.hp - r.dmg); cb.lastHurt = Date.now(); cb.dirty = true; }
     sendNear(p.w, m.x, m.z, { t: 'hit', k: 'm', a: m.id, d: p.id, dmg: r.dmg, f: (r.hit ? 0 : 1) | (r.crit ? 2 : 0), hp: cb.hp });
     if (cb.hp > 0) return;
-    // morreu: os mobs desistem, renasce em Flaris com metade do HP depois de alguns segundos
+    killPlayer(c);
+  }
+
+  /** morreu (golpe de mob ou //kill): os mobs desistem; renasce pela caixa "Reviver na cidade" ou por Resurrection */
+  function killPlayer(c: Conn) {
+    const cb = c.cb, p = c.player;
+    if (!cb || !p || cb.dead) return;
     cb.dead = true;
+    cb.hp = 0; cb.dirty = true;
     expireBuffs(c, true);
     p.s = 'dead'; c.dirty = true;
     W(c).mobs?.forget(p.id);
     broadcast({ t: 'pdie', id: p.id }, undefined, p.w);
     send(c.ws, { t: 'chat', id: 0, name: '', text: 'Você foi derrotado. Renasça na cidade ou espere um Assist usar Resurrection.' });
+  }
+
+  /** //revive: levanta ali mesmo (MTI_GETUP) com HP/MP/FP cheios */
+  function reviveInPlace(c: Conn) {
+    const cb = c.cb, p = c.player;
+    if (!cb || !p || !cb.dead) return;
+    cb.dead = false;
+    cb.hp = cb.maxHp; cb.mp = cb.maxMp; cb.fp = cb.maxFp; cb.dirty = true;
+    p.s = 'stand'; c.dirty = true;
+    sendNear(p.w, p.p[0], p.p[2], { t: 'getup', id: p.id });
   }
 
   /** botão "Reviver": volta ao ponto de chegada do mapa com metade do HP */
@@ -1397,6 +1414,21 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
             accountId: c.accountId, self: { id: me.id, name: me.name, level: me.level, p: [...me.p] }, inventory, reply,
             online: (name) => { for (const o of conns) if (o.player && o.player.name.toLowerCase() === name.toLowerCase()) return { id: o.player.id, name: o.player.name, level: o.player.level, p: [...o.player.p] }; return null; },
             openPanel: () => send(ws, { t: 'gmOpen' }),
+            kill: (id) => {
+              const o = liveConn(id);
+              if (!o?.cb || !o.player) return 'Esse personagem não está online.';
+              if (o.cb.dead) return `${o.player.name} já está morto.`;
+              killPlayer(o);
+              return `${o.player.name} foi morto.`;
+            },
+            revive: (id) => {
+              const o = liveConn(id);
+              if (!o?.cb || !o.player) return 'Esse personagem não está online.';
+              if (!o.cb.dead) return `${o.player.name} não está morto.`;
+              reviveInPlace(o);
+              send(o.ws, { t: 'chat', id: 0, name: '', text: 'Um GM trouxe você de volta à vida.' });
+              return `${o.player.name} foi revivido.`;
+            },
             clearMobs: () => { const n = W(c).mobs?.clearSummons() ?? 0; return n ? `${n} monstro(s) invocado(s) apagado(s).` : 'Nenhum monstro invocado neste mapa.'; },
             summonMob: (what, n, at) => {
               const mw = W(c).mobs, p = c.player;

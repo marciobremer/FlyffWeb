@@ -1,4 +1,4 @@
-/** Cargo da conta pela `accounts.authority` do FlyFF: F = jogador, Z = administrador, letras entre elas = GM. */
+/** Cargo da conta pela `accounts.authority`: F = jogador, Z = dono do servidor (nome preto), G (ou outra letra) = GM (nome roxo). */
 export type Rank = 'admin' | 'gm';
 
 export function rankOf(authority: string | null | undefined): Rank | undefined {

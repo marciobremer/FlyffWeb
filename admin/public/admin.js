@@ -153,7 +153,7 @@ async function loadAccounts() {
     return `<tr>
       <td><b>${esc(a.username)}</b>${a.hasPassword ? '' : ' <span class="dim" title="sem senha do jogo web">(sem senha)</span>'}<br><small class="dim">criada ${fmtDate(a.createdAt)} · último login ${fmtDate(a.lastLoginAt)}</small></td>
       <td class="tags">${a.characters.map((c) => `<span>${esc(c.name)}</span>`).join('') || '<span class="dim">—</span>'}</td>
-      <td>${a.authority === 'Z' ? '<span class="badge adm">Admin</span>' : 'Jogador'}</td>
+      <td>${a.authority === 'Z' ? '<span class="badge adm">Dono</span>' : a.authority !== 'F' ? '<span class="badge adm">GM</span>' : 'Jogador'}</td>
       <td>${level}</td>
       <td>${a.online ? `<span class="badge on">${esc(a.online)}</span>` : '<span class="dim">offline</span>'}</td>
       <td>${banTxt}</td>

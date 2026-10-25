@@ -7,11 +7,11 @@ import { Inventory, notifyInventory } from '../servers/character/inventory';
 
 /**
  * Administração de contas do jogo web (banco `flyffweb`):
- *   npm run account -- create <usuario> [--authority F|Z]      cria a conta (pede a senha)
+ *   npm run account -- create <usuario> [--authority F|G|Z]    cria a conta (pede a senha)
  *   npm run account -- set-password <usuario>                  define/troca a senha (vale também para contas importadas)
  *   npm run account -- add-character <usuario> <nome> [--sex male|female] [--slot 0..2]
  *   npm run account -- list
- *   npm run account -- set-authority <usuario> <F|L|M|N|O|P|Z>   F = jogador, Z = administrador (letras entre = níveis de GM)
+ *   npm run account -- set-authority <usuario> <F|G|Z>   F = jogador, G = GM, Z = dono do servidor
  *   npm run account -- give-item <personagem> <II_SIMBOLO|id> [--count N]   põe itens na bolsa (online: aparece na hora)
  *   npm run account -- give-penya <personagem> <quantia>
  * A senha é digitada sem eco no terminal (ou vem de ACCOUNT_PASSWORD, para scripts) e só o hash scrypt vai ao banco.
@@ -73,7 +73,7 @@ async function main() {
     for (const a of r.rows) console.log(`${a.username.padEnd(20)} ${a.authority}  senha: ${a.web ? 'web' : a.legacy ? 'só FlyFF (MD5)' : 'nenhuma'}  personagens: ${a.chars ?? '—'}`);
   } else if (cmd === 'set-authority') {
     const [user, level] = pos;
-    if (!user || !/^[A-Z]$/.test(level ?? '')) throw new Error('uso: set-authority <usuario> <F|Z>  (F = jogador, Z = administrador)');
+    if (!user || !/^[A-Z]$/.test(level ?? '')) throw new Error('uso: set-authority <usuario> <F|G|Z>  (F = jogador, G = GM, Z = dono do servidor)');
     const r = await query('UPDATE accounts SET authority = $2 WHERE lower(username) = lower($1)', [user, level]);
     console.log(r.rowCount ? `Conta ${user} agora é ${level === 'F' ? 'jogador (F)' : level === 'Z' ? 'administrador (Z)' : `GM (${level})`}. Vale na hora para comandos // no chat.` : `Conta ${user} não encontrada.`);
   } else if (cmd === 'give-item' || cmd === 'give-penya') {
@@ -96,7 +96,7 @@ async function main() {
       console.log(`${count - left}× ${def.name} (${def.symbol}) na bolsa de ${ch.rows[0].name}.${left ? ` ${left} não couberam (bolsa cheia).` : ''}`);
     }
   } else {
-    console.log('uso: npm run account -- create <usuario> | set-password <usuario> | add-character <usuario> <nome> [--sex female] | list | set-authority <usuario> <F|Z> | give-item <personagem> <II_…> [--count N] | give-penya <personagem> <n>');
+    console.log('uso: npm run account -- create <usuario> | set-password <usuario> | add-character <usuario> <nome> [--sex female] | list | set-authority <usuario> <F|G|Z> | give-item <personagem> <II_…> [--count N] | give-penya <personagem> <n>');
   }
 }
 

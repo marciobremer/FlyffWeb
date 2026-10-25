@@ -4,7 +4,7 @@ import { maxPiercing, maxUpgrade } from '../../shared/upgrade';
 
 /**
  * Comandos de GM digitados no chat, começando com `//` (nunca vão para o chat dos outros).
- * Só para contas com `accounts.authority` diferente de 'F' (F = jogador; Z = administrador; letras entre elas = níveis de GM,
+ * Só para contas com `accounts.authority` diferente de 'F' (F = jogador; Z = dono do servidor; G = GM; outras letras = níveis de GM,
  * como no FlyFF). A permissão é conferida no banco a cada comando, então mudar a conta vale na hora.
  * Sem nome de personagem o alvo é você mesmo. Toda execução fica no log do servidor (painel admin → Logs).
  */
@@ -31,6 +31,9 @@ export interface GmContext {
   summonMob?(what: string, n: number, at?: [number, number]): string;
   /** apaga os monstros invocados do mapa de quem digitou */
   clearMobs?(): string;
+  /** mata / revive (ali mesmo, com HP cheio) um personagem online; devolve a resposta */
+  kill?(id: number): string;
+  revive?(id: number): string;
   /** leva um personagem online para `p` (x, y, z FlyFF; o cliente acerta a altura pelo chão) */
   teleport(id: number, p: [number, number, number]): boolean;
 }
@@ -51,6 +54,7 @@ const HELP = [
   '//give-penya [personagem] <quantia>',
   '//mob <MI_…|id> [quantidade] [x z]   invoca monstros perto de você ou no ponto x z (não renascem; boss já vem agressivo)',
   '//mob-clear   apaga os monstros invocados deste mapa',
+  '//kill [personagem]   mata o personagem · //revive [personagem]   revive ali mesmo com HP cheio',
   '//help   esta lista',
 ];
 
@@ -106,6 +110,15 @@ export async function runGmCommand(ctx: GmContext, text: string): Promise<void> 
     if (t.id === ctx.self.id) { ctx.reply('Esse é você.'); return; }
     if (name === 'goto') { ctx.teleport(ctx.self.id, [t.p[0] + 1.5, t.p[1], t.p[2]]); ctx.reply(`Teleportado até ${t.name}.`); }
     else if (ctx.self.p) { ctx.teleport(t.id, [ctx.self.p[0] + 1.5, ctx.self.p[1], ctx.self.p[2]]); ctx.reply(`${t.name} foi trazido até você.`); }
+    log(`${name} ${t.name}`);
+    return;
+  }
+
+  if (name === 'kill' || name === 'revive') {
+    const t = args[0] ? ctx.online(args[0]) : ctx.self;
+    if (!t) { ctx.reply(`${args[0]} não está online.`); return; }
+    const r = name === 'kill' ? ctx.kill?.(t.id) : ctx.revive?.(t.id);
+    if (r) ctx.reply(r);
     log(`${name} ${t.name}`);
     return;
   }
