@@ -1,3 +1,4 @@
+import type { TradeView } from './trade';
 import { PLAYER_LABEL_LIFT } from '../shared/rank';
 import { Matrix4, Mesh, type Object3D } from 'three';
 import type { WorldView } from '../shared/world';
@@ -263,6 +264,10 @@ export class NetClient {
   onShop: (s: import('./shop').ShopView) => void = () => {};
   /** você foi revivido no lugar (Resurrection de um Assist) */
   onGetUp: () => void = () => {};
+  /** trade: pedido recebido, janela (a cada mudança) e fechou */
+  onTradeReq: (id: number, name: string) => void = () => {};
+  onTrade: (v: TradeView) => void = () => {};
+  onTradeClose: (text: string) => void = () => {};
   /** sua Dark Illusion de GM ligou/desligou */
   onInvis: (on: boolean) => void = () => {};
   /** o servidor mandou trocar de mundo (ticket de Azria, teleporte para outro mapa) */
@@ -371,6 +376,12 @@ export class NetClient {
       } else if (m.t === 'getup') {
         const id = Number(m.id);
         if (id === this.myId) this.onGetUp(); else this.remotes.getup(id);
+      } else if (m.t === 'tradeReq') {
+        this.onTradeReq(Number(m.id), String(m.name));
+      } else if (m.t === 'trade') {
+        this.onTrade(m as unknown as TradeView);
+      } else if (m.t === 'tradeClose') {
+        this.onTradeClose(String(m.text ?? ''));
       } else if (m.t === 'invis') {
         const id = Number(m.id);
         if (id === this.myId) this.onInvis(!!m.on); else this.remotes.setInvis(id, !!m.on);
@@ -480,6 +491,8 @@ export class NetClient {
   pm(to: number, text: string) { return this.raw({ t: 'pm', to, text }); }
   /** morto: renascer na cidade / Resurrection (skill `id`) no jogador morto `target` */
   revive() { return this.raw({ t: 'revive' }); }
+  /** trade: pedir, responder, pôr/tirar item, penya, OK, confirmar e cancelar */
+  trade(t: 'tradeReq' | 'tradeAnswer' | 'tradeItem' | 'tradeRemove' | 'tradeGold' | 'tradeLock' | 'tradeOk' | 'tradeCancel', extra: Record<string, unknown> = {}) { return this.raw({ t, ...extra }); }
   /** modo de batalha (janela de movimentos): postura de combate ↔ normal */
   toggleStance() { return this.raw({ t: 'stance' }); }
   resurrect(id: number, target: number) { return this.raw({ t: 'res', id, target }); }

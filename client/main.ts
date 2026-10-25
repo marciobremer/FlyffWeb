@@ -16,6 +16,7 @@ import { SkillWindow } from './skillwnd';
 import { JobWindow } from './jobwnd';
 import { BuffBar } from './buffbar';
 import { PartyBuffs } from './partybuffs';
+import { TradeWindow } from './trade';
 import { TeleportWindow } from './teleport';
 import { MotionWindow } from './motionwnd';
 import { lookSymbol } from '../shared/look';
@@ -300,6 +301,7 @@ function playerClick(ev: { clientX: number; clientY: number }) {
   npcGoing = null;
   view.selectTarget(hit.inst);
   const opts: NpcMenuOption[] = PLAYER_MENU.map((label) => ({ label, run: () => chat.system(`"${label}": função ainda não implementada.`) }));
+  opts[0].run = () => { if (!net.trade('tradeReq', { id: hit.id })) chat.system('Sem conexão com o servidor.'); };
   opts[1].run = () => { if (!net.friendAdd(hit.id)) chat.system('Sem conexão com o servidor.'); };
   opts[2].run = () => { if (!net.party('partyInvite', { id: hit.id })) chat.system('Sem conexão com o servidor.'); };
   opts[3].run = () => { if (!net.guild('guildInvite', { id: hit.id })) chat.system('Sem conexão com o servidor.'); };
@@ -461,7 +463,7 @@ net.onStats = (s) => {
   charWnd.setStats(s);
   jobWnd.setOptions(s.jobOpts ?? []);
 };
-net.onReset = () => { deathScreen(false); view.moverMgr.clearExternal(); ground.clear(); friendsWnd.clear(); partyWnd.set(null, 0); partyBuffs.set(null); guildWnd.set(null, 0); myGuild = null; myInvis = false; gmPanel.setInvis(false); };
+net.onReset = () => { deathScreen(false); view.moverMgr.clearExternal(); ground.clear(); friendsWnd.clear(); partyWnd.set(null, 0); partyBuffs.set(null); guildWnd.set(null, 0); myGuild = null; myInvis = false; gmPanel.setInvis(false); tradeWnd.close(); };
 /** guild (tecla G); o nome da sua guild fica acima do seu nome */
 const guildWnd = new GuildWindow(document.body);
 let myGuild: string | null = null;
@@ -491,6 +493,17 @@ net.onParty = (p) => {
   remotes.setParty(new Set(p?.members.map((m) => m.id).filter((id) => id !== net.myId) ?? []));
   if (p && !was && !partyWnd.visible) partyWnd.show(); // entrou numa party: abre a janela
 };
+/** trade com outro jogador (menu do jogador → Negociar) */
+const tradeWnd = new TradeWindow(document.body);
+tradeWnd.onItem = (s, n) => net.trade('tradeItem', { s, n });
+tradeWnd.onRemove = (s) => net.trade('tradeRemove', { s });
+tradeWnd.onGold = (gold) => net.trade('tradeGold', { gold });
+tradeWnd.onLock = () => net.trade('tradeLock');
+tradeWnd.onOk = () => net.trade('tradeOk');
+tradeWnd.onCancel = () => { if (tradeWnd.active) net.trade('tradeCancel'); };
+net.onTradeReq = (id, name) => friendRequestPrompt(document.body, name, (ok) => net.trade('tradeAnswer', { id, ok }), `${name} quer negociar com você.`);
+net.onTrade = (v) => { tradeWnd.set(v); if (!inventory.visible) inventory.show(); };
+net.onTradeClose = (text) => { tradeWnd.close(); if (text) chat.system(text); };
 net.onPartyReq = (id, name) => friendRequestPrompt(document.body, name, (ok) => net.party('partyAnswer', { id, ok }), `${name} convidou você para a party.`);
 net.onPartyList = (list) => partyListWnd.set(list);
 /** Mensageiro (tecla E): amigos e conversas privadas */
@@ -541,6 +554,8 @@ inventory.onMove = (from, to) => {
 };
 inventory.onUse = (c, s) => {
   const it = inventory.all.get(`${c}:${s}`);
+  // com a troca aberta, duplo clique num item da bolsa põe ele na troca
+  if (tradeWnd.active) { if (it && c === 0) tradeWnd.offer(s, it.n, inventory.def(it.id)?.name ?? 'Item'); return; }
   if (it && rideToggle(it.id)) return;
   if (!net.invUse(c, s)) chat.system('Sem conexão com o servidor.');
 };

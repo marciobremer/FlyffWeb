@@ -525,3 +525,20 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 .grade-baruna { color: #ff9a2e !important; }
 .item-tip .grade-unique, .item-tip .grade-ultimate, .item-tip .grade-baruna { text-shadow: 0 0 6px currentColor; }
 .gm-results li span.grade-unique, .gm-results li span.grade-ultimate, .gm-results li span.grade-baruna { font-weight: 700; }
+
+/* trade (client/trade.ts): oferta do outro em cima, a sua embaixo */
+.gwnd-body.tr { gap: 4px; }
+.tr-sub { font-weight: 700; color: #3c4f86; }
+.tr-grid { display: grid; grid-template-columns: repeat(5, 32px); grid-auto-rows: 32px; gap: 2px; justify-content: center; padding: 3px; background: #fff; border: 1px solid #d8c4b8; border-radius: 6px; }
+.tr-grid.locked { border-color: #3a9a3a; box-shadow: 0 0 0 1px #3a9a3a inset; background: #f1fbf1; }
+.tr-grid.drop { box-shadow: 0 0 0 2px #e8a33a inset; }
+.tr-grid .inv-slot.has { cursor: pointer; }
+.tr-goldrow { display: flex; align-items: center; justify-content: flex-end; gap: 4px; color: #555; }
+.tr-gold { font-weight: 700; color: #6b3b1a; }
+.tr-gold-in { width: 100px; height: 20px; box-sizing: border-box; padding: 0 4px; border: 1px solid #c9b3a6; border-radius: 3px; background: #fff; color: #6b3b1a; font: 700 12px Tahoma, sans-serif; text-align: right; user-select: text; }
+.tr-gold-in:disabled { background: #eee; }
+.tr-qty { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.tr-qty span { flex: 1 1 100%; color: #444; }
+.tr-status { margin: 0; min-height: 2.6em; color: #444; font-size: 12px; }
+.tr-btns { display: flex; justify-content: center; gap: 6px; }
+.tr-btns .gm-btn:disabled { opacity: .5; cursor: default; }

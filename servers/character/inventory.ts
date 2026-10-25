@@ -32,6 +32,9 @@ export interface ItemUpgrade { u?: number; e?: number; el?: number; /** espaços
 const plain = (i: { u: number; e: number; el: number; p?: number[] }) => !i.u && !i.e && !i.el && !i.p?.length;
 const sameUpgrade = (a: InvItem, b: InvItem) => a.u === b.u && a.e === b.e && a.el === b.el && (a.p ?? []).join() === (b.p ?? []).join();
 export interface InvState { gold: number; items: InvItem[] }
+/** o que um lado põe na janela de trade: espaços da bolsa (com quanto de cada pilha) e penya */
+export interface TradeOffer { items: { s: number; n: number; /** item que estava no espaço ao oferecer */ id: number }[]; gold: number }
+export const TRADE_SLOTS = 25;
 /** quem está equipando: sexo (0/1), nível e classe (JOB_*) */
 export interface Who { sex: number; level: number; job: number }
 
@@ -424,6 +427,67 @@ export class Inventory {
     });
     if (online) this.onLocalChange?.(characterId); else await notifyInventory(characterId); // offline: o aviso cobre uma corrida na entrada
     return left;
+  }
+
+  /**
+   * Trade entre dois personagens online: confere as duas ofertas (o item ainda está no espaço, quantidade, penya) e se o
+   * que cada um recebe cabe na bolsa (empilha o que der), e só então aplica nos dois de uma vez e grava na hora. Os itens
+   * vão com tudo (enchant, elemento, piercing, tempo). Devolve null ou o motivo de não trocar (nada muda).
+   */
+  async exchange(a: number, b: number, offerA: TradeOffer, offerB: TradeOffer): Promise<string | null> {
+    const ca = this.cache.get(a), cb = this.cache.get(b);
+    if (!ca || !cb) return 'O outro jogador saiu.';
+    // tira a oferta de uma cópia da bolsa; devolve os itens que saem (cópias) ou o erro
+    const takeOut = (st: InvState, o: TradeOffer, items: InvItem[]): InvItem[] | string => {
+      if (!Number.isInteger(o.gold) || o.gold < 0 || o.gold > st.gold) return 'Penya insuficiente para a troca.';
+      if (o.items.length > TRADE_SLOTS || new Set(o.items.map((x) => x.s)).size !== o.items.length) return 'Oferta inválida.';
+      const out: InvItem[] = [];
+      for (const { s: slot, n, id } of o.items) {
+        const it = items.find((i) => i.c === BAG && i.s === slot);
+        if (!it || it.id !== id || !Number.isInteger(n) || n < 1 || n > it.n) return 'Um item da troca mudou de lugar ou acabou.';
+        out.push({ ...it, n, ...(it.p ? { p: [...it.p] } : {}) });
+        if (n < it.n) it.n -= n; else items.splice(items.indexOf(it), 1);
+      }
+      return out;
+    };
+    // põe um item na cópia da bolsa (empilha se for comum e da mesma pilha, senão espaço livre); false se não cabe
+    const putIn = (items: InvItem[], it: InvItem): boolean => {
+      const d = this.catalog.byId.get(it.id);
+      if (!d) return false;
+      let left = it.n;
+      if (plain(it) && !it.x && d.packMax > 1) {
+        for (const i of items) {
+          if (left <= 0) break;
+          if (i.c !== BAG || i.id !== it.id || !plain(i) || i.x || i.n >= d.packMax) continue;
+          const k = Math.min(left, d.packMax - i.n);
+          i.n += k; left -= k;
+        }
+      }
+      const used = new Set(items.filter((i) => i.c === BAG).map((i) => i.s));
+      for (let slot = 0; slot < BAG_SLOTS && left > 0; slot++) {
+        if (used.has(slot)) continue;
+        const k = Math.min(left, Math.max(1, d.packMax));
+        items.push({ ...it, c: BAG, s: slot, n: k, ...(it.p ? { p: [...it.p] } : {}) });
+        left -= k;
+      }
+      return left <= 0;
+    };
+    const clone = (st: InvState) => st.items.map((i) => ({ ...i, ...(i.p ? { p: [...i.p] } : {}) }));
+    const ia = clone(ca.state), ib = clone(cb.state);
+    const outA = takeOut(ca.state, offerA, ia), outB = takeOut(cb.state, offerB, ib);
+    if (typeof outA === 'string') return outA;
+    if (typeof outB === 'string') return outB;
+    for (const it of outB) if (!putIn(ia, it)) return 'Sua bolsa não tem espaço para a troca.';
+    for (const it of outA) if (!putIn(ib, it)) return 'A bolsa do outro jogador não tem espaço para a troca.';
+    if (ca.state.gold - offerA.gold + offerB.gold > GOLD_MAX || cb.state.gold - offerB.gold + offerA.gold > GOLD_MAX) return 'Penya demais: passaria do limite.';
+    // aplica nos dois: a bolsa inteira é marcada para gravar (upsert/delete por espaço) e o penya vai como incremento
+    for (const [c, items, delta] of [[ca, ia, offerB.gold - offerA.gold], [cb, ib, offerA.gold - offerB.gold]] as const) {
+      c.state.items = items;
+      for (let slot = 0; slot < BAG_SLOTS; slot++) c.pending.slots.add(key(BAG, slot));
+      if (delta) { c.state.gold = Math.min(GOLD_MAX, Math.max(0, c.state.gold + delta)); c.pending.gold += delta; }
+    }
+    await Promise.all([this.flush(a), this.flush(b)]);
+    return null;
   }
 
   /** soma (ou tira, com delta negativo) penya; devolve o penya novo */

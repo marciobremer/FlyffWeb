@@ -7,6 +7,7 @@ import type { MobWorld } from './mobs';
 import { INVENTORY_CHANNEL, type Inventory, type InvState } from '../character/inventory';
 import { gmAuthority, runGmCommand } from './gm';
 import { rankOf, type Rank } from '../../shared/rank';
+import { TRADE_SLOTS, type TradeOffer } from '../character/inventory';
 import { ItemCatalog } from '../common/items';
 import type { CombatRules, Equipped, Fighter } from './combat';
 import { MOB_ATTACK_RANGE, type Mob } from './mobs';
@@ -51,6 +52,9 @@ import type { MoverProp } from './world';
  *   { t: 'guildKick', id } / { t: 'guildDisband' } / { t: 'guildInfo' }   guild (G): criar (líder de party; a party entra
  *                                                   junto), convidar, responder, sair, expulsar, desfazer (mestre), ver
  *   { t: 'revive' } / { t: 'res', id, target }      morto: renascer no ponto do mapa / Assist lança Resurrection (skill
+ *   { t: 'tradeReq', id } / { t: 'tradeAnswer', id, ok } / { t: 'tradeItem', s, n } / { t: 'tradeRemove', s } / { t: 'tradeGold', gold }
+ *   { t: 'tradeLock' } / { t: 'tradeOk' } / { t: 'tradeCancel' }   trade: pedir, responder, pôr/tirar item da bolsa e penya,
+ *                                                   OK (trava a oferta; qualquer mudança tira), confirmar (os dois) e cancelar
  *   { t: 'stance' }                                 modo de batalha (janela de movimentos): postura de combate ↔ normal; atacar religa
  *                                                   `id`) no jogador morto `target`, que levanta ali mesmo
  *   { t: 'pm', to, text } / { t: 'pm', toName, text }   mensagem privada para um jogador online, pelo id (janela de
@@ -65,6 +69,8 @@ import type { MoverProp } from './world';
  *   { t: 'guildView', g } / { t: 'guildReq', id, name, guild } / { t: 'guildTag', id, g }   sua guild (membros, cargos),
  *                                                   convite recebido, nome da guild de alguém mudou (acima do nome)
  *   { t: 'pm', with, wname, from, name, text }      mensagem privada (com quem é a conversa e o nome dele, quem escreveu)
+ *   { t: 'tradeReq', id, name } / { t: 'trade', name, me, them, lock: [eu, ele], ok: [eu, ele] } / { t: 'tradeClose', text }
+ *                                                   trade: pedido recebido, janela (ofertas: { gold, items: [{ s, it, d }] }), fechou
  *   { t: 'enter', player: PlayerView }              alguém entrou
  *   { t: 'invis', id, on }                          GM ficou invisível / visível (Dark Illusion; só GMs/admins e ele mesmo recebem)
  *   { t: 'leave', id }                              alguém saiu
@@ -95,6 +101,8 @@ import type { MoverProp } from './world';
  */
 export interface PlayerView { /** mundo onde está (WdMadrigal, WdKebaras…) */ w: string; /** nome da guild (aparece acima do nome) */ guild?: string; id: number; name: string; sex: number; hair: number; head: number; level: number; p: [number, number, number]; h: number; s: string; /** símbolos II_* equipados */ eq: string[]; /** postura de combate 1–15 (0 = sem arma) */ mt: number; /** classe (JOB_*) */ job: number; /** conta de admin ou GM (cor do nome) */ rank?: Rank; /** GM invisível (Dark Illusion) — só GMs/admins recebem */ iv?: 1 }
 
+/** trade entre dois jogadores: o que cada um pôs, quem deu OK (trava a oferta) e quem confirmou a troca */
+interface Trade { a: Conn; b: Conn; offer: Map<Conn, TradeOffer>; lock: Set<Conn>; ok: Set<Conn>; busy: boolean }
 interface Conn { ws: WebSocket; player: PlayerView | null; accountId: number; dirty: boolean; alive: boolean; /** mobs que este cliente conhece */ mobs: Set<number>; /** horários das últimas mensagens de chat */ chatAt: number[]; /** pedidos de inventário em fila (um de cada vez) */ invQueue: Promise<void>; /** gravação do 'online = true' (a saída espera por ela) */ onlineSet?: Promise<void>; /** quando entrou no mundo (ms) — tempo de jogo */ joinedAt: number;
   /** combate: atributos, HP/MP/FP, exp, morte, ritmo dos golpes */ cb: PlayerCombat | null;
   /** itens do chão que este cliente conhece */ ground: Set<number>;
@@ -103,6 +111,7 @@ interface Conn { ws: WebSocket; player: PlayerView | null; accountId: number; di
   /** modo de batalha desligado (MOT_BASE_BATTLE): postura normal mesmo com arma; atacar liga de novo */ peace?: boolean; /** postura da arma equipada */ weaponMt?: number;
   /** ids dos amigos (Mensageiro) e pedidos de amizade recebidos (id de quem pediu → quando) */ friends?: Set<number>; friendReqs?: Map<number, number>;
   /** convites de party recebidos (id de quem convidou → quando) */ partyReqs?: Map<number, number>;
+  /** trade aberto e pedidos de trade recebidos (id de quem pediu → quando) */ trade?: Trade | null; tradeReqs?: Map<number, number>;
   /** recebendo os buffs do Buff Pang (um a cada 0,5 s) */ buffing?: boolean;
   /** trocando de mundo: a conexão fecha e o cliente entra de novo no mundo novo (não sai da party nem avisa os amigos) */ switching?: boolean;
   /** de onde veio ao entrar num mapa de ticket (usar o ticket de novo volta para cá) */ ticketFrom?: { w: string; p: [number, number, number] };
@@ -471,6 +480,144 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     pushParty(r.party, [charId]);
   }
 
+  // ---------- trade (janela de troca entre dois jogadores) ----------
+  const TRADE_RANGE = 15, TRADE_REQ_MS = 30_000;
+  const tradeOther = (t: Trade, c: Conn) => (t.a === c ? t.b : t.a);
+
+  /** manda a janela aos dois: cada um vê a própria oferta (com os espaços da bolsa) e a do outro (com os itens completos) */
+  async function tradePush(t: Trade) {
+    if (!inventory) return;
+    const side = async (c: Conn) => {
+      const o = t.offer.get(c)!, st = await inventory.state(c.player!.id);
+      return {
+        gold: o.gold,
+        items: o.items.map((e) => {
+          const it = st.items.find((i) => i.c === 0 && i.s === e.s), d = it && inventory.catalog.byId.get(it.id);
+          return it && d ? { s: e.s, it: { id: it.id, n: e.n, u: it.u, e: it.e, el: it.el, ...(it.p ? { p: it.p } : {}), ...(it.x ? { x: it.x } : {}) }, d: inventory.catalog.viewFull(d) } : null;
+        }).filter(Boolean),
+      };
+    };
+    const va = await side(t.a), vb = await side(t.b);
+    for (const [me, mine, theirs] of [[t.a, va, vb], [t.b, vb, va]] as const) {
+      const o = tradeOther(t, me);
+      send(me.ws, { t: 'trade', name: o.player?.name ?? '', me: mine, them: theirs, lock: [t.lock.has(me), t.lock.has(o)], ok: [t.ok.has(me), t.ok.has(o)] });
+    }
+  }
+
+  /** fecha a janela nos dois (cancelou, saiu, morreu, trocou de mapa ou terminou) */
+  function tradeClose(t: Trade, text: string) {
+    for (const c of [t.a, t.b]) { if (c.trade === t) c.trade = null; send(c.ws, { t: 'tradeClose', text }); }
+  }
+
+  /** por que `c` não pode trocar com `o` agora (null = pode) */
+  function tradeBlock(c: Conn, o: Conn | null): string | null {
+    if (!o?.player || !c.player || o === c) return 'Esse jogador não está online.';
+    if (o.player.w !== c.player.w || Math.hypot(o.player.p[0] - c.player.p[0], o.player.p[2] - c.player.p[2]) > TRADE_RANGE) return `Chegue mais perto de ${o.player.name} para negociar.`;
+    if (c.cb?.dead || o.cb?.dead) return 'Não dá para negociar morto.';
+    if (c.trade) return 'Você já está negociando.';
+    if (o.trade) return `${o.player.name} já está negociando com outra pessoa.`;
+    return null;
+  }
+
+  function tradeMsg(c: Conn, msg: Record<string, unknown>) {
+    const me = c.player!;
+    const reply = (text: string) => send(c.ws, { t: 'chat', id: 0, name: '', text });
+    const t = c.trade ?? null;
+    switch (msg.t) {
+      case 'tradeReq': {
+        const o = liveConn(Number(msg.id));
+        const why = tradeBlock(c, o);
+        if (why) { reply(why); return; }
+        o!.tradeReqs ??= new Map();
+        if ((o!.tradeReqs.get(me.id) ?? 0) > Date.now() - TRADE_REQ_MS) { reply(`Você já pediu para negociar com ${o!.player!.name}. Aguarde a resposta.`); return; }
+        o!.tradeReqs.set(me.id, Date.now());
+        send(o!.ws, { t: 'tradeReq', id: me.id, name: me.name });
+        reply(`Pedido de troca enviado para ${o!.player!.name}.`);
+        return;
+      }
+      case 'tradeAnswer': {
+        const id = Number(msg.id), at = c.tradeReqs?.get(id);
+        c.tradeReqs?.delete(id);
+        const o = liveConn(id);
+        if (!o?.player || !at || Date.now() - at > TRADE_REQ_MS) { reply('O pedido de troca expirou.'); return; }
+        if (!msg.ok) { send(o.ws, { t: 'chat', id: 0, name: '', text: `${me.name} recusou a troca.` }); return; }
+        const why = tradeBlock(c, o);
+        if (why) { reply(why); return; }
+        const nt: Trade = { a: o, b: c, offer: new Map([[o, { items: [], gold: 0 }], [c, { items: [], gold: 0 }]]), lock: new Set(), ok: new Set(), busy: false };
+        o.trade = c.trade = nt;
+        void tradePush(nt);
+        return;
+      }
+    }
+    if (!t || t.busy || !inventory) return;
+    const offer = t.offer.get(c)!;
+    // mudar a oferta: só sem OK; qualquer mudança tira o OK e a confirmação dos dois
+    const change = async (fn: () => Promise<string | null> | string | null) => {
+      if (t.lock.has(c)) { reply('Você já deu OK. Cancele a troca para mudar a oferta.'); return; }
+      const err = await fn();
+      if (err) { reply(err); return; }
+      t.lock.clear(); t.ok.clear();
+      await tradePush(t);
+    };
+    switch (msg.t) {
+      case 'tradeItem': {
+        const slot = Number(msg.s), n = Number(msg.n);
+        void change(async () => {
+          const it = (await inventory.state(me.id)).items.find((i) => i.c === 0 && i.s === slot);
+          if (!it) return 'Esse espaço da bolsa está vazio.';
+          if (!Number.isInteger(n) || n < 1) return 'Quantidade inválida.';
+          const cur = offer.items.find((e) => e.s === slot);
+          if (cur) { cur.n = Math.min(n, it.n); cur.id = it.id; return null; }
+          if (offer.items.length >= TRADE_SLOTS) return `A troca aceita até ${TRADE_SLOTS} itens.`;
+          offer.items.push({ s: slot, n: Math.min(n, it.n), id: it.id });
+          return null;
+        }).catch((e) => console.error('trade: item', e));
+        return;
+      }
+      case 'tradeRemove': {
+        const slot = Number(msg.s);
+        void change(() => { offer.items = offer.items.filter((e) => e.s !== slot); return null; }).catch((e) => console.error('trade: tirar', e));
+        return;
+      }
+      case 'tradeGold': {
+        const g = Math.floor(Number(msg.gold) || 0);
+        void change(async () => {
+          const gold = (await inventory.state(me.id)).gold;
+          if (g < 0 || g > gold) return 'Você não tem esse penya.';
+          offer.gold = g;
+          return null;
+        }).catch((e) => console.error('trade: penya', e));
+        return;
+      }
+      case 'tradeLock':
+        t.lock.add(c);
+        void tradePush(t);
+        return;
+      case 'tradeOk': {
+        if (t.lock.size < 2) { reply('Os dois precisam dar OK antes de confirmar.'); return; }
+        t.ok.add(c);
+        if (t.ok.size < 2) { void tradePush(t); return; }
+        t.busy = true;
+        const a = t.a, b = t.b, oa = t.offer.get(a)!, ob = t.offer.get(b)!;
+        inventory.exchange(a.player!.id, b.player!.id, oa, ob).then(async (err) => {
+          if (err) {
+            t.busy = false; t.lock.clear(); t.ok.clear();
+            for (const x of [a, b]) send(x.ws, { t: 'chat', id: 0, name: '', text: `Troca não feita: ${err}` });
+            await tradePush(t);
+            return;
+          }
+          console.log(`trade: ${a.player?.name} (${oa.items.length} item(ns), ${oa.gold} penya) ↔ ${b.player?.name} (${ob.items.length} item(ns), ${ob.gold} penya)`);
+          tradeClose(t, 'Troca concluída!');
+          pushInventory(a.player!.id, false); pushInventory(b.player!.id, false);
+        }).catch((e) => { console.error('trade: troca', e); t.busy = false; tradeClose(t, 'Erro na troca. Nada foi trocado.'); });
+        return;
+      }
+      case 'tradeCancel':
+        tradeClose(t, `${me.name} cancelou a troca.`);
+        return;
+    }
+  }
+
   function partyMsg(c: Conn, msg: Record<string, unknown>) {
     const me = c.player!;
     const reply = (text: string) => send(c.ws, { t: 'chat', id: 0, name: '', text });
@@ -815,6 +962,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (!p || !worlds.has(world)) return;
     W(c).mobs?.forget(p.id);
     p.w = world; p.p = [...pos]; p.s = 'stand';
+    if (c.trade) tradeClose(c.trade, 'A troca foi cancelada.');
     c.switching = true;
     await savePosition(p, c.cb, 0);
     void query('UPDATE characters SET online = true WHERE id = $1', [p.id]).catch(() => {});
@@ -1217,6 +1365,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   function killPlayer(c: Conn) {
     const cb = c.cb, p = c.player;
     if (!cb || !p || cb.dead) return;
+    if (c.trade) tradeClose(c.trade, 'A troca foi cancelada.');
     cb.dead = true;
     cb.hp = 0; cb.dirty = true;
     expireBuffs(c, true);
@@ -1440,6 +1589,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         resurrect(c, msg.id as number, msg.target as number);
       } else if (typeof msg.t === 'string' && msg.t.startsWith('guild') && c.player) {
         void guildMsg(c, msg).catch((e) => { console.error('realtime: guild', e); send(c.ws, { t: 'chat', id: 0, name: '', text: 'Servidor indisponível.' }); });
+      } else if (typeof msg.t === 'string' && msg.t.startsWith('trade') && c.player) {
+        tradeMsg(c, msg);
       } else if (typeof msg.t === 'string' && msg.t.startsWith('party') && c.player) {
         partyMsg(c, msg);
       } else if (msg.t === 'pm' && c.player && (Number.isInteger(msg.to) || typeof msg.toName === 'string') && typeof msg.text === 'string') {
@@ -1560,6 +1711,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         castSkill(c, msg.id as number, msg.target as number);
       } else if (msg.t === 'shopOpen' && c.player && typeof msg.key === 'string') {
         shopOpen(c, msg.key.slice(0, 40));
+      } else if (c.trade && (msg.t === 'invMove' || msg.t === 'invUse' || msg.t === 'sell')) {
+        send(ws, { t: 'invError', error: 'Termine ou cancele a troca antes de mexer no inventário.' });
       } else if (msg.t === 'buy' && c.player && typeof msg.key === 'string' && Number.isInteger(msg.id) && Number.isInteger(msg.n)) {
         shopBuy(c, msg.key.slice(0, 40), msg.id as number, msg.n as number);
       } else if (msg.t === 'sell' && c.player && typeof msg.key === 'string' && Number.isInteger(msg.s) && Number.isInteger(msg.n)) {
@@ -1655,6 +1808,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     });
     ws.on('close', () => {
       conns.delete(c);
+      if (c.trade) tradeClose(c.trade, `${c.player?.name ?? 'O outro jogador'} saiu. A troca foi cancelada.`);
       if (c.player && !liveConn(c.player.id)) invisIds.delete(c.player.id);
       if (c.player) {
         broadcast({ t: 'leave', id: c.player.id });
