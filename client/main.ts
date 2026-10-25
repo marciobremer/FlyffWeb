@@ -111,6 +111,8 @@ hud.onMotion = () => motionWnd.toggle();
 motionWnd.onMotion = (m) => {
   const p = view.player;
   if (!p?.active) return;
+  // modo de batalha: troca a postura de combate ↔ normal (o servidor avisa todos com 'look')
+  if (m.id === 'MOT_BASE_BATTLE') { if (!net.toggleStance()) chat.system('Sem conexão com o servidor.'); return; }
   combat.stop();
   if (!p.emote(m.motion, m.play)) { chat.system('Pare de pular ou de andar para fazer um movimento.'); return; }
   net.emote(m.motion, m.play);
@@ -389,6 +391,7 @@ net.onHit = (k, a, d, dmg, flags, hp, fx, sn) => {
     if (!miss) audio.play(sn[1], mm.externalInfo(d)?.pos ?? at);
   }
   if (k === 'p' && fx) skillFx(a, mm.externalInfo(d)?.pos ?? null, fx);
+  else if (k === 'p' && a !== net.myId) remotes.swing(a); // golpe normal de outro jogador: a animação a cada golpe
   if (k === 'p') {
     const land = () => {
       mm.setExternalHp(d, hp);
@@ -765,7 +768,7 @@ flyEl.setAttribute('aria-live', 'off');
 document.body.append(flyEl);
 let flyText = '';
 function flyHud(p: { flySpeed: number; flyAcc: boolean; flyTurbo: boolean } | null) {
-  const t = p ? `Voo · ${Math.round(p.flySpeed * 3.6)} km/h${p.flyAcc ? ' · acelerando' : ''}${p.flyTurbo ? ' · TURBO' : ''}\nEspaço acelera/para · W/S desce/sobe · A/D vira · Alt turbo · desequipe a prancha para pousar` : '';
+  const t = p ? `Voo · ${Math.round(p.flySpeed * 3.6)} km/h${p.flyAcc ? ' · acelerando' : ''}${p.flyTurbo ? ' · TURBO' : ''}\nEspaço acelera/para · W/S desce/sobe · A/D vira · X turbo · desequipe a prancha para pousar` : '';
   if (t === flyText) return;
   flyText = t;
   flyEl.hidden = !p;

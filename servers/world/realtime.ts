@@ -51,6 +51,7 @@ import type { MoverProp } from './world';
  *   { t: 'guildKick', id } / { t: 'guildDisband' } / { t: 'guildInfo' }   guild (G): criar (líder de party; a party entra
  *                                                   junto), convidar, responder, sair, expulsar, desfazer (mestre), ver
  *   { t: 'revive' } / { t: 'res', id, target }      morto: renascer no ponto do mapa / Assist lança Resurrection (skill
+ *   { t: 'stance' }                                 modo de batalha (janela de movimentos): postura de combate ↔ normal; atacar religa
  *                                                   `id`) no jogador morto `target`, que levanta ali mesmo
  *   { t: 'pm', to, text } / { t: 'pm', toName, text }   mensagem privada para um jogador online, pelo id (janela de
  *                                                   conversa) ou pelo nome (/say Nome msg no chat); mesmos limites do chat
@@ -97,6 +98,7 @@ interface Conn { ws: WebSocket; player: PlayerView | null; accountId: number; di
   /** combate: atributos, HP/MP/FP, exp, morte, ritmo dos golpes */ cb: PlayerCombat | null;
   /** itens do chão que este cliente conhece */ ground: Set<number>;
   /** partes do visual escondidas pelo jogador (máscara de bits, shared/look.ts) */ hide: number;
+  /** modo de batalha desligado (MOT_BASE_BATTLE): postura normal mesmo com arma; atacar liga de novo */ peace?: boolean; /** postura da arma equipada */ weaponMt?: number;
   /** ids dos amigos (Mensageiro) e pedidos de amizade recebidos (id de quem pediu → quando) */ friends?: Set<number>; friendReqs?: Map<number, number>;
   /** convites de party recebidos (id de quem convidou → quando) */ partyReqs?: Map<number, number>;
   /** recebendo os buffs do Buff Pang (um a cada 0,5 s) */ buffing?: boolean;
@@ -237,7 +239,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     refreshFighter(c, st);
     send(c.ws, skillsMsg(c));
     send(c.ws, statsMsg(c));
-    const mt = inventory.combatMotion(st, job);
+    const mt = stanceOf(c, inventory.combatMotion(st, job));
     if (mt !== p.mt) p.mt = mt;
     broadcast({ t: 'look', id: p.id, eq: p.eq, mt: p.mt });
     broadcast({ t: 'job', id: p.id, job });
@@ -334,6 +336,18 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     return rules!.buildFighter(ch, equipped, buffs);
   }
   /** equipou/desequipou: refaz os atributos de luta (bônus dos itens) e os máximos de HP/MP/FP */
+  /** postura mostrada: a da arma (guardada em weaponMt), ou 0 com o modo de batalha desligado */
+  function stanceOf(c: Conn, weaponMt: number) { c.weaponMt = weaponMt; return c.peace ? 0 : weaponMt; }
+
+  /** liga/desliga o modo de batalha e avisa todos */
+  function setPeace(c: Conn, peace: boolean) {
+    const p = c.player;
+    if (!p || !!c.peace === peace) return;
+    c.peace = peace;
+    p.mt = peace ? 0 : c.weaponMt ?? p.mt;
+    broadcast({ t: 'look', id: p.id, eq: p.eq, mt: p.mt });
+  }
+
   function refreshFighter(c: Conn, st: InvState) {
     const cb = c.cb;
     if (!cb || !rules) return;
@@ -1287,7 +1301,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     const wr = [...worlds.values()].find((x) => x.id === ch.world_id) ?? null;
     const wname = wr?.name ?? MAIN;
     const pStart = wr ? (inWorld(p0) ? p0 : [ch.pos_x, ch.pos_y, ch.pos_z]) : [...REVIVE_AT];
-    c.player = { w: wname, ...(guildRow ? { guild: guildRow.name } : {}), id, name: ch.name, sex: ch.sex, hair: ch.hair_mesh, head: ch.head_mesh, level: ch.level, p: pStart as [number, number, number], h: ch.angle, s: 'stand', eq: inv ? inventory!.looks(inv, c.hide) : [], job: ch.job, mt: inv ? inventory!.combatMotion(inv, ch.job) : 0, rank };
+    c.player = { w: wname, ...(guildRow ? { guild: guildRow.name } : {}), id, name: ch.name, sex: ch.sex, hair: ch.hair_mesh, head: ch.head_mesh, level: ch.level, p: pStart as [number, number, number], h: ch.angle, s: 'stand', eq: inv ? inventory!.looks(inv, c.hide) : [], job: ch.job, mt: stanceOf(c, inv ? inventory!.combatMotion(inv, ch.job) : 0), rank };
     if (rules) {
       const okJob = jobForLevel(ch.job, ch.level);
       if (okJob !== ch.job) { // nível abaixo do da classe (mexido fora do jogo): volta para a classe que o nível permite
@@ -1332,7 +1346,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         const st = fresh ? await inventory.reload(id) : await inventory.state(id);
         send(ws, inventory.view(st));
         refreshFighter(c, st);
-        const eq = inventory.looks(st, c.hide), mt = inventory.combatMotion(st, player.job);
+        const eq = inventory.looks(st, c.hide), mt = stanceOf(c, inventory.combatMotion(st, player.job));
         if (eq.join() !== player.eq.join() || mt !== player.mt) { player.eq = eq; player.mt = mt; broadcast({ t: 'look', id, eq, mt }); }
       }).catch((e) => console.error('realtime: inventário (aviso)', e));
     }
@@ -1449,7 +1463,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
                 if (o.player?.id !== id || !inventory) continue;
                 o.player.job = job;
                 if (o.cb) { o.cb.f.job = job; recalcMax(o); send(o.ws, skillsMsg(o)); }
-                const mt = inventory.combatMotion(await inventory.state(id), job);
+                const mt = stanceOf(o, inventory.combatMotion(await inventory.state(id), job));
                 if (mt !== o.player.mt) { o.player.mt = mt; broadcast({ t: 'look', id, eq: o.player.eq, mt }); }
               }
             },
@@ -1481,7 +1495,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
                   reconcilePoints(o.cb, level);
                   send(o.ws, skillsMsg(o));
                   send(o.ws, buffsMsg(o));
-                  void inventory?.state(id).then((st) => { refreshFighter(o, st); const mt = inventory!.combatMotion(st, o.player!.job); if (o.player && mt !== o.player.mt) { o.player.mt = mt; broadcast({ t: 'look', id, eq: o.player.eq, mt }); } });
+                  void inventory?.state(id).then((st) => { refreshFighter(o, st); const mt = stanceOf(o, inventory!.combatMotion(st, o.player!.job)); if (o.player && mt !== o.player.mt) { o.player.mt = mt; broadcast({ t: 'look', id, eq: o.player.eq, mt }); } });
                   recalcMax(o, true);
                   void saveCombat(id, o.cb, level).catch((e) => console.error('realtime: salvar nível (GM)', e));
                 }
@@ -1495,6 +1509,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       } else if (msg.t === 'skillUp' && c.player) {
         skillUp(c, msg.levels);
       } else if (msg.t === 'skill' && c.player && Number.isInteger(msg.id) && Number.isInteger(msg.target)) {
+        if (c.peace) setPeace(c, false);
         castSkill(c, msg.id as number, msg.target as number);
       } else if (msg.t === 'shopOpen' && c.player && typeof msg.key === 'string') {
         shopOpen(c, msg.key.slice(0, 40));
@@ -1550,7 +1565,10 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       } else if (msg.t === 'pick' && c.player) {
         if (Number.isInteger(msg.id)) pickUp(c, msg.id as number);
       } else if (msg.t === 'atk' && c.player) {
+        if (c.peace) setPeace(c, false); // atacar liga o modo de batalha
         if (Number.isInteger(msg.id)) playerAttack(c, msg.id as number);
+      } else if (msg.t === 'stance' && c.player && !c.cb?.dead) {
+        setPeace(c, !c.peace);
       } else if (msg.t === 'gmItems' && c.player && inventory) {
         const q = typeof msg.q === 'string' ? msg.q.slice(0, 40) : '', kind = typeof msg.k === 'string' ? msg.k : '', grade = Number.isInteger(msg.g) ? msg.g as number : 0;
         gmAuthority(c.accountId).then((a) => {
@@ -1583,7 +1601,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
           if ('error' in r) { if (r.error) send(ws, { t: 'invError', error: r.error }); return; }
           send(ws, inv.view(r.state));
           refreshFighter(c, r.state);
-          const eq = inv.looks(r.state, c.hide), mt = inv.combatMotion(r.state, player.job);
+          const eq = inv.looks(r.state, c.hide), mt = stanceOf(c, inv.combatMotion(r.state, player.job));
           if (eq.join() !== player.eq.join() || mt !== player.mt) { player.eq = eq; player.mt = mt; broadcast({ t: 'look', id: player.id, eq, mt }); }
         }).catch((e) => { console.error('realtime inventário', e); send(ws, { t: 'invError', error: 'Servidor indisponível.' }); });
       }

@@ -7,7 +7,8 @@ import { GameWindow } from './ui';
  * Janela de movimentos (CWndMotion, tecla O) com as duas abas do original:
  * - Movimentos: a lista do propMotion.txt (ícone Data/Icon/mot_*.dds, nome e descrição do propMotion.txt.txt) — clicar
  *   toca o movimento no personagem e os outros jogadores veem; `dwPlay` 0 toca uma vez, 1 fica na pose final, 2 repete.
- *   As linhas sem movimento (MOT_BASE_BATTLE, ESCAPE, CHEER, AUTOATTACK, COUPLE) são funções do jogo, ficam de fora.
+ *   MOT_BASE_BATTLE (modo de batalha) troca a postura de combate ↔ normal; as outras linhas sem movimento (ESCAPE, CHEER,
+ *   AUTOATTACK, COUPLE) são funções do jogo e ficam de fora.
  * - Emoticons: as 69 carinhas do Theme/Default/texChatEmoticon.dds (grade de 32×32, 10 por linha); clicar mostra a carinha
  *   num balão acima da cabeça. Também vale digitar o comando no chat (`/laugh`, `/sad`… — textEmotion.txt).
  */
@@ -79,9 +80,9 @@ export class MotionWindow extends GameWindow {
         if (/^\s*\/\//.test(line)) continue;
         const f = line.split('\t').map((x) => x.trim()).filter(Boolean);
         // versão, dwID, dwMotion, ícone, dwPlay, nome, descrição, item que libera, preço
-        if (f.length < 7 || !/^MOT_/.test(f[1]) || !/^MTI_/.test(f[2])) continue;
+        if (f.length < 7 || !/^MOT_/.test(f[1]) || (!/^MTI_/.test(f[2]) && f[1] !== 'MOT_BASE_BATTLE')) continue;
         // Sentar no original é um estado (OBJMSG_SITDOWN): aqui senta e fica sentado até andar
-        this.motions.push({ id: f[1], motion: f[2], icon: f[3].replace(/"/g, ''), play: f[1] === 'MOT_BASE_SIT' ? 1 : Number(f[4]) || 0, name: names.get(f[5]) ?? f[1], desc: names.get(f[6]) ?? '' });
+        this.motions.push({ id: f[1], motion: f[2], icon: f[3].replace(/"/g, ''), play: f[1] === 'MOT_BASE_SIT' ? 1 : Number(f[4]) || 0, name: names.get(f[5]) || (f[1] === 'MOT_BASE_BATTLE' ? 'Modo de batalha' : f[1]), desc: names.get(f[6]) || (f[1] === 'MOT_BASE_BATTLE' ? 'Troca entre a postura de combate e a normal.' : '') });
       }
       const ids = emoTxt ? parseTxtTxt(decodeText(emoTxt)) : new Map<string, string>();
       for (const line of emo ? decodeText(emo).split(/\r?\n/) : []) {

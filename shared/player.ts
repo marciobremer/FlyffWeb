@@ -13,7 +13,7 @@ import { attachRide, flyMotion, rideOf, type RideInfo } from './ride';
  * Personagem jogável: humano montado com Part_*.o3d (corpo padrão, cabeça/cabelo 01), anda sobre a altura do terreno e é
  * bloqueado por atributos do .lnd (NoWalk=1, NoMove=3, Die=4). Todas as posições em coordenadas FlyFF (D3D).
  */
-export interface PlayerInput { forward: number; right: number; walk: boolean; jump: boolean; /** botão direito do mouse segurado (voo: segue a câmera) */ steer?: boolean }
+export interface PlayerInput { forward: number; right: number; /** andar em vez de correr (X alterna) */ walk: boolean; /** X apertado agora (voo: turbo) */ turbo?: boolean; jump: boolean; /** botão direito do mouse segurado (voo: segue a câmera) */ steer?: boolean }
 
 export interface PlayerWorld {
   heightAt(x: number, z: number): number | null;
@@ -65,7 +65,6 @@ export class Player {
   private acc = false;
   private turbo = false;
   private prevSpace = false;
-  private prevTurbo = false;
   /** fFlightSpeed, fFlightLRAngle, fFlightTBAngle do item (Spec_Item) — chegam com o inventário */
   private flyParams: [number, number, number] = [0.003, 0.7, 1.4];
   setFlyParams(p: [number, number, number] | null) { if (p && p[0] > 0) this.flyParams = p; }
@@ -273,7 +272,7 @@ export class Player {
 
   /**
    * Voo, como no cliente: Espaço liga/desliga a aceleração, W inclina o bico para baixo e S para cima (até 45°), A/D viram;
-   * segurando o botão direito do mouse a prancha vira e inclina para onde a câmera aponta. Alt liga/desliga o turbo (+20 %
+   * segurando o botão direito do mouse a prancha vira e inclina para onde a câmera aponta. X liga/desliga o turbo (+20 %
    * de força, máximo 1,1×). Sem aceleração o ar freia aos poucos. Não passa do chão nem entra em área sem voo (NoFly).
    */
   private updateFly(dt: number, input: PlayerInput, inst: MoverInstance, camera: Camera) {
@@ -282,8 +281,7 @@ export class Player {
     const k = Math.min(dt, 0.1) * 60; // tiques de 1/60 s
     if (input.jump && !this.prevSpace) this.acc = !this.acc;
     this.prevSpace = input.jump;
-    if (input.walk && !this.prevTurbo) this.turbo = !this.turbo;
-    this.prevTurbo = input.walk;
+    if (input.turbo) this.turbo = !this.turbo;
     // A/D: gira (D para a direita = rumo diminui, por causa do espelho em Z); W/S: inclina
     let turn = input.right;
     this.heading = (this.heading - input.right * lr * k + 360) % 360;

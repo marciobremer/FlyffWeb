@@ -50,7 +50,7 @@ export interface ItemView {
 export interface InvMessage { gold: number; bag: number; items: [number, number, number, number, number?, number?, number?, number[]?, number?][]; defs: Record<number, ItemView> }
 
 
-interface Remote { view: PlayerView; inst: MoverInstance | null; target: [number, number, number]; cur: [number, number, number]; h: number; curH: number; s: string; gone: boolean }
+interface Remote { view: PlayerView; inst: MoverInstance | null; target: [number, number, number]; cur: [number, number, number]; h: number; curH: number; s: string; gone: boolean; /** último golpe tocado (MTI_ATK1/2 alternando) */ hit?: number }
 
 export class RemotePlayers {
   private list = new Map<number, Remote>();
@@ -109,7 +109,8 @@ export class RemotePlayers {
     if (s !== r.s) {
       r.s = s;
       if (s.startsWith('fly')) r.inst?.play(this.motionFor(r));
-      else if (s !== 'emote') r.inst?.play(...motionOf(s, r.view.mt ?? 0)); // o emote chega à parte (mensagem 'emote')
+      // o emote chega à parte (mensagem 'emote'); o golpe toca a cada 'hit' (swing), não só quando o estado muda
+      else if (s !== 'emote' && s !== 'atk') r.inst?.play(...motionOf(s, r.view.mt ?? 0));
     }
   }
 
@@ -122,6 +123,14 @@ export class RemotePlayers {
   }
 
   clear() { for (const id of [...this.list.keys()]) this.remove(id); }
+
+  /** golpe normal de outro jogador (cada 'hit' do servidor): toca MTI_ATK1/2 alternando, uma vez */
+  swing(id: number) {
+    const r = this.list.get(id);
+    if (!r?.inst || r.s === 'dead' || r.s.startsWith('fly')) return;
+    r.hit = ((r.hit ?? 0) % 2) + 1;
+    r.inst.play(motionOf('atk', r.view.mt ?? 0, r.hit)[0], false);
+  }
 
   /** outro jogador lança uma skill: toca o movimento (CASTING01, depois 02) e volta ao estado dele */
   cast(id: number, motion: string) {
@@ -457,6 +466,8 @@ export class NetClient {
   pm(to: number, text: string) { return this.raw({ t: 'pm', to, text }); }
   /** morto: renascer na cidade / Resurrection (skill `id`) no jogador morto `target` */
   revive() { return this.raw({ t: 'revive' }); }
+  /** modo de batalha (janela de movimentos): postura de combate ↔ normal */
+  toggleStance() { return this.raw({ t: 'stance' }); }
   resurrect(id: number, target: number) { return this.raw({ t: 'res', id, target }); }
   /** /say Nome mensagem */
   pmName(toName: string, text: string) { return this.raw({ t: 'pm', toName, text }); }

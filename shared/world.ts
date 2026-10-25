@@ -919,6 +919,8 @@ export class WorldView {
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
       if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
       if (e.code === 'Escape') this.selectTarget(null);
+      // X: alterna andar/correr (como no FlyFF); no voo liga/desliga o turbo
+      if (e.code === 'KeyX' && !e.repeat && !e.ctrlKey && !e.altKey && !e.metaKey) { this.walkMode = !this.walkMode; this.turboPress = true; }
       this.keys.add(e.code);
     });
     addEventListener('keyup', (e) => this.keys.delete(e.code));
@@ -1017,6 +1019,11 @@ export class WorldView {
     requestAnimationFrame(frame);
   }
 
+  /** X alterna andar (true) / correr (false) */
+  walkMode = false;
+  /** X apertado neste quadro (voo: turbo) */
+  private turboPress = false;
+
   private frame(now: number) {
     const dt = Math.min(0.1, (now - this.prev) / 1000);
     this.prev = now;
@@ -1034,10 +1041,12 @@ export class WorldView {
       const input = {
         forward: (k('KeyW') || k('ArrowUp') ? 1 : 0) - (k('KeyS') || k('ArrowDown') ? 1 : 0),
         right: (k('KeyD') || k('ArrowRight') ? 1 : 0) - (k('KeyA') || k('ArrowLeft') ? 1 : 0),
-        walk: k('AltLeft') || k('AltRight'),
+        walk: this.walkMode,
+        turbo: this.turboPress,
         jump: k('Space'),
         steer: this.rightHeld,
       };
+      this.turboPress = false;
       const d3 = player.update(dt, input, camera);
       // a câmera acompanha o personagem (deslocamento em D3D → Three: z invertido)
       camera.position.add(new Vector3(d3[0], d3[1], -d3[2]));
