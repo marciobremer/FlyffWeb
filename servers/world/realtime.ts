@@ -66,6 +66,7 @@ import type { MoverProp } from './world';
  *                                                   convite recebido, nome da guild de alguém mudou (acima do nome)
  *   { t: 'pm', with, wname, from, name, text }      mensagem privada (com quem é a conversa e o nome dele, quem escreveu)
  *   { t: 'enter', player: PlayerView }              alguém entrou
+ *   { t: 'invis', id, on }                          GM ficou invisível / visível (Dark Illusion; só GMs/admins e ele mesmo recebem)
  *   { t: 'leave', id }                              alguém saiu
  *   { t: 'states', list: [id, x, y, z, h, s][] }    atualizações agrupadas, 10 por segundo, só de quem mudou
  *   { t: 'inv', gold, bag, items: [c, s, itemId, n][], defs }   inventário inteiro (ao entrar e a cada mudança)
@@ -92,12 +93,13 @@ import type { MoverProp } from './world';
  *                                                   s stand/walk/run/dead; hp em milésimos do máximo
  * O servidor confere a sessão e o dono do personagem, descarta valores absurdos e salva a posição ao sair.
  */
-export interface PlayerView { /** mundo onde está (WdMadrigal, WdKebaras…) */ w: string; /** nome da guild (aparece acima do nome) */ guild?: string; id: number; name: string; sex: number; hair: number; head: number; level: number; p: [number, number, number]; h: number; s: string; /** símbolos II_* equipados */ eq: string[]; /** postura de combate 1–15 (0 = sem arma) */ mt: number; /** classe (JOB_*) */ job: number; /** conta de admin ou GM (cor do nome) */ rank?: Rank }
+export interface PlayerView { /** mundo onde está (WdMadrigal, WdKebaras…) */ w: string; /** nome da guild (aparece acima do nome) */ guild?: string; id: number; name: string; sex: number; hair: number; head: number; level: number; p: [number, number, number]; h: number; s: string; /** símbolos II_* equipados */ eq: string[]; /** postura de combate 1–15 (0 = sem arma) */ mt: number; /** classe (JOB_*) */ job: number; /** conta de admin ou GM (cor do nome) */ rank?: Rank; /** GM invisível (Dark Illusion) — só GMs/admins recebem */ iv?: 1 }
 
 interface Conn { ws: WebSocket; player: PlayerView | null; accountId: number; dirty: boolean; alive: boolean; /** mobs que este cliente conhece */ mobs: Set<number>; /** horários das últimas mensagens de chat */ chatAt: number[]; /** pedidos de inventário em fila (um de cada vez) */ invQueue: Promise<void>; /** gravação do 'online = true' (a saída espera por ela) */ onlineSet?: Promise<void>; /** quando entrou no mundo (ms) — tempo de jogo */ joinedAt: number;
   /** combate: atributos, HP/MP/FP, exp, morte, ritmo dos golpes */ cb: PlayerCombat | null;
   /** itens do chão que este cliente conhece */ ground: Set<number>;
   /** partes do visual escondidas pelo jogador (máscara de bits, shared/look.ts) */ hide: number;
+  /** GM invisível (Dark Illusion do painel): jogadores comuns não o veem e os mobs o ignoram */ invis?: boolean;
   /** modo de batalha desligado (MOT_BASE_BATTLE): postura normal mesmo com arma; atacar liga de novo */ peace?: boolean; /** postura da arma equipada */ weaponMt?: number;
   /** ids dos amigos (Mensageiro) e pedidos de amizade recebidos (id de quem pediu → quando) */ friends?: Set<number>; friendReqs?: Map<number, number>;
   /** convites de party recebidos (id de quem convidou → quando) */ partyReqs?: Map<number, number>;
@@ -187,10 +189,28 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   });
 
   const send = (ws: WebSocket, msg: unknown) => { if (ws.readyState === WebSocket.OPEN) { ws.send(JSON.stringify(msg)); counters.msgOut++; } };
+  /**
+   * GMs invisíveis (Dark Illusion do painel): o que eles fazem (aparecer, mexer, golpear, efeitos…) não chega a quem não é
+   * GM/admin. `actorOf` diz de quem é a mensagem; `seesActor` se o destinatário pode ver.
+   */
+  const invisIds = new Set<number>();
+  const isStaff = (o: Conn) => !!o.player?.rank;
+  const actorOf = (msg: unknown): number | null => {
+    if (!invisIds.size) return null;
+    const m = msg as { t?: string; id?: number; a?: number; d?: number; k?: string; player?: { id: number } };
+    switch (m.t) {
+      case 'enter': return m.player?.id ?? null;
+      case 'look': case 'pdie': case 'getup': case 'emote': case 'emo': case 'job': case 'guildTag': case 'level': return m.id ?? null;
+      case 'hit': return (m.k === 'p' ? m.a : m.d) ?? null;
+      case 'skillfx': return m.a ?? null;
+      default: return null;
+    }
+  };
+  const seesActor = (o: Conn, actor: number | null) => actor === null || !invisIds.has(actor) || o.player?.id === actor || isStaff(o);
   /** para todos (ou só quem está no mundo `w`) */
   const broadcast = (msg: unknown, except?: Conn, w?: string) => {
-    const data = JSON.stringify(msg);
-    for (const c of conns) if (c !== except && c.player && (!w || c.player.w === w) && c.ws.readyState === WebSocket.OPEN) { c.ws.send(data); counters.msgOut++; }
+    const data = JSON.stringify(msg), actor = actorOf(msg);
+    for (const c of conns) if (c !== except && c.player && (!w || c.player.w === w) && c.ws.readyState === WebSocket.OPEN && seesActor(c, actor)) { c.ws.send(data); counters.msgOut++; }
   };
 
   async function savePosition(p: PlayerView, cb: PlayerCombat | null = null, playedMs = 0) {
@@ -320,9 +340,31 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   /** manda para quem está perto de (x, z) */
   /** para quem está perto de (x, z) no mundo `w` */
   const sendNear = (w: string, x: number, z: number, msg: unknown) => {
-    const data = JSON.stringify(msg);
-    for (const c of conns) if (c.player && c.player.w === w && c.ws.readyState === WebSocket.OPEN && Math.hypot(c.player.p[0] - x, c.player.p[2] - z) <= MOB_RADIUS) { c.ws.send(data); counters.msgOut++; }
+    const data = JSON.stringify(msg), actor = actorOf(msg);
+    for (const c of conns) if (c.player && c.player.w === w && c.ws.readyState === WebSocket.OPEN && Math.hypot(c.player.p[0] - x, c.player.p[2] - z) <= MOB_RADIUS && seesActor(c, actor)) { c.ws.send(data); counters.msgOut++; }
   };
+
+  /**
+   * Dark Illusion de GM (SI_ACR_SUP_DARKILLUSION): some para quem não é GM/admin (que recebe 'leave'; os GMs recebem
+   * 'invis' e veem translúcido) e os mobs largam o alvo. Desligar faz aparecer de novo ('enter'). O efeito da skill toca
+   * para todos ao sumir e ao aparecer.
+   */
+  function setInvis(c: Conn, on: boolean) {
+    const p = c.player;
+    if (!p || !!c.invis === on) return;
+    const s = skillCat?.byId.get(193);
+    const fx = () => { if (s) sendNear(p.w, p.p[0], p.p[2], { t: 'skillfx', a: p.id, fx: { c: s.sfx[0], h: -1, s: -1, b: -1, mo: s.motion, sn: s.snd[0] } }); };
+    if (on) fx(); // ainda visível: todos veem o efeito de sumir
+    c.invis = on;
+    if (on) { invisIds.add(p.id); p.iv = 1; } else { invisIds.delete(p.id); delete p.iv; }
+    for (const o of conns) {
+      if (o === c || !o.player || o.player.w !== p.w) continue;
+      if (isStaff(o)) send(o.ws, { t: 'invis', id: p.id, on });
+      else send(o.ws, on ? { t: 'leave', id: p.id } : { t: 'enter', player: p });
+    }
+    send(c.ws, { t: 'invis', id: p.id, on });
+    if (on) W(c).mobs?.forget(p.id); else fx();
+  }
   const mobHp = (m: Mob) => Math.round((m.hp / m.maxHp) * 1000);
 
   /** atributos de luta a partir do personagem e do que está equipado (arma da mão direita, defesa das armaduras) */
@@ -1246,10 +1288,10 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     const mobWorld = wr.mobs;
     if (!mobWorld) continue;
     mobWorld.hooks = {
-      player: (id) => { const c = connOf(id); return c?.player && c.player.w === wr.name && c.cb && !c.cb.dead ? [c.player.p[0], c.player.p[2]] : null; },
+      player: (id) => { const c = connOf(id); return c?.player && c.player.w === wr.name && c.cb && !c.cb.dead && !c.invis ? [c.player.p[0], c.player.p[2]] : null; },
       playersNear: (x, z, r) => {
         const out: { id: number; x: number; z: number }[] = [];
-        for (const c of conns) if (c.player && c.player.w === wr.name && c.cb && !c.cb.dead && Math.hypot(c.player.p[0] - x, c.player.p[2] - z) <= r) out.push({ id: c.player.id, x: c.player.p[0], z: c.player.p[2] });
+        for (const c of conns) if (c.player && c.player.w === wr.name && c.cb && !c.cb.dead && !c.invis && Math.hypot(c.player.p[0] - x, c.player.p[2] - z) <= r) out.push({ id: c.player.id, x: c.player.p[0], z: c.player.p[2] });
         return out;
       },
       attack: (m, id) => { if (connOf(id)?.player?.w === wr.name) mobAttack(m, id); },
@@ -1320,7 +1362,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     }
     c.onlineSet = query('UPDATE characters SET online = true WHERE id = $1', [id]).then(() => {}, () => {}); // o site mostra quem está online
     const me = c.player;
-    send(c.ws, { t: 'welcome', id, w: me.w, p: me.p, eq: me.eq, mt: me.mt, players: [...conns].filter((o) => o !== c && o.player && o.player.w === me.w).map((o) => o.player) });
+    send(c.ws, { t: 'welcome', id, w: me.w, p: me.p, eq: me.eq, mt: me.mt, players: [...conns].filter((o) => o !== c && o.player && o.player.w === me.w && seesActor(c, o.player.id)).map((o) => o.player) });
     if (inv) send(c.ws, inventory!.view(inv));
     if (removed.length) send(c.ws, { t: 'chat', id: 0, name: '', text: `Sua classe não pode usar: ${removed.join(', ')}. Foi para a bolsa.` });
     if (c.cb) send(c.ws, statsMsg(c));
@@ -1428,6 +1470,11 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
             accountId: c.accountId, self: { id: me.id, name: me.name, level: me.level, p: [...me.p] }, inventory, reply,
             online: (name) => { for (const o of conns) if (o.player && o.player.name.toLowerCase() === name.toLowerCase()) return { id: o.player.id, name: o.player.name, level: o.player.level, p: [...o.player.p] }; return null; },
             openPanel: () => send(ws, { t: 'gmOpen' }),
+            invis: (on) => {
+              const want = on ?? !c.invis;
+              setInvis(c, want);
+              return want ? 'Dark Illusion: você está invisível para os jogadores (GMs e admins ainda veem você).' : 'Dark Illusion desligada: todos veem você de novo.';
+            },
             kill: (id) => {
               const o = liveConn(id);
               if (!o?.cb || !o.player) return 'Esse personagem não está online.';
@@ -1608,6 +1655,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     });
     ws.on('close', () => {
       conns.delete(c);
+      if (c.player && !liveConn(c.player.id)) invisIds.delete(c.player.id);
       if (c.player) {
         broadcast({ t: 'leave', id: c.player.id });
         if (!c.switching && !liveConn(c.player.id)) leaveParty(c.player.id, 'saiu do jogo');
@@ -1633,7 +1681,17 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       if (!l) lists.set(p.w, (l = []));
       l.push([p.id, +p.p[0].toFixed(2), +p.p[1].toFixed(2), +p.p[2].toFixed(2), Math.round(p.h), p.s]);
     }
-    for (const [w, list] of lists) broadcast({ t: 'states', list }, undefined, w);
+    for (const [w, list] of lists) {
+      const vis = invisIds.size ? list.filter((e) => !invisIds.has(e[0] as number)) : list;
+      if (vis.length === list.length) { broadcast({ t: 'states', list }, undefined, w); continue; }
+      // tem GM invisível: quem não é GM recebe a lista sem ele
+      const all = JSON.stringify({ t: 'states', list }), some = vis.length ? JSON.stringify({ t: 'states', list: vis }) : null;
+      for (const o of conns) {
+        if (!o.player || o.player.w !== w || o.ws.readyState !== WebSocket.OPEN) continue;
+        const data = isStaff(o) || invisIds.has(o.player.id) ? all : some;
+        if (data) { o.ws.send(data); counters.msgOut++; }
+      }
+    }
     for (const wr of worlds.values()) wr.mobs?.tick(TICK_MS / 1000);
     if (++tickN % 2 === 0) { sendMobs(); for (const wr of worlds.values()) wr.mobs?.clearDirty(); }
   }, TICK_MS);

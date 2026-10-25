@@ -1,7 +1,4 @@
-import {
-  type Object3D, type PerspectiveCamera,
-  BufferAttribute, BufferGeometry, Bone, Group, Material, Matrix4, Mesh, Quaternion, Skeleton as ThreeSkeleton, SkinnedMesh, Sphere, Vector3,
-} from 'three';
+import { type Object3D, type PerspectiveCamera, BufferAttribute, BufferGeometry, Bone, Group, Material, Matrix4, Mesh, Quaternion, Skeleton as ThreeSkeleton, SkinnedMesh, Sphere, Vector3, MeshLambertMaterial } from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { parseChr, parseAni, type Motion, type Skeleton } from './formats/chr';
 import { parseO3d, type O3dPart } from './formats/o3d';
@@ -440,6 +437,28 @@ export class MoverInstance {
     if (typeof t === 'string') this.bubble.element.textContent = t; else this.bubble.element.replaceChildren(t);
     clearTimeout(this.bubbleTimer);
     this.bubbleTimer = window.setTimeout(() => { this.bubble?.removeFromParent(); this.bubble = null; }, ms);
+  }
+
+  /**
+   * Translúcido (GM invisível — Dark Illusion — visto por outro GM ou por ele mesmo). As malhas ganham cópia própria do
+   * material (o do template é compartilhado por todos); desligar volta ao material original.
+   */
+  setGhost(on: boolean) {
+    this.group.traverse((o) => {
+      const mesh = o as Mesh;
+      if (!mesh.isMesh || !(mesh.material instanceof MeshLambertMaterial)) return;
+      const base = mesh.userData.ghostBase as MeshLambertMaterial | undefined;
+      if (on && !base) {
+        const m = mesh.material.clone();
+        m.transparent = true; m.opacity = 0.35; m.depthWrite = false;
+        mesh.userData.ghostBase = mesh.material;
+        mesh.material = m;
+      } else if (!on && base) {
+        mesh.material.dispose();
+        mesh.material = base;
+        delete mesh.userData.ghostBase;
+      }
+    });
   }
 
   /** efeitos do conjunto presos nesta instância (WorldView.attachSetSfx); trocar o objeto ou null os desliga */

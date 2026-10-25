@@ -15,7 +15,7 @@ import type { GroundRow } from './ground';
  * O próprio jogador manda posição/rumo/estado no máximo 10×/s e só quando muda; os remotos chegam 10×/s e são suavizados
  * a cada quadro (interpolação exponencial da posição e do rumo), com as mesmas animações do jogador local.
  */
-export interface PlayerView { /** nome da guild */ guild?: string; id: number; name: string; sex: number; hair: number; head: number; level: number; p: [number, number, number]; h: number; s: string; /** símbolos II_* equipados */ eq?: string[]; /** postura de combate 1–15 (0 = normal) */ mt?: number; /** 'admin' ou 'gm' (cor do nome) */ rank?: string }
+export interface PlayerView { /** nome da guild */ guild?: string; id: number; name: string; sex: number; hair: number; head: number; level: number; p: [number, number, number]; h: number; s: string; /** símbolos II_* equipados */ eq?: string[]; /** postura de combate 1–15 (0 = normal) */ mt?: number; /** 'admin' ou 'gm' (cor do nome) */ rank?: string; /** GM invisível (só GMs recebem): translúcido */ iv?: 1 }
 
 /** seus atributos (server/realtime.ts statsMsg) */
 export interface PlayerStats {
@@ -84,6 +84,7 @@ export class RemotePlayers {
     inst.setLabel(r.view.name, r.view.rank, PLAYER_LABEL_LIFT);
     inst.setGuildTag(r.view.guild);
     if (this.partyIds.has(r.view.id)) inst.label?.element.classList.add('party');
+    if (r.view.iv) inst.setGhost(true); // GM invisível (só GMs recebem)
     inst.play(...motionOf(r.s, r.view.mt ?? 0));
     this.world.playerGroup.add(inst.group);
     this.world.attachSetSfx(inst, r.view.eq ?? []);
@@ -123,6 +124,14 @@ export class RemotePlayers {
   }
 
   clear() { for (const id of [...this.list.keys()]) this.remove(id); }
+
+  /** GM ficou invisível / visível (só chega a quem é GM/admin): fica translúcido */
+  setInvis(id: number, on: boolean) {
+    const r = this.list.get(id);
+    if (!r) return;
+    if (on) r.view.iv = 1; else delete r.view.iv;
+    r.inst?.setGhost(on);
+  }
 
   /** golpe normal de outro jogador (cada 'hit' do servidor): toca MTI_ATK1/2 alternando, uma vez */
   swing(id: number) {
@@ -254,6 +263,8 @@ export class NetClient {
   onShop: (s: import('./shop').ShopView) => void = () => {};
   /** você foi revivido no lugar (Resurrection de um Assist) */
   onGetUp: () => void = () => {};
+  /** sua Dark Illusion de GM ligou/desligou */
+  onInvis: (on: boolean) => void = () => {};
   /** o servidor mandou trocar de mundo (ticket de Azria, teleporte para outro mapa) */
   onChangeWorld: (w: string, p: [number, number, number]) => void = () => {};
   /** guild: sua guild (null = sem guild), convite recebido, o nome da sua guild mudou */
@@ -360,6 +371,9 @@ export class NetClient {
       } else if (m.t === 'getup') {
         const id = Number(m.id);
         if (id === this.myId) this.onGetUp(); else this.remotes.getup(id);
+      } else if (m.t === 'invis') {
+        const id = Number(m.id);
+        if (id === this.myId) this.onInvis(!!m.on); else this.remotes.setInvis(id, !!m.on);
       } else if (m.t === 'changeWorld') {
         this.onChangeWorld(String(m.w), m.p as [number, number, number]);
       } else if (m.t === 'guildView') {

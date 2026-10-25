@@ -4,7 +4,8 @@ import type { PlayerStats } from './net';
 
 /**
  * Janela de personagem (tecla H ou menu → Personagem): nome, classe, nível, exp; STR/STA/DEX/INT com "+"/"−" para
- * distribuir os pontos livres (só vale ao clicar Apply; Reset desfaz o que ainda não foi aplicado) e os valores
+ * distribuir os pontos livres — ou a caixa de número, para digitar quantos de uma vez (Enter aplica) — (só vale ao clicar
+ * Apply; Reset desfaz o que ainda não foi aplicado) e os valores
  * calculados pelo servidor (ataque, defesa, crítico, velocidade, HP/MP/FP). Botões do tema: ButtCharPlus/Minus.bmp
  * (4 quadros 14×14, magenta transparente) e ButtCharApply/Reset.tga (4 quadros 50×20).
  */
@@ -39,7 +40,7 @@ export class CharacterWindow extends GameWindow {
   private name = '';
   private pending: Record<Stat, number> = { str: 0, sta: 0, dex: 0, int: 0 };
   private head = document.createElement('div');
-  private rows = new Map<Stat, { value: HTMLElement; plus: HTMLButtonElement; minus: HTMLButtonElement }>();
+  private rows = new Map<Stat, { value: HTMLElement; input: HTMLInputElement; plus: HTMLButtonElement; minus: HTMLButtonElement }>();
   private pointsEl = document.createElement('output');
   private derived = document.createElement('dl');
   private applyBtn = imgBtn('cw-btn', 'Aplicar');
@@ -63,11 +64,25 @@ export class CharacterWindow extends GameWindow {
       value.className = 'cw-val';
       const minus = imgBtn('cw-pm minus', `Tirar ponto de ${label}`);
       const plus = imgBtn('cw-pm plus', `Pôr ponto em ${label}`);
+      // quantos pontos pôr neste atributo, digitado (servidor de exp alta: muitos pontos de uma vez)
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.min = '0';
+      input.className = 'cw-in';
+      input.placeholder = '0';
+      input.setAttribute('aria-label', `Pontos para ${label}`);
+      input.addEventListener('input', () => {
+        const n = Math.floor(Number(input.value) || 0);
+        this.pending[k] = Math.max(0, Math.min(n, this.pending[k] + this.free()));
+        this.render();
+      });
+      input.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') this.applyBtn.click(); });
+      input.addEventListener('blur', () => this.render());
       minus.addEventListener('click', () => { if (this.pending[k] > 0) { this.pending[k]--; this.render(); } });
       plus.addEventListener('click', () => { if (this.free() > 0) { this.pending[k]++; this.render(); } });
-      row.append(name, value, minus, plus);
+      row.append(name, value, input, minus, plus);
       stats.appendChild(row);
-      this.rows.set(k, { value, plus, minus });
+      this.rows.set(k, { value, input, plus, minus });
     }
     const pts = document.createElement('div');
     pts.className = 'cw-points';
@@ -121,6 +136,10 @@ export class CharacterWindow extends GameWindow {
       const extra = s?.bonus[k] ?? 0;
       r.value.textContent = `${base}${add ? ` + ${add}` : ''}${extra ? ` (${extra > 0 ? '+' : ''}${extra})` : ''}`;
       r.value.classList.toggle('pending', add > 0);
+      // não reescreve a caixa enquanto digita (só corrige se passou do que dá)
+      if (document.activeElement !== r.input || Number(r.input.value || 0) !== add) r.input.value = add ? String(add) : '';
+      r.input.max = String(add + free);
+      r.input.disabled = !s || add + free <= 0;
       r.plus.disabled = free <= 0;
       r.minus.disabled = add <= 0;
       r.minus.hidden = !this.pendingTotal();

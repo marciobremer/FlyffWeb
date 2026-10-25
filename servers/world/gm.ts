@@ -33,6 +33,8 @@ export interface GmContext {
   clearMobs?(): string;
   /** mata / revive (ali mesmo, com HP cheio) um personagem online; devolve a resposta */
   kill?(id: number): string;
+  /** Dark Illusion: liga (true), desliga (false) ou alterna (sem valor) a invisibilidade de quem digitou */
+  invis?(on?: boolean): string;
   revive?(id: number): string;
   /** leva um personagem online para `p` (x, y, z FlyFF; o cliente acerta a altura pelo chão) */
   teleport(id: number, p: [number, number, number]): boolean;
@@ -54,6 +56,7 @@ const HELP = [
   '//give-penya [personagem] <quantia>',
   '//mob <MI_…|id> [quantidade] [x z]   invoca monstros perto de você ou no ponto x z (não renascem; boss já vem agressivo)',
   '//mob-clear   apaga os monstros invocados deste mapa',
+  '//invis [on|off]   Dark Illusion: fica invisível para os jogadores (GMs/admins ainda veem; mobs largam você)',
   '//kill [personagem]   mata o personagem · //revive [personagem]   revive ali mesmo com HP cheio',
   '//help   esta lista',
 ];
@@ -111,6 +114,14 @@ export async function runGmCommand(ctx: GmContext, text: string): Promise<void> 
     if (name === 'goto') { ctx.teleport(ctx.self.id, [t.p[0] + 1.5, t.p[1], t.p[2]]); ctx.reply(`Teleportado até ${t.name}.`); }
     else if (ctx.self.p) { ctx.teleport(t.id, [ctx.self.p[0] + 1.5, ctx.self.p[1], ctx.self.p[2]]); ctx.reply(`${t.name} foi trazido até você.`); }
     log(`${name} ${t.name}`);
+    return;
+  }
+
+  if (name === 'invis' || name === 'darkillusion') {
+    const a = (args[0] ?? '').toLowerCase();
+    const r = ctx.invis?.(a === 'on' ? true : a === 'off' ? false : undefined);
+    if (r) ctx.reply(r);
+    log(`invis ${a || 'alterna'}`);
     return;
   }
 

@@ -461,7 +461,7 @@ net.onStats = (s) => {
   charWnd.setStats(s);
   jobWnd.setOptions(s.jobOpts ?? []);
 };
-net.onReset = () => { deathScreen(false); view.moverMgr.clearExternal(); ground.clear(); friendsWnd.clear(); partyWnd.set(null, 0); partyBuffs.set(null); guildWnd.set(null, 0); myGuild = null; };
+net.onReset = () => { deathScreen(false); view.moverMgr.clearExternal(); ground.clear(); friendsWnd.clear(); partyWnd.set(null, 0); partyBuffs.set(null); guildWnd.set(null, 0); myGuild = null; myInvis = false; gmPanel.setInvis(false); };
 /** guild (tecla G); o nome da sua guild fica acima do seu nome */
 const guildWnd = new GuildWindow(document.body);
 let myGuild: string | null = null;
@@ -624,11 +624,15 @@ inventory.onHide = (mask) => {
 net.onLevel = (level) => { const ch = characters.find((c) => c.slot === selectedSlot); if (ch) ch.level = level; };
 /** troca o equipamento visível do personagem local (recoloca o nome na instância nova) */
 let combatMt = 0, lookNow: string[] = [];
+/** você está com a Dark Illusion de GM ligada (invisível para os jogadores): seu boneco fica translúcido */
+let myInvis = false;
+net.onInvis = (on) => { myInvis = on; view.player?.inst?.setGhost(on); gmPanel.setInvis(on); };
 async function restyle(eq: string[]) {
   lookNow = eq;
   const inst = await view.player?.restyle(eq);
   const ch = characters.find((c) => c.slot === selectedSlot);
   if (inst && ch) { inst.setLabel(ch.name, rankOf(account?.authority), PLAYER_LABEL_LIFT); inst.setGuildTag(myGuild); }
+  if (inst && myInvis) inst.setGhost(true);
   updateInvPreview();
 }
 /** boneco do inventário: o mesmo modelo do jogador (template já montado) */
