@@ -837,3 +837,11 @@ Comparado com `original/Source/Source/_Common/MoverAttack.cpp`, `MoverParam.cpp`
   escolhidos clicando na bolsa; dica do item mostra as joias da ultimate. Mensagens `upgrade`/`smith` → `{ t: 'smith' }`.
 - Banco: migração 019 (`upgrade_tries`, `gems`). Falta: as quatro opções da Peach acima, cartas de arma (IK3_SOCKETCARD2) e
   furos em arma, pergaminhos de chance por faixa (IK3_GENERAL_ENCHANT_RATE do `__UPGRADE_SUCCESS_SCROLL`).
+
+## 42. Ritmo do Neuz: 62,5 tiques/s (2026-10-26)
+- O Neuz/WorldServer usam FRAME_PER_SEC 60, mas o passo é `1000 / FRAME_PER_SEC` em inteiros = 16 ms (timer.cpp SetFST) →
+  62,5 tiques/s. `TICKS_PER_SEC` (shared/math.ts) substitui os 60 fixos: corrida (fSpeed 0,1 → 6,25 u/s), voo, animação
+  (perSlerp por tique), efeitos .sfx, duração do golpe (attackInterval) e passo dos mobs no servidor.
+- Janela H conferida com o CWndCharInfo (Ranger 120 sem equipamento, 15 em tudo): ataque 139 (mão = WT_MELEE_STAFF: (STR−10)×0,8
+  + nível×1,1, + 2/4 da mão, média — o % de ataque entra depois da média, como o RenderATK), defesa 85 (GetSta()/2 em
+  inteiros), crítico 1%, vel. de ataque 42%. Velocidade % = corrida ÷ 6,25.

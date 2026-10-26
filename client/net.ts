@@ -24,6 +24,8 @@ export interface PlayerStats {
   /** alcance do golpe normal com a arma equipada (2 corpo a corpo; arco/ioiô mais) */
   range?: number;
   def: number; crit: number; /** dano crítico extra (%) */ cdmg?: number;
+  /** ataque exibido na janela H (como o RenderATK do original) */
+  atkShow?: number;
   /** bloqueio corpo a corpo / à distância, redução de conjuração e dano extra em monstro / jogador (%) */
   mBlock?: number; rBlock?: number; dct?: number; pvm?: number; pvp?: number; str: number; sta: number; dex: number; int: number; points: number; job: number;
   /** bônus de atributo vindo dos equipamentos, precisão extra, esquiva e velocidade de ataque (%) */

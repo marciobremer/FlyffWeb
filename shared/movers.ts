@@ -4,7 +4,7 @@ import { parseChr, parseAni, type Motion, type Skeleton } from './formats/chr';
 import { parseO3d, type O3dPart } from './formats/o3d';
 import type { ModelEntry } from './formats/inc';
 import type { ModelLibrary } from './models';
-import { objectMatrix } from './math';
+import { objectMatrix, TICKS_PER_SEC } from './math';
 import { OT, type WorldObject } from './formats/types';
 import type { RectXZ } from './formats/rgn';
 
@@ -285,7 +285,7 @@ export class MoverInstance {
     this.pose(0);
   }
 
-  /** Avança a animação (30 quadros por tick de 1/60 s * perSlerp, como CModel::MoveFrame). */
+  /** Avança a animação (perSlerp quadros por tique do Neuz — 62,5/s —, como CModel::MoveFrame). */
   update(dt: number) {
     for (const m of this.lightMeshes) m.visible = NIGHT;
     this.effect?.update(dt);
@@ -293,7 +293,7 @@ export class MoverInstance {
     if (!mo || mo.frameCount < 2) return;
     this.time += dt * this.rate;
     if (this.blendT < 1) { this.blendT = Math.min(1, this.blendT + dt / this.blendTime); if (this.blendT >= 1) this.blendFrom = null; }
-    const frames = this.time * mo.perSlerp * 60;
+    const frames = this.time * mo.perSlerp * TICKS_PER_SEC;
     if (!this.loop && !this.loading && frames >= mo.frameCount - 1) this.ended = true;
     const f = this.loop ? frames % mo.frameCount : Math.min(frames, mo.frameCount - 1);
     this.pose(f);
@@ -473,7 +473,7 @@ export class MoverManager {
   private active = new Map<WorldObject, MoverInstance>();
   private pending = new Set<WorldObject>();
   candidates: { obj: WorldObject; entry: ModelEntry; index: number; owner: string; /** área de patrulha (retângulo do respawn) */ area?: RectXZ }[] = [];
-  /** fSpeed do propMover (unidades por tick de 1/60 s) */
+  /** fSpeed do propMover (unidades por tique do Neuz, 16 ms) */
   speedOf: (modelId: number) => number = () => 0;
   /** terreno andável (sem NoWalk/NoMove/Die) — destinos de patrulha evitam o resto */
   walkable: (x: number, z: number) => boolean = () => true;
@@ -621,7 +621,7 @@ export class MoverManager {
     const dx = tx - inst.pos[0], dz = tz - inst.pos[2];
     const dist = Math.hypot(dx, dz);
     // andar de patrulha = metade do fSpeed (corrida) por tick, 60 ticks/s; mínimo para modelos sem velocidade na tabela
-    const step = Math.max(0.6, (w.speed || 0.05) * 60 * 0.5) * dt;
+    const step = Math.max(0.6, (w.speed || 0.05) * TICKS_PER_SEC * 0.5) * dt;
     if (dist <= step) {
       w.target = null; w.wait = 2 + Math.random() * 6;
       inst.play('MTI_STAND');

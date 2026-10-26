@@ -4,7 +4,7 @@ import type { ModelLibrary } from './models';
 import { MoverInstance, preloadMotions } from './movers';
 import { loadHumanTemplate, type Sex } from './humans';
 import { motionOf, motionsFor } from './motions';
-import { objectMatrix } from './math';
+import { objectMatrix, TICKS_PER_SEC } from './math';
 import { OT, type WorldObject } from './formats/types';
 import { applyEnchantGlow } from './enchantGlow';
 import { attachRide, flyMotion, rideOf, type RideInfo } from './ride';
@@ -30,10 +30,10 @@ export interface PlayerWorld {
 /** altura do pulo = JUMP_V² / (2·GRAVITY): 9 dava ~1,45; ×√3 triplica a altura (~4,3) mantendo a gravidade */
 const GRAVITY = 28, JUMP_V = 9 * Math.sqrt(3);
 /**
- * Velocidade de corrida padrão (u/s) até o servidor mandar a do personagem: fSpeed 0,1 do propMover × 60 tiques/s.
+ * Velocidade de corrida padrão (u/s) até o servidor mandar a do personagem: fSpeed 0,1 do propMover × 62,5 tiques/s (6,25).
  * Andando (modo X) vai a ¼ da corrida, como o OBJSTAF_WALK do CActionMover.
  */
-const RUN_DEFAULT = 6, WALK_RATIO = 0.25;
+const RUN_DEFAULT = 0.1 * TICKS_PER_SEC, WALK_RATIO = 0.25;
 /** maior degrau que se sobe andando; raio do corpo e alturas dos raios de parede (joelho e peito) */
 const STEP = 0.7, RADIUS = 0.35, WALL_RAYS = [0.75, 1.5];
 
@@ -64,7 +64,7 @@ export class Player {
   // ---------- voo (CActionMover::ProcessFlyMove, controles de CWndWorld::ControlFlying) ----------
   /** prancha/vassoura equipada (null = no chão) */
   private ride: RideInfo | null = null;
-  /** velocidade (unidades FlyFF por tique de 1/60 s), inclinação (graus; + = bico para baixo), aceleração e turbo ligados */
+  /** velocidade (unidades FlyFF por tique do Neuz, 16 ms), inclinação (graus; + = bico para baixo), aceleração e turbo ligados */
   private fv: [number, number, number] = [0, 0, 0];
   private pitch = 0;
   private acc = false;
@@ -75,7 +75,7 @@ export class Player {
   setFlyParams(p: [number, number, number] | null) { if (p && p[0] > 0) this.flyParams = p; }
   get flying() { return !!this.ride; }
   /** velocidade atual (unidades por segundo), para o painel de voo */
-  get flySpeed() { return Math.hypot(...this.fv) * 60; }
+  get flySpeed() { return Math.hypot(...this.fv) * TICKS_PER_SEC; }
   get flyAcc() { return this.acc; }
   get flyTurbo() { return this.turbo; }
   /** emote em andamento (propMotion dwPlay): 0 toca uma vez e volta, 1 fica na pose final, 2 repete — andar/pular interrompe */
@@ -285,7 +285,7 @@ export class Player {
   private updateFly(dt: number, input: PlayerInput, inst: MoverInstance, camera: Camera) {
     const ride = this.ride!;
     const [spd, lr, tb] = this.flyParams;
-    const k = Math.min(dt, 0.1) * 60; // tiques de 1/60 s
+    const k = Math.min(dt, 0.1) * TICKS_PER_SEC; // tiques do Neuz (16 ms)
     if (input.jump && !this.prevSpace) this.acc = !this.acc;
     this.prevSpace = input.jump;
     if (input.turbo) this.turbo = !this.turbo;

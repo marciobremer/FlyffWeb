@@ -2,6 +2,7 @@ import { keyedImage, skillIcon, themeImage } from '../shared/tga';
 import { GameWindow } from './ui';
 import type { PlayerStats } from './net';
 import { fxText } from './itemtip';
+import { TICKS_PER_SEC } from '../shared/math';
 
 /** "Ataque +7%" → ["Ataque", "+7%"] (último pedaço é o valor) */
 const splitFx = (s: string): [string, string] => { const i = s.lastIndexOf(' '); return i > 0 ? [s.slice(0, i), s.slice(i + 1)] : [s, '']; };
@@ -212,9 +213,10 @@ export class CharacterWindow extends GameWindow {
 
     // Detalhe: ataque = média do mínimo e máximo, como o RenderATK do original
     const d = s ? [
-      String(Math.floor((s.atk[0] + s.atk[1]) / 2)), pct(s.crit),
+      String(s.atkShow ?? Math.floor((s.atk[0] + s.atk[1]) / 2)), pct(s.crit),
       String(s.def), pct(s.spd),
-      s.mv ? `${Math.round((s.mv / 6) * 100)}%` : '100%', pct(s.acc),
+      // corrida em relação à base (fSpeed 0,1 × 62,5 tiques/s = 6,25 u/s)
+      s.mv ? `${Math.round((s.mv / (0.1 * TICKS_PER_SEC)) * 100)}%` : '100%', pct(s.acc),
       pct(s.cdmg), pct(s.mBlock),
       pct(s.dct), pct(s.rBlock),
       pct(s.pvm), pct(s.pvp),

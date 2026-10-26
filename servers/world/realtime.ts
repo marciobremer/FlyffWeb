@@ -1,4 +1,5 @@
 import type { IncomingMessage, Server } from 'node:http';
+import { TICKS_PER_SEC } from '../../shared/math';
 import type { Duplex } from 'node:stream';
 import { WebSocketServer, WebSocket } from 'ws';
 import { pool, query } from '../common/db/index';
@@ -168,8 +169,8 @@ const MAX_STEP = 60;
  * 1 vez a cada PULLBACK_MS).
  */
 const SPEED_SLACK = 1.25, SPEED_BURST_S = 3, SPEED_EXTRA = 2, PULLBACK_MS = 1000;
-/** teto do voo (u/s): |fv| até 0,3 × 1,1 (turbo) por tique de 1/60 s, como em Player.updateFly */
-const FLY_MAX_SPEED = 0.33 * 60;
+/** teto do voo (u/s): |fv| até 0,3 × 1,1 (turbo) por tique do Neuz, como em Player.updateFly */
+const FLY_MAX_SPEED = 0.33 * TICKS_PER_SEC;
 /** chat: tamanho máximo da mensagem e limite de 5 mensagens a cada 5 s por conexão */
 const CHAT_MAX = 200, CHAT_BURST = 5, CHAT_WINDOW_MS = 5000;
 
@@ -464,7 +465,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   function statsMsg(c: Conn) {
     const cb = c.cb!, lv = c.player!.level;
     return { t: 'stats', hp: cb.hp, maxHp: cb.maxHp, mp: cb.mp, maxMp: cb.maxMp, fp: cb.fp, maxFp: cb.maxFp, exp: cb.exp, expMax: rules?.expToNext[lv] ?? 0, level: lv,
-      atkMs: rules?.attackInterval(cb.f, c.player!.mt) ?? 1000, aspd: rules?.attackSpeed(cb.f) ?? 1, atk: rules?.shownAtk(cb.f) ?? [0, 0], range: rules?.attackRange(cb.f) ?? 2, def: rules?.showDefense(cb.f) ?? 0, crit: rules?.critChance(cb.f) ?? 0, cdmg: rules?.critBonus(cb.f) ?? 0, ...(rules ? rules.panel(cb.f) : {}),
+      atkMs: rules?.attackInterval(cb.f, c.player!.mt) ?? 1000, aspd: rules?.attackSpeed(cb.f) ?? 1, atk: rules?.shownAtk(cb.f) ?? [0, 0], atkShow: rules?.shownAtkValue(cb.f) ?? 0, range: rules?.attackRange(cb.f) ?? 2, def: rules?.showDefense(cb.f) ?? 0, crit: rules?.critChance(cb.f) ?? 0, cdmg: rules?.critBonus(cb.f) ?? 0, ...(rules ? rules.panel(cb.f) : {}),
       str: cb.f.base.str, sta: cb.f.base.sta, dex: cb.f.base.dex, int: cb.f.base.int, bonus: { str: cb.f.str - cb.f.base.str, sta: cb.f.sta - cb.f.base.sta, dex: cb.f.dex - cb.f.base.dex, int: cb.f.int - cb.f.base.int },
       acc: rules ? rules.accuracy(cb.f) : 0, dodge: rules ? rules.dodge(cb.f) : 0, spd: rules ? Math.floor(Math.floor(rules.attackSpeed(cb.f) * 100) / 2) : 0, points: cb.points, job: cb.f.job, jobOpts: rules ? rules.jobOptions(cb.f.job, lv) : [],
       mv: rules ? +rules.runSpeed(cb.f, c.player!.sex).toFixed(3) : 6, fx: rules ? rules.bonusList(cb.f) : [] };

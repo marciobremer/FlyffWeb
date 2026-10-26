@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { TICKS_PER_SEC } from '../../shared/math';
 import path from 'node:path';
 import { decodeText } from '../../shared/formats/rgn';
 import { parseDefines, parseModelTable } from '../../shared/formats/inc';
@@ -124,7 +125,7 @@ export class CombatRules {
         if (!real) return null;
         const b = fs.readFileSync(path.join(dir, real));
         const m = parseAni(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer);
-        return ((m.frameCount - 1) / (m.perSlerp * 60)) * 1000;
+        return ((m.frameCount - 1) / (m.perSlerp * TICKS_PER_SEC)) * 1000;
       };
       for (let n = 0; n <= 15; n++) {
         const v = [1, 2].map((h) => ms(motionOf('atk', n, h)[0])).filter((x): x is number => x !== null && x > 0);
@@ -202,7 +203,8 @@ export class CombatRules {
   /** defesa (CalcDefenseCore, ataque genérico): atributos, defesa dos itens/4, DST_ADJDEF e DST_ADJDEF_RATE; `random` sorteia entre min e máx */
   private defense(f: Fighter, random: boolean) {
     const item = random ? rand(f.defMin, f.defMax) : Math.floor((f.defMin + f.defMax) / 2);
-    const base = Math.floor((f.level * 2 + f.sta / 2) / 2.8 - 4 + (f.sta - 14) * this.job(f.job).def) + Math.floor(item / 4) + this.dstOf(f, 'ADJDEF');
+    // GetSta()/2 é divisão de inteiros no original
+    const base = Math.trunc((f.level * 2 + Math.floor(f.sta / 2)) / 2.8 - 4 + (f.sta - 14) * this.job(f.job).def) + Math.floor(item / 4) + this.dstOf(f, 'ADJDEF');
     return Math.max(0, Math.floor(base * (1 + this.dstOf(f, 'ADJDEF_RATE') / 100)));
   }
   /** valores para a janela de personagem: defesa média contra mobs e chance de crítico (%) */
@@ -236,15 +238,15 @@ export class CombatRules {
   /** regras do ferreiro (joias da ultimate e fator de elemento); o realtime liga quando há inventário */
   upgrade: UpgradeRules | null = null;
 
-  /** fSpeed do propMover dos personagens [MI_MALE, MI_FEMALE] (unidades por tique de 1/60 s); o startWorld lê do mundo */
+  /** fSpeed do propMover dos personagens [MI_MALE, MI_FEMALE] (unidades por tique do Neuz, 16 ms); o startWorld lê do mundo */
   playerFSpeed: [number, number] = [0.1, 0.1];
   /**
    * velocidade de corrida (u/s): CMover::GetSpeed com __JEFF_11 (ligado no WorldServer e no Neuz) = fSpeed + fSpeed × DST_SPEED/1000
-   * — o DST_SPEED de itens, sets, cartas e buffs vale por mil, não por cento —, a 60 tiques/s (FRAME_PER_SEC)
+   * — o DST_SPEED de itens, sets, cartas e buffs vale por mil, não por cento —, a 62,5 tiques/s (passo de 16 ms do Neuz)
    */
   runSpeed(f: Fighter, sex: number) {
     const base = this.playerFSpeed[sex === 1 ? 1 : 0] || 0.1;
-    return Math.max(0, base * (1 + this.dstOf(f, 'SPEED') / 1000)) * 60;
+    return Math.max(0, base * (1 + this.dstOf(f, 'SPEED') / 1000)) * TICKS_PER_SEC;
   }
 
   job(j: number): JobProp { return this.jobs.get(j) ?? this.jobs.get(0) ?? { atkSpeed: 75, maxHp: 0.9, maxMp: 0.3, maxFp: 0.3, def: 1, hpRec: 1.2, swd: 4.5, axe: 5.5, staff: 0.8, stick: 3, knuckle: 5, wand: 6, blocking: 0.2, yoyo: 4.2, critical: 1, bow: 1 }; }
@@ -303,6 +305,16 @@ export class CombatRules {
   shownAtk(f: Fighter): [number, number] {
     const [a, b] = this.playerAtk(f), k = this.dstOf(f, 'ATKPOWER'), r = 1 + this.dstOf(f, 'ATKPOWER_RATE') / 100;
     return [Math.floor(a * r) + k, Math.floor(b * r) + k];
+  }
+  /**
+   * ataque da janela H (CWndCharInfo::RenderATK): média do mínimo e máximo do GetHitMinMax; o DST_ATKPOWER_RATE (se positivo)
+   * em cima dessa média, em inteiros; depois o DST_ATKPOWER
+   */
+  shownAtkValue(f: Fighter) {
+    const [a, b] = this.playerAtk(f), rate = this.dstOf(f, 'ATKPOWER_RATE');
+    let v = Math.trunc((a + b) / 2);
+    if (rate > 0) v += Math.trunc((v * rate) / 100);
+    return Math.max(0, v + this.dstOf(f, 'ATKPOWER'));
   }
   /** todos os bônus DST_* somados (itens, joias, cartas, sets, buffs) para a janela de status */
   bonusList(f: Fighter): [number, number][] { return [...f.dst].filter(([k, v]) => k > 0 && v !== 0).sort((x, y) => x[0] - y[0]); }

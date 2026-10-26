@@ -1,3 +1,4 @@
+import { TICKS_PER_SEC } from '../../shared/math';
 import type { MoverProp, ServerWorld } from './world';
 import { OT } from '../../shared/formats/types';
 
@@ -146,7 +147,7 @@ export class MobWorld {
         if (now >= m.respawnAt) this.respawn(m);
         continue;
       }
-      const walkSpeed = Math.max(0.6, (m.speed || 0.05) * 60 * 0.5), runSpeed = walkSpeed * 2;
+      const walkSpeed = Math.max(0.6, (m.speed || 0.05) * TICKS_PER_SEC * 0.5), runSpeed = walkSpeed * 2;
 
       // agressivo sem alvo: procura alguém por perto (2× por segundo)
       if (m.aggressive && !m.foe && hooks && now >= m.nextScan) {

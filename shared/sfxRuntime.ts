@@ -8,14 +8,14 @@ import { fetchBuf } from './data';
 import { parseSfx, sampleKey, SfxAlphaType, SfxBillType, SfxPartType, type Sfx, type SfxKey, type SfxPart, type V3 } from './formats/sfx';
 import type { WorldObject } from './formats/types';
 import type { LoadedModel, ModelLibrary } from './models';
-import { rowRotX, rowRotZ, rowScale, rowTrans, rowYPR, transformCoord } from './math';
+import { rowRotX, rowRotZ, rowScale, rowTrans, rowYPR, TICKS_PER_SEC, transformCoord } from './math';
 
 /**
- * Reprodução de efeitos .sfx (Common/SfxModel.cpp + Sfx.cpp). Ticks a 60 Hz (CModel::MoveFrame, perSlerp = 1).
+ * Reprodução de efeitos .sfx (Common/SfxModel.cpp + Sfx.cpp). Ticks a 62,5 Hz como o Neuz (CModel::MoveFrame, perSlerp = 1).
  * Todos os nós ficam num grupo dentro do `root` espelhado em Z; as matrizes são calculadas em D3D (vetor-linha).
  */
 const rad = (d: number) => (d * Math.PI) / 180;
-const TICKS_PER_SEC = 60;
+// ritmo do Neuz (62,5 tiques/s): shared/math.ts
 const flip = new Matrix4().makeScale(1, 1, -1);
 
 // ---------------------------------------------------------------- biblioteca

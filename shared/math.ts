@@ -23,6 +23,13 @@ export function objectMatrix(o: Pick<WorldObject, 'rot' | 'pos' | 'scale'>, out 
 }
 
 /** Converte coordenadas FlyFF (x,y,z) para o espaço do Three fora do grupo raiz espelhado. */
+/**
+ * Tiques de lógica por segundo do Neuz/WorldServer: FRAME_PER_SEC é 60, mas o passo é `1000 / FRAME_PER_SEC` em inteiros
+ * (16 ms, timer.cpp SetFST/IsDrawTiming) — na prática 62,5 tiques/s. Movimento (fSpeed por tique), animação
+ * (m_fPerSlerp por tique, CModel::MoveFrame) e efeitos .sfx andam nesse ritmo.
+ */
+export const TICKS_PER_SEC = 1000 / Math.floor(1000 / 60);
+
 export const toThree = (x: number, y: number, z: number): [number, number, number] => [x, y, -z];
 
 // ---- matrizes D3D (vetor-linha) para efeitos/partículas: combine com .multiply() na ordem do D3DX e use `.transpose()` no fim ----
