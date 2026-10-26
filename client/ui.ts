@@ -291,6 +291,18 @@ export class InventoryWindow extends GameWindow {
     else this.renderBag();
     this.renderEquip();
     this.markPierce();
+    this.refreshTip();
+  }
+
+  /**
+   * O item sob o mouse mudou (carta espetada, enchant, troca…): redesenha a dica dele na hora. Sem isso a dica só voltava
+   * ao sair e entrar de novo no espaço (o clique esconde a dica e o mouse parado não gera outro mouseenter).
+   */
+  private refreshTip() {
+    if (this.piercing && !this.pierceWaiting) return; // escolhendo a suit: o martelo é o cursor, sem dica
+    // pelo ponto do mouse (o martelo não recebe eventos): o espaço pode ter sido redesenhado sem o mouse mexer
+    const el = (document.elementFromPoint(mouse.x, mouse.y) as HTMLElement | null)?.closest<HTMLElement>('[data-c][data-s]');
+    if (el && this.el.contains(el)) this.tipShow.get(el)?.({ clientX: mouse.x, clientY: mouse.y });
   }
 
   clear() { this.items.clear(); this.penya.value = '0'; this.renderBag(); this.renderEquip(); }
@@ -344,12 +356,14 @@ export class InventoryWindow extends GameWindow {
   /** item de cada espaço desenhado (para a dica) */
   private tipItem = new WeakMap<HTMLElement, InvItem>();
   private bound = new WeakSet<HTMLElement>();
+  /** função que mostra a dica de cada espaço (para redesenhar a do espaço sob o mouse quando o item muda) */
+  private tipShow = new WeakMap<HTMLElement, (ev: { clientX: number; clientY: number }) => void>();
 
   /** dica do item ao passar o mouse: dados do item e, para peça de equipar na bolsa, o que está equipado no mesmo espaço */
   private bindTip(el: HTMLElement) {
     if (this.bound.has(el)) return;
     this.bound.add(el);
-    const show = (ev: MouseEvent) => {
+    const show = (ev: { clientX: number; clientY: number }) => {
       const it = this.tipItem.get(el), d = it && this.defs.get(it.id);
       if (!it || !d || el.classList.contains('dragging')) { hideItemTip(); return; }
       let eq: { d: ItemView; it: InvItem } | undefined;
@@ -359,6 +373,7 @@ export class InventoryWindow extends GameWindow {
       }
       showItemTip(ev, d, it, ELEMENT_NAMES, eq);
     };
+    this.tipShow.set(el, show);
     el.addEventListener('mouseenter', show);
     el.addEventListener('mousemove', moveItemTip);
     el.addEventListener('mouseleave', hideItemTip);
@@ -372,8 +387,9 @@ export class InventoryWindow extends GameWindow {
     const d = it ? this.defs.get(it.id) : undefined;
     // ticket e afins: ativado = visto ao lado; vencido = cinza (não usa mais)
     const timed = it?.x ? (it.x > Date.now() ? 'on' : 'off') : '';
-    const sig = it ? `${it.id}:${it.n}:${it.u}:${it.e}:${it.el}:${timed}` : '';
-    if (el.dataset.sig === sig && el.dataset.painted) return;
+    // as cartas espetadas entram na assinatura: sem isso, espetar uma carta não trocava o item do espaço (a dica ficava velha)
+    const sig = it ? `${it.id}:${it.n}:${it.u}:${it.e}:${it.el}:${timed}:${it.p?.join(',') ?? ''}` : '';
+    if (el.dataset.sig === sig && el.dataset.painted) { if (it) this.tipItem.set(el, it); return; }
     el.dataset.sig = sig;
     el.dataset.painted = '1';
     el.replaceChildren();
