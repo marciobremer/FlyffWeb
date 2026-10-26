@@ -184,6 +184,21 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 .inv-slot.drop, .inv-eq.drop { box-shadow: 0 0 0 2px #e8a33a inset; background-color: rgb(232 163 58 / .18); }
 .inv-money { flex: none; display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 4px; }
 .inv-money i { width: 22px; height: 22px; flex: none; background: no-repeat -40px -374px; }
+.inv-money.chip i { background: no-repeat center / 20px 20px; }
+/* rodapé: lixeira e organizar à esquerda (ícones do WndInventory das versões novas), penya e red chip à direita */
+.inv-foot { flex: none; display: grid; grid-template-columns: 32px 1fr; gap: 2px 4px; align-items: center; padding: 0 2px; }
+.inv-foot .inv-money { padding: 0; }
+.inv-tool { width: 30px; height: 30px; padding: 0; border: 1px solid transparent; border-radius: 4px; background: no-repeat center / 28px 28px; cursor: pointer; }
+.inv-tool:hover { border-color: #c9b3a6; background-color: #fff7f2; }
+.inv-tool:focus-visible { outline: 2px solid #7d95d8; outline-offset: 1px; }
+.inv-trash.drop { border-color: #c0392b; background-color: #ffe3de; }
+/* "apagar este item?": caixinha sobre a bolsa */
+.gwnd-body.inv { position: relative; }
+.inv-ask { position: absolute; left: 8px; right: 8px; bottom: 74px; z-index: 5; padding: 8px; border: 1px solid #c0392b; border-radius: 6px; background: #fffaf7; box-shadow: 0 4px 14px rgb(0 0 0 / .3); font-size: 12px; }
+.inv-ask p { margin: 0 0 6px; color: #5a2a1a; font-weight: 700; }
+.inv-ask div { display: flex; gap: 6px; justify-content: flex-end; }
+.inv-ask .gm-in.num { width: 64px; margin-right: auto; }
+.gm-btn.danger { background: linear-gradient(#e88b7f, #c0392b 55%, #a93226); border-color: #a93226; text-shadow: 0 1px 0 #6e1d16; }
 .inv-money output { flex: 1; height: 20px; padding: 0 8px; border: 1px solid #c9b3a6; border-radius: 10px; background: #fff; text-align: right; line-height: 18px; font-weight: 700; color: #6b3b1a; }
 
 /* barra de atalhos: WndNewTASKBAR.tga 544×92, slots 30×30 em x = 37 + 36·k, y = 36 */

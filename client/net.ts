@@ -56,7 +56,7 @@ export interface ItemView {
   card?: 1;
 }
 /** inventário inteiro (server/inventory.ts Inventory.view): itens [container, slot, itemId, quantidade] */
-export interface InvMessage { gold: number; bag: number; items: [number, number, number, number, number?, number?, number?, number[]?, number?][]; defs: Record<number, ItemView> }
+export interface InvMessage { gold: number; /** Red Chip (contador fora da bolsa) */ chips?: number; bag: number; items: [number, number, number, number, number?, number?, number?, number[]?, number?][]; defs: Record<number, ItemView> }
 
 
 interface Remote { view: PlayerView; inst: MoverInstance | null; target: [number, number, number]; cur: [number, number, number]; h: number; curH: number; s: string; gone: boolean; /** último golpe tocado (MTI_ATK1/2 alternando) */ hit?: number }
@@ -492,6 +492,9 @@ export class NetClient {
   /** inventário: mover de [container, slot] para outro, ou "usar" (duplo clique: equipa/desequipa) */
   invMove(from: [number, number], to: [number, number]) { return this.raw({ t: 'invMove', from, to }); }
   invUse(c: number, s: number) { return this.raw({ t: 'invUse', c, s }); }
+  /** lixeira: apaga `n` do item do espaço `s` da bolsa / organiza a bolsa por tipo */
+  invDrop(s: number, n: number) { return this.raw({ t: 'invDrop', s, n }); }
+  invSort() { return this.raw({ t: 'invSort' }); }
   /** piercing: carta do espaço `card` da bolsa na suit do espaço `target` (também da bolsa) */
   pierce(card: number, target: number) { return this.raw({ t: 'pierce', card, target }); }
   /** partes do visual escondidas (bits de shared/look.ts); vai também no 'join' ao reconectar */

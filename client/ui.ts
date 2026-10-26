@@ -1,4 +1,4 @@
-import { itemIcon, skillIcon, themeImage, themeTiles } from '../shared/tga';
+import { itemIcon, skillIcon, themeDds, themeImage, themeTiles } from '../shared/tga';
 import type { ItemView } from './net';
 import { hideItemTip, moveItemTip, setTipLookup, showItemTip } from './itemtip';
 import { InventoryPreview } from './invpreview';
@@ -185,6 +185,13 @@ export class InventoryWindow extends GameWindow {
   private open = 42;
   private grid = document.createElement('div');
   private penya = document.createElement('output');
+  /** Red Chip: contador fora da bolsa (II_CHP_RED não ocupa espaço) */
+  private chips = document.createElement('output');
+  /** lixeira (soltar um item da bolsa aqui pergunta e apaga) e o botão de organizar a bolsa por tipo */
+  private trash = document.createElement('button');
+  private sortBtn = document.createElement('button');
+  /** caixinha "apagar este item?" aberta sobre o inventário */
+  private ask: HTMLElement | null = null;
   private search = document.createElement('input');
   private equipEls = new Map<number, HTMLElement>();
   private items = new Map<string, InvItem>();
@@ -197,6 +204,9 @@ export class InventoryWindow extends GameWindow {
   onUse: (c: number, s: number) => void = () => {};
   /** caixinhas de mostrar/esconder (capacete, capa, máscara, cash): máscara de bits de shared/look.ts */
   onHide: (mask: number) => void = () => {};
+  /** lixeira: apagar `n` do item do espaço `s` da bolsa / organizar a bolsa por tipo */
+  onDiscard: (s: number, n: number) => void = () => {};
+  onSort: () => void = () => {};
   /** piercing: espetar a carta do espaço `card` da bolsa na suit do espaço `target` / aviso para o chat */
   onPierce: (card: number, target: number) => void = () => {};
   onNotice: (text: string) => void = () => {};
@@ -260,16 +270,34 @@ export class InventoryWindow extends GameWindow {
     this.grid.setAttribute('role', 'grid');
     this.grid.setAttribute('aria-label', 'Itens');
 
-    const money = document.createElement('div');
-    money.className = 'inv-money';
-    const bag = document.createElement('i');
-    bag.setAttribute('aria-hidden', 'true');
-    void themeImage('WndInventory.tga').then((u) => { if (u) bag.style.backgroundImage = `url(${u})`; });
-    this.penya.setAttribute('aria-label', 'Penya');
-    this.penya.value = '0';
-    money.append(bag, this.penya);
+    // rodapé como o inventário das versões novas: lixeira e organizar à esquerda; penya e red chip à direita
+    const foot = document.createElement('div');
+    foot.className = 'inv-foot';
+    const tool = (btn: HTMLButtonElement, cls: string, label: string, icon: string) => {
+      btn.type = 'button';
+      btn.className = `inv-tool ${cls}`;
+      btn.title = label;
+      btn.setAttribute('aria-label', label);
+      void themeDds(icon).then((u) => { if (u) btn.style.backgroundImage = `url(${u})`; });
+    };
+    tool(this.trash, 'inv-trash', 'Lixeira: arraste um item da bolsa até aqui para apagar', 'WndInventoryGarbage.dds');
+    tool(this.sortBtn, 'inv-sort', 'Organizar a bolsa por tipo', 'WndInventoryAlign.dds');
+    this.sortBtn.addEventListener('click', () => { this.closeAsk(); this.onSort(); });
+    const field = (out: HTMLOutputElement, label: string, icon: Promise<string | null>, cls: string) => {
+      const row = document.createElement('div');
+      row.className = `inv-money ${cls}`;
+      const i = document.createElement('i');
+      i.setAttribute('aria-hidden', 'true');
+      void icon.then((u) => { if (u) i.style.backgroundImage = `url(${u})`; });
+      out.setAttribute('aria-label', label);
+      out.value = '0';
+      row.append(i, out);
+      return row;
+    };
+    foot.append(this.trash, field(this.penya, 'Penya', themeImage('WndInventory.tga'), 'penya'),
+      this.sortBtn, field(this.chips, 'Red Chip', itemIcon('Itm_ChpRed.dds'), 'chip'));
 
-    b.append(equip, this.search, this.grid, money);
+    b.append(equip, this.search, this.grid, foot);
     this.onResize = () => this.layoutGrid();
     this.renderChecks();
     this.bindDrag(b);
@@ -277,8 +305,9 @@ export class InventoryWindow extends GameWindow {
   }
 
   /** estado vindo do servidor */
-  setState(gold: number, open: number, items: [number, number, number, number, number?, number?, number?, number[]?, number?][], defs: Record<number, InvDef>) {
+  setState(gold: number, open: number, items: [number, number, number, number, number?, number?, number?, number[]?, number?][], defs: Record<number, InvDef>, chips = 0) {
     this.penya.value = gold.toLocaleString('pt-BR');
+    this.chips.value = chips.toLocaleString('pt-BR');
     for (const d of Object.values(defs)) this.defs.set(d.id, d);
     this.items.clear();
     for (const [c, s, id, n, u = 0, e = 0, el = 0, p, x] of items) this.items.set(keyOf(c, s), { c, s, id, n, u, e, el, ...(p?.length ? { p } : {}), ...(x ? { x } : {}) });
@@ -292,7 +321,56 @@ export class InventoryWindow extends GameWindow {
     this.renderEquip();
     this.markPierce();
     this.refreshTip();
+    // o item da caixinha da lixeira sumiu ou mudou: fecha a pergunta
+    if (this.ask) { const s = Number(this.ask.dataset.s), it = this.items.get(keyOf(BAG, s)); if (!it || it.id !== Number(this.ask.dataset.id)) this.closeAsk(); }
   }
+
+  // ---------- lixeira ----------
+  /** pergunta antes de apagar o item do espaço `slot` da bolsa (pilha: quantos) — não volta atrás */
+  private askDiscard(slot: number) {
+    const it = this.items.get(keyOf(BAG, slot)), d = it && this.defs.get(it.id);
+    if (!it || !d) return;
+    this.closeAsk();
+    hideItemTip();
+    const box = document.createElement('div');
+    box.className = 'inv-ask';
+    box.setAttribute('role', 'alertdialog');
+    box.dataset.s = String(slot);
+    box.dataset.id = String(it.id);
+    const name = `${d.name}${it.u ? ` +${it.u}` : ''}`;
+    const msg = document.createElement('p');
+    msg.textContent = it.n > 1 ? `Apagar quantos ${name}? Itens apagados não voltam.` : `Apagar ${name}? O item apagado não volta.`;
+    box.setAttribute('aria-label', msg.textContent);
+    const qty = document.createElement('input');
+    qty.type = 'number'; qty.min = '1'; qty.max = String(it.n); qty.value = String(it.n);
+    qty.className = 'gm-in num';
+    qty.setAttribute('aria-label', 'Quantidade');
+    qty.hidden = it.n <= 1;
+    const ok = document.createElement('button');
+    ok.type = 'button'; ok.className = 'gm-btn danger'; ok.textContent = 'Apagar';
+    const cancel = document.createElement('button');
+    cancel.type = 'button'; cancel.className = 'gm-btn'; cancel.textContent = 'Cancelar';
+    const confirm = () => {
+      const n = Math.max(1, Math.min(it.n, Math.floor(Number(qty.value) || 0)));
+      this.closeAsk();
+      this.onDiscard(slot, n);
+    };
+    ok.addEventListener('click', confirm);
+    cancel.addEventListener('click', () => this.closeAsk());
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.closeAsk(); }
+      else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); confirm(); }
+    });
+    const row = document.createElement('div');
+    row.append(qty, ok, cancel);
+    box.append(msg, row);
+    this.body.appendChild(box);
+    this.ask = box;
+    (it.n > 1 ? qty : cancel).focus();
+    if (it.n > 1) qty.select();
+  }
+
+  private closeAsk() { this.ask?.remove(); this.ask = null; }
 
   /**
    * O item sob o mouse mudou (carta espetada, enchant, troca…): redesenha a dica dele na hora. Sem isso a dica só voltava
@@ -572,7 +650,15 @@ export class InventoryWindow extends GameWindow {
       el.classList.add('dragging');
     });
     root.addEventListener('dragend', (e) => { at(e.target)?.classList.remove('dragging'); from = null; clearDrop(); });
+    const trashAt = (t: EventTarget | null) => (t as HTMLElement | null)?.closest('.inv-trash') ?? null;
     root.addEventListener('dragover', (e) => {
+      // lixeira: aceita item da bolsa (o equipado precisa sair antes)
+      if (from && trashAt(e.target)) {
+        e.preventDefault();
+        e.dataTransfer!.dropEffect = from[0] === BAG ? 'move' : 'none';
+        if (!this.trash.classList.contains('drop')) { clearDrop(); this.trash.classList.add('drop'); }
+        return;
+      }
       const el = at(e.target);
       if (!from || !el) return;
       e.preventDefault();
@@ -583,6 +669,11 @@ export class InventoryWindow extends GameWindow {
       const el = at(e.target);
       e.preventDefault();
       clearDrop();
+      if (from && trashAt(e.target)) {
+        if (from[0] === BAG) this.askDiscard(from[1]);
+        else this.onNotice('Tire o item antes de apagar: só itens da bolsa vão para a lixeira.');
+        return;
+      }
       if (!from || !el) return;
       const to: [number, number] = [Number(el.dataset.c), Number(el.dataset.s)];
       if (to[0] !== from[0] || to[1] !== from[1]) this.onMove(from, to);

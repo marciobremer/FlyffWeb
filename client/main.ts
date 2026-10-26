@@ -568,6 +568,8 @@ inventory.onUse = (c, s) => {
 };
 inventory.onPierce = (card, target) => { if (!net.pierce(card, target)) { chat.system('Sem conexão com o servidor.'); inventory.cancelPierce(); } };
 inventory.onNotice = (text) => chat.system(text);
+inventory.onDiscard = (s, n) => { if (!net.invDrop(s, n)) chat.system('Sem conexão com o servidor.'); };
+inventory.onSort = () => { if (!net.invSort()) chat.system('Sem conexão com o servidor.'); };
 net.onPierced = (ok, s) => {
   inventory.pierced(ok, s);
   // deu certo: som e efeito de sucesso no personagem (CItemUpgrade::OnPiercing: SND_INF_UPGRADESUCCESS e XI_INT_SUCCESS)
@@ -635,7 +637,7 @@ function rideToggle(id: number): boolean {
 }
 net.onInvError = (error) => chat.system(error);
 net.onInv = (m) => {
-  inventory.setState(m.gold, m.bag, m.items, m.defs);
+  inventory.setState(m.gold, m.bag, m.items, m.defs, m.chips ?? 0);
   // prancha/vassoura equipada (PARTS_RIDE = 13): velocidade e giro dela no voo
   const ride = m.items.find(([c, s]) => c === 1 && s === 13);
   view.player?.setFlyParams(ride ? m.defs[ride[2]]?.fly ?? null : null);

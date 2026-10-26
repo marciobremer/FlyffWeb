@@ -40,6 +40,8 @@ import type { MoverProp } from './world';
  *   { t: 'pick', id }                               pega o item `id` do chão (perto, dono ou depois de 30 s)
  *   { t: 'gmItems', q, k, g }                       painel de GM: busca no catálogo de itens (só contas GM); g = raridade (dwItemGrade)
  *   { t: 'invUse', c, s }                           duplo clique: equipa (da bolsa) ou desequipa (para a bolsa)
+ *   { t: 'invDrop', s, n }                          lixeira: apaga `n` do item do espaço `s` da bolsa (não volta)
+ *   { t: 'invSort' }                                organiza a bolsa por tipo e junta as pilhas
  *   { t: 'pierce', card, target }                   piercing: espeta a carta do espaço `card` da bolsa na suit do espaço `target` (também
  *                                                   da bolsa, não equipada) — resposta { t: 'pierced', ok, s } e o inventário novo
  *   { t: 'npcMenu', key } / { t: 'npcBuff', key }     perto do NPC: o que ele oferece (loja, buffs) / receber os buffs (Buff Pang)
@@ -1749,8 +1751,24 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         castSkill(c, msg.id as number, msg.target as number);
       } else if (msg.t === 'shopOpen' && c.player && typeof msg.key === 'string') {
         shopOpen(c, msg.key.slice(0, 40));
-      } else if (c.trade && (msg.t === 'invMove' || msg.t === 'invUse' || msg.t === 'sell')) {
+      } else if (c.trade && (msg.t === 'invMove' || msg.t === 'invUse' || msg.t === 'sell' || msg.t === 'invDrop' || msg.t === 'invSort')) {
         send(ws, { t: 'invError', error: 'Termine ou cancele a troca antes de mexer no inventário.' });
+      } else if (msg.t === 'invDrop' && c.player && inventory && Number.isInteger(msg.s) && Number.isInteger(msg.n)) {
+        // lixeira: apaga o item (ou parte da pilha) do espaço `s` da bolsa
+        const player = c.player, inv = inventory;
+        c.invQueue = c.invQueue.then(async () => {
+          const r = await inv.discard(player.id, msg.s as number, msg.n as number);
+          if ('error' in r) { send(ws, { t: 'invError', error: r.error }); return; }
+          const name = inv.catalog.byId.get(r.item.id)?.name ?? `item ${r.item.id}`;
+          console.log(`[lixeira] ${player.name} (#${player.id}) apagou ${r.n}× ${name}${r.item.u ? ` +${r.item.u}` : ''}`);
+          send(ws, inv.view(await inv.state(player.id)));
+          send(ws, { t: 'chat', id: 0, name: '', text: `${r.n > 1 ? `${r.n}× ` : ''}${name} apagado.` });
+        }).catch((e) => { console.error('realtime: lixeira', e); send(ws, { t: 'invError', error: 'Servidor indisponível.' }); });
+      } else if (msg.t === 'invSort' && c.player && inventory) {
+        // organizar a bolsa por tipo (botão das duas setas)
+        const player = c.player, inv = inventory;
+        c.invQueue = c.invQueue.then(async () => { send(ws, inv.view(await inv.sortBag(player.id))); })
+          .catch((e) => { console.error('realtime: organizar bolsa', e); send(ws, { t: 'invError', error: 'Servidor indisponível.' }); });
       } else if (msg.t === 'buy' && c.player && typeof msg.key === 'string' && Number.isInteger(msg.id) && Number.isInteger(msg.n)) {
         shopBuy(c, msg.key.slice(0, 40), msg.id as number, msg.n as number);
       } else if (msg.t === 'sell' && c.player && typeof msg.key === 'string' && Number.isInteger(msg.s) && Number.isInteger(msg.n)) {

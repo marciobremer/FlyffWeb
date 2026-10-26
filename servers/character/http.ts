@@ -46,7 +46,7 @@ export async function charactersOf(accountId: number): Promise<CharacterInfo[]> 
       id: Number(c.id), slot: c.slot, name: c.name, sex: c.sex, hairMesh: c.hair_mesh, hairColor: c.hair_color, headMesh: c.head_mesh,
       job: c.job, level: c.level, worldId: c.world_id, pos: [c.pos_x, c.pos_y, c.pos_z] as [number, number, number], angle: c.angle,
       hp: c.hp, mp: c.mp, fp: c.fp, exp: Number(c.exp),
-      equip, mt: inventory ? inventory.combatMotion({ gold: 0, items }, c.job) : 0,
+      equip, mt: inventory ? inventory.combatMotion({ gold: 0, chips: 0, items }, c.job) : 0,
     };
   });
 }

@@ -783,3 +783,16 @@ Comparado com `original/Source/Source/_Common/MoverAttack.cpp`, `MoverParam.cpp`
 - Falta: testar com latência real (soluços > 3 s puxam de volta quem joga limpo); punir reincidente (kick depois de N puxões?);
   conferir o teto do voo com o `fFlightSpeed` das pranchas mais rápidas; checar parede/colisão (teleporte através de obstáculos curtos
   continua passando, só a velocidade é conferida).
+
+## 39. Rodapé do inventário: lixeira, organizar e Red Chip (2026-10-26)
+- Rodapé como o do inventário das versões novas (ícones `WndInventoryGarbage.dds` e `WndInventoryAlign.dds` de `Data/Theme/Default`):
+  lixeira e organizar à esquerda, penya e Red Chip à direita (`client/ui.ts`, `.inv-foot`).
+- **Lixeira**: arrastar um item da bolsa até ela abre a caixinha "Apagar …?" (pilha: com a quantidade); confirmar manda
+  `{ t: 'invDrop', s, n }` e o servidor (`Inventory.discard`) apaga e registra `[lixeira] nome (#id) apagou N× item` no log.
+  Equipado não vai (avisa para tirar antes). Não volta atrás.
+- **Organizar** (duas setas): `{ t: 'invSort' }` → `Inventory.sortBag`: junta pilhas soltas do mesmo item comum e ordena por
+  dwItemKind1/2/3, nível e item (enchant/elemento maior primeiro), sem buracos.
+- **Red Chip** (II_CHP_RED, 26460) virou contador do personagem, como o penya: coluna `characters.red_chips` (migração 018, que
+  também passou os chips que estavam na bolsa para o contador). `Inventory.add` desvia o chip para o contador (drop, compra, GM);
+  vai no `inv` como `chips`. Só o red chip: o blue chip continua item.
+- Falta: loja que cobra red chip (VENDOR_TYPE_CHIP) ainda não existe — quando existir, cobrar do contador; trade de red chip.

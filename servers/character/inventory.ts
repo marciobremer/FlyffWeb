@@ -24,6 +24,8 @@ export const BAG = 0, EQUIP = 1;
 /** espera antes de gravar uma mudança (agrupa ações em sequência) */
 const FLUSH_DELAY_MS = 2000;
 const GOLD_MAX = 2_100_000_000;
+/** II_CHP_RED: entra no contador de red chips em vez de ocupar a bolsa */
+export const RED_CHIP = 26460;
 
 /** item num espaço; u = enchant (+0–10), e = elemento (0 nenhum, 1 fogo, 2 água, 3 elétrico, 4 vento, 5 terra), el = nível do elemento */
 export interface InvItem { c: number; s: number; id: number; n: number; u: number; e: number; el: number; /** piercing: um item de carta por espaço aberto (0 = vazio) */ p?: number[]; /** item de tempo ativado: vale até (ms) */ x?: number }
@@ -31,7 +33,7 @@ export interface InvItem { c: number; s: number; id: number; n: number; u: numbe
 export interface ItemUpgrade { u?: number; e?: number; el?: number; /** espaços de piercing abertos (suit: até 4) */ p?: number }
 const plain = (i: { u: number; e: number; el: number; p?: number[] }) => !i.u && !i.e && !i.el && !i.p?.length;
 const sameUpgrade = (a: InvItem, b: InvItem) => a.u === b.u && a.e === b.e && a.el === b.el && (a.p ?? []).join() === (b.p ?? []).join();
-export interface InvState { gold: number; items: InvItem[] }
+export interface InvState { gold: number; /** Red Chip (II_CHP_RED): contador como o penya, fora da bolsa */ chips: number; items: InvItem[] }
 /** o que um lado põe na janela de trade: espaços da bolsa (com quanto de cada pilha) e penya */
 export interface TradeOffer { items: { s: number; n: number; /** item que estava no espaço ao oferecer */ id: number }[]; gold: number }
 export const TRADE_SLOTS = 25;
@@ -55,10 +57,10 @@ const STARTER = {
 };
 
 /** o que mudou desde a última gravação */
-interface Pending { slots: Set<string>; gold: number }
+interface Pending { slots: Set<string>; gold: number; chips: number }
 const key = (c: number, s: number) => `${c}:${s}`;
 /** ferramentas que as regras recebem: marcar slot alterado e mexer no penya */
-interface Ctx { state: InvState; touch(c: number, s: number): void; gold(delta: number): void }
+interface Ctx { state: InvState; touch(c: number, s: number): void; gold(delta: number): void; chips(delta: number): void }
 
 /** inventário de um personagem online */
 interface Cached { state: InvState; pending: Pending; timer: NodeJS.Timeout | null; writing: Promise<void> }
@@ -73,24 +75,24 @@ export class Inventory {
   // ---------- leitura/gravação ----------
   private async read(db: pg.PoolClient | null, characterId: number, lock = false): Promise<InvState> {
     const q = (text: string, params?: unknown[]) => (db ? db.query(text, params) : query(text, params));
-    const g = await q(`SELECT gold FROM characters WHERE id = $1${lock ? ' FOR UPDATE' : ''}`, [characterId]);
+    const g = await q(`SELECT gold, red_chips FROM characters WHERE id = $1${lock ? ' FOR UPDATE' : ''}`, [characterId]);
     const r = await q(
       `SELECT container, slot, item_id, count, upgrade, element, element_level, piercing, (extract(epoch from expires_at) * 1000)::float8 AS expires FROM character_items WHERE character_id = $1 ORDER BY container, slot${lock ? ' FOR UPDATE' : ''}`, [characterId]);
-    return { gold: Number(g.rows[0]?.gold ?? 0), items: r.rows.map((x: { container: number; slot: number; item_id: number; count: number; upgrade: number; element: number; element_level: number; piercing: unknown; expires: number | null }) => {
+    return { gold: Number(g.rows[0]?.gold ?? 0), chips: Number(g.rows[0]?.red_chips ?? 0), items: r.rows.map((x: { container: number; slot: number; item_id: number; count: number; upgrade: number; element: number; element_level: number; piercing: unknown; expires: number | null }) => {
       const p = Array.isArray(x.piercing) ? x.piercing.map((v) => Number(v) || 0).slice(0, MAX_PIERCING) : [];
       return { c: x.container, s: x.slot, id: x.item_id, n: x.count, u: x.upgrade, e: x.element, el: x.element_level, ...(p.length ? { p } : {}), ...(x.expires ? { x: Math.round(x.expires) } : {}) };
     }) };
   }
 
-  /** grava a diferença (slots alterados + incremento de penya) num único comando */
-  private async write(db: { query: (text: string, params?: unknown[]) => Promise<unknown> }, characterId: number, st: InvState, slots: Set<string>, goldDelta: number) {
+  /** grava a diferença (slots alterados + incremento de penya e de red chips) num único comando */
+  private async write(db: { query: (text: string, params?: unknown[]) => Promise<unknown> }, characterId: number, st: InvState, slots: Set<string>, goldDelta: number, chipsDelta = 0) {
     const ups: InvItem[] = [], dels: [number, number][] = [];
     for (const k of slots) {
       const [c, s] = k.split(':').map(Number);
       const it = st.items.find((i) => i.c === c && i.s === s);
       if (it) ups.push(it); else dels.push([c, s]);
     }
-    if (!ups.length && !dels.length && !goldDelta) return;
+    if (!ups.length && !dels.length && !goldDelta && !chipsDelta) return;
     await db.query(
       `WITH ups AS (
          INSERT INTO character_items (character_id, container, slot, item_id, count, upgrade, element, element_level, piercing, expires_at)
@@ -102,9 +104,10 @@ export class Inventory {
        dels AS (
          DELETE FROM character_items ci USING unnest($9::int[], $10::int[]) AS d(c, s)
          WHERE ci.character_id = $1 AND ci.container = d.c AND ci.slot = d.s RETURNING 1)
-       UPDATE characters SET gold = LEAST(GREATEST(gold + $11, 0), ${GOLD_MAX}), updated_at = now() WHERE id = $1 AND $11 <> 0`,
+       UPDATE characters SET gold = LEAST(GREATEST(gold + $11, 0), ${GOLD_MAX}), red_chips = GREATEST(red_chips + $14, 0), updated_at = now()
+        WHERE id = $1 AND ($11 <> 0 OR $14 <> 0)`,
       [characterId, ups.map((i) => i.c), ups.map((i) => i.s), ups.map((i) => i.id), ups.map((i) => i.n), ups.map((i) => i.u), ups.map((i) => i.e), ups.map((i) => i.el),
-        dels.map((d) => d[0]), dels.map((d) => d[1]), goldDelta, ups.map((i) => JSON.stringify(i.p ?? [])), ups.map((i) => i.x ?? null)]);
+        dels.map((d) => d[0]), dels.map((d) => d[1]), goldDelta, ups.map((i) => JSON.stringify(i.p ?? [])), ups.map((i) => i.x ?? null), chipsDelta]);
   }
 
   /**
@@ -118,6 +121,7 @@ export class Inventory {
         state: cached.state,
         touch: (c, s) => cached.pending.slots.add(key(c, s)),
         gold: (d) => { cached.state.gold = Math.min(GOLD_MAX, Math.max(0, cached.state.gold + d)); cached.pending.gold += d; },
+        chips: (d) => { cached.state.chips = Math.max(0, cached.state.chips + d); cached.pending.chips += d; },
       });
       this.schedule(characterId, cached);
       return r;
@@ -125,9 +129,10 @@ export class Inventory {
     return transaction(async (db) => {
       const st = await this.read(db, characterId, true);
       const slots = new Set<string>();
-      let delta = 0;
-      const r = fn({ state: st, touch: (c, s) => slots.add(key(c, s)), gold: (d) => { st.gold = Math.min(GOLD_MAX, Math.max(0, st.gold + d)); delta += d; } });
-      await this.write(db, characterId, st, slots, delta);
+      let delta = 0, chips = 0;
+      const r = fn({ state: st, touch: (c, s) => slots.add(key(c, s)), gold: (d) => { st.gold = Math.min(GOLD_MAX, Math.max(0, st.gold + d)); delta += d; },
+        chips: (d) => { st.chips = Math.max(0, st.chips + d); chips += d; } });
+      await this.write(db, characterId, st, slots, delta, chips);
       return r;
     });
   }
@@ -145,14 +150,15 @@ export class Inventory {
     if (c.timer) { clearTimeout(c.timer); c.timer = null; }
     const run = async () => {
       await c.writing; // uma gravação por vez, na ordem
-      if (!c.pending.slots.size && !c.pending.gold) return;
-      const slots = c.pending.slots, gold = c.pending.gold;
-      c.pending = { slots: new Set(), gold: 0 };
+      if (!c.pending.slots.size && !c.pending.gold && !c.pending.chips) return;
+      const slots = c.pending.slots, gold = c.pending.gold, chips = c.pending.chips;
+      c.pending = { slots: new Set(), gold: 0, chips: 0 };
       try {
-        await this.write({ query }, characterId, c.state, slots, gold);
+        await this.write({ query }, characterId, c.state, slots, gold, chips);
       } catch (e) {
         for (const k of slots) c.pending.slots.add(k);
         c.pending.gold += gold;
+        c.pending.chips += chips;
         console.error('inventário: falha ao gravar, tentando de novo', characterId, (e as Error).message);
         this.schedule(characterId, c);
       }
@@ -167,7 +173,7 @@ export class Inventory {
   /** quantos personagens estão na memória e quantas mudanças esperam gravação (para o painel) */
   stats() {
     let pending = 0;
-    for (const c of this.cache.values()) pending += c.pending.slots.size + (c.pending.gold ? 1 : 0);
+    for (const c of this.cache.values()) pending += c.pending.slots.size + (c.pending.gold ? 1 : 0) + (c.pending.chips ? 1 : 0);
     return { cached: this.cache.size, pending };
   }
 
@@ -178,7 +184,7 @@ export class Inventory {
     const old = this.cache.get(characterId);
     if (old) await this.flush(characterId);
     const state = await this.read(null, characterId);
-    this.cache.set(characterId, { state, pending: { slots: new Set(), gold: 0 }, timer: null, writing: Promise.resolve() });
+    this.cache.set(characterId, { state, pending: { slots: new Set(), gold: 0, chips: 0 }, timer: null, writing: Promise.resolve() });
     return state;
   }
 
@@ -195,9 +201,10 @@ export class Inventory {
     for (;;) {
       await this.flush(characterId);
       const fresh = await this.read(null, characterId);
-      if (c.pending.slots.size || c.pending.gold) continue; // mudou durante a leitura: grava de novo e relê
+      if (c.pending.slots.size || c.pending.gold || c.pending.chips) continue; // mudou durante a leitura: grava de novo e relê
       c.state.items = fresh.items;
       c.state.gold = fresh.gold;
+      c.state.chips = fresh.chips;
       return c.state;
     }
   }
@@ -418,6 +425,56 @@ export class Inventory {
   }
 
   /**
+   * Lixeira: apaga `n` do item no espaço `slot` da bolsa (equipado não: tire antes). Devolve o item apagado (cópia) e quanto,
+   * ou o erro. Não volta atrás.
+   */
+  discard(characterId: number, slot: number, n: number) {
+    return this.mutate(characterId, (x): { item: InvItem; n: number } | { error: string } => {
+      const it = x.state.items.find((i) => i.c === BAG && i.s === slot);
+      if (!it) return { error: 'Não há item nesse espaço.' };
+      const k = Math.min(it.n, Math.floor(n));
+      if (!(k >= 1)) return { error: 'Quantidade inválida.' };
+      const snapshot = { ...it, ...(it.p ? { p: [...it.p] } : {}) };
+      if (k < it.n) it.n -= k; else x.state.items.splice(x.state.items.indexOf(it), 1);
+      x.touch(BAG, slot);
+      return { item: snapshot, n: k };
+    });
+  }
+
+  /**
+   * Organiza a bolsa por tipo (dwItemKind1/2/3, nível, item; enchant e elemento do maior para o menor) e junta as pilhas
+   * soltas do mesmo item comum até o máximo da pilha. Os itens vão para os primeiros espaços, sem buracos.
+   */
+  sortBag(characterId: number) {
+    return this.mutate(characterId, (x) => {
+      const bag = x.state.items.filter((i) => i.c === BAG), rest = x.state.items.filter((i) => i.c !== BAG);
+      const def = (i: InvItem) => this.catalog.byId.get(i.id);
+      // junta pilhas: itens comuns (sem enchant, piercing ou tempo) do mesmo id
+      const merged: InvItem[] = [];
+      for (const it of bag) {
+        const max = def(it)?.packMax ?? 1;
+        if (plain(it) && !it.x && max > 1) {
+          let left = it.n;
+          for (const m of merged) {
+            if (left <= 0) break;
+            if (m.id !== it.id || !plain(m) || m.x || m.n >= max) continue;
+            const k = Math.min(left, max - m.n);
+            m.n += k; left -= k;
+          }
+          if (left > 0) merged.push({ ...it, n: left });
+        } else merged.push(it);
+      }
+      const rank = (i: InvItem) => { const d = def(i); return [d?.kind1 ?? 99, d?.kind2 ?? 99, d?.kind3 ?? 999, d?.level ?? 0, i.id, -i.u, -i.e, -i.el, -i.n]; };
+      merged.sort((a, b) => { const ra = rank(a), rb = rank(b); for (let k = 0; k < ra.length; k++) if (ra[k] !== rb[k]) return ra[k] - rb[k]; return a.s - b.s; });
+      const touched = new Set(bag.map((i) => i.s));
+      merged.forEach((it, s) => { it.s = s; touched.add(s); });
+      x.state.items = [...rest, ...merged];
+      for (const s of touched) x.touch(BAG, s); // grava os espaços novos e apaga os que ficaram vazios
+      return x.state;
+    });
+  }
+
+  /**
    * Coloca itens na bolsa (empilha onde der, depois slots livres); devolve quantos não couberam.
    * Com enchant/elemento (só equipamento) cada item vai num slot, sem empilhar.
    */
@@ -432,6 +489,8 @@ export class Inventory {
     const pack = plain(u) ? d.packMax : 1;
     const online = this.cache.has(characterId);
     const left = await this.mutate(characterId, (x) => {
+      // Red Chip: vai para o contador (campo embaixo do inventário), não para a bolsa
+      if (itemId === RED_CHIP) { x.chips(count); return 0; }
       let left = count;
       for (const i of x.state.items) {
         if (left <= 0 || !plain(u)) break;
@@ -570,7 +629,7 @@ export class Inventory {
       // cartas espetadas: a dica do item mostra o nome e o bônus de cada uma
       for (const card of i.p ?? []) { const cd = card ? this.catalog.byId.get(card) : undefined; if (cd && !defs[card]) defs[card] = this.catalog.viewFull(cd); }
     }
-    return { t: 'inv', gold: st.gold, bag: BAG_SLOTS, items: st.items.map((i) => (i.x ? [i.c, i.s, i.id, i.n, i.u, i.e, i.el, i.p ?? [], i.x] : i.p?.length ? [i.c, i.s, i.id, i.n, i.u, i.e, i.el, i.p] : [i.c, i.s, i.id, i.n, i.u, i.e, i.el])), defs };
+    return { t: 'inv', gold: st.gold, chips: st.chips, bag: BAG_SLOTS, items: st.items.map((i) => (i.x ? [i.c, i.s, i.id, i.n, i.u, i.e, i.el, i.p ?? [], i.x] : i.p?.length ? [i.c, i.s, i.id, i.n, i.u, i.e, i.el, i.p] : [i.c, i.s, i.id, i.n, i.u, i.e, i.el])), defs };
   }
 
   /** símbolos II_* equipados que mudam o visual (para montar o modelo nos clientes): cash por cima, partes escondidas fora, enchant junto (shared/look.ts) */
