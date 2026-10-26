@@ -28,6 +28,11 @@ export function startWorld(server: http.Server, world = WORLD, extra: Pick<Realt
   const items = new ItemCatalog(RES_DIR).load();
   console.log(`Itens: ${items.byId.size} no catálogo`);
   const inventory = new Inventory(items);
+  const combat = new CombatRules(RES_DIR, items);
+  // velocidade base dos personagens: fSpeed do propMover de MI_MALE / MI_FEMALE
+  const fs = (sym: string) => { const id = items.defines.get(sym); return id === undefined ? 0 : sw.moverSpeed.get(id) ?? 0; };
+  combat.playerFSpeed = [fs('MI_MALE') || 0.1, fs('MI_FEMALE') || fs('MI_MALE') || 0.1];
+  console.log(`Velocidade dos personagens (fSpeed): ${combat.playerFSpeed.join(' / ')}`);
   setCharacterInventory(inventory); // a lista de personagens (login) leva o equipamento para a prévia da seleção
   // Azria e os outros mapas extras: mobs e NPCs próprios (EXTRA_WORLDS=WdKebaras,… ou vazio para nenhum)
   const extraWorlds: WorldRuntime[] = [];
@@ -43,7 +48,7 @@ export function startWorld(server: http.Server, world = WORLD, extra: Pick<Realt
   }
   return attachRealtime(server, {
     mainWorld: world, worlds: extraWorlds,
-    mobs, inventory, combat: new CombatRules(RES_DIR, items), drops: new DropRules(RES_DIR, items),
+    mobs, inventory, combat, drops: new DropRules(RES_DIR, items),
     shops: new ShopCatalog(RES_DIR, items, world), skills: new SkillCatalog(RES_DIR, items), ...extra,
   });
 }

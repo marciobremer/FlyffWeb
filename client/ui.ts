@@ -1,6 +1,6 @@
 import { itemIcon, skillIcon, themeImage, themeTiles } from '../shared/tga';
 import type { ItemView } from './net';
-import { hideItemTip, moveItemTip, showItemTip } from './itemtip';
+import { hideItemTip, moveItemTip, setTipLookup, showItemTip } from './itemtip';
 import { InventoryPreview } from './invpreview';
 import { hideBit, type LookPiece } from '../shared/look';
 
@@ -164,6 +164,10 @@ export const ELEMENT_NAMES = ['', 'Fogo', 'Água', 'Elétrico', 'Vento', 'Terra'
 export interface InvDef extends ItemView {}
 
 const BAG = 0, EQUIPPED = 1;
+/** PARTS_UPPER_BODY: a suit, única peça com piercing */
+const SUIT_PART = 2;
+/** martelinho do modo de piercing (cabo de madeira, cabeça de ferro); a ponta de baixo da cabeça fica no ponto do mouse */
+const HAMMER_SVG = '<svg viewBox="0 0 32 32" width="32" height="32"><g transform="rotate(-35 16 16)"><rect x="14.5" y="10" width="3.2" height="20" rx="1.4" fill="#9a6a3a" stroke="#4a2e14" stroke-width="1"/><rect x="7" y="3" width="18" height="8.5" rx="1.6" fill="#c9ced6" stroke="#3b4048" stroke-width="1.2"/><rect x="8.4" y="4.2" width="15.2" height="2.2" rx="1" fill="#f2f5f9" opacity=".8"/></g></svg>';
 const keyOf = (c: number, s: number) => `${c}:${s}`;
 
 export class InventoryWindow extends GameWindow {
@@ -183,6 +187,13 @@ export class InventoryWindow extends GameWindow {
   onUse: (c: number, s: number) => void = () => {};
   /** caixinhas de mostrar/esconder (capacete, capa, máscara, cash): máscara de bits de shared/look.ts */
   onHide: (mask: number) => void = () => {};
+  /** piercing: espetar a carta do espaço `card` da bolsa na suit do espaço `target` / aviso para o chat */
+  onPierce: (card: number, target: number) => void = () => {};
+  onNotice: (text: string) => void = () => {};
+  /** carta escolhida (duplo clique) esperando o clique na suit; o martelinho segue o mouse enquanto isso */
+  private pierceCard: number | null = null;
+  private hammer: HTMLElement | null = null;
+  private pierceWaiting = false;
   /** personagem 3D no centro (client/invpreview.ts) */
   readonly preview = new InventoryPreview();
   private hideMask = 0;
@@ -190,6 +201,7 @@ export class InventoryWindow extends GameWindow {
 
   constructor(parent: HTMLElement) {
     super(parent, { id: 'invWnd', title: 'Inventário', store: 'flyff.wnd.inventory3d', initial: { x: -12, y: 110, w: 312, h: 580 }, min: { w: 310, h: 470 } });
+    setTipLookup((id) => this.defs.get(id));
     const b = this.body;
     b.classList.add('inv');
 
@@ -257,12 +269,15 @@ export class InventoryWindow extends GameWindow {
     for (const d of Object.values(defs)) this.defs.set(d.id, d);
     this.items.clear();
     for (const [c, s, id, n, u = 0, e = 0, el = 0, p, x] of items) this.items.set(keyOf(c, s), { c, s, id, n, u, e, el, ...(p?.length ? { p } : {}), ...(x ? { x } : {}) });
+    // a carta escolhida sumiu (gasta, movida, trocada): sai do modo de piercing
+    if (this.pierceCard !== null && !this.pierceWaiting) { const it = this.items.get(keyOf(BAG, this.pierceCard)); if (!it || !this.defs.get(it.id)?.card) this.cancelPierce(); }
     // itens de tempo: repinta de minuto em minuto (o visto some e o item fica cinza quando acaba)
     clearInterval(this.timedTimer);
     if ([...this.items.values()].some((i) => i.x)) this.timedTimer = window.setInterval(() => { this.renderBag(); }, 60_000);
     if (open !== this.open) { this.open = open; this.grid.replaceChildren(); this.layoutGrid(); }
     else this.renderBag();
     this.renderEquip();
+    this.markPierce();
   }
 
   clear() { this.items.clear(); this.penya.value = '0'; this.renderBag(); this.renderEquip(); }
@@ -404,12 +419,98 @@ export class InventoryWindow extends GameWindow {
     }
   }
 
+  // ---------- piercing (cartas na suit) ----------
+  /** está escolhendo onde aplicar uma carta? */
+  get piercing() { return this.pierceCard !== null; }
+
+  /**
+   * Duplo clique numa carta: o cursor vira um martelinho (como o modo de upgrade do CWndInventory) e o próximo clique numa
+   * suit da bolsa aplica a carta. Clique fora, botão direito ou Esc cancelam. As suits que ainda têm furo vazio piscam.
+   */
+  startPierce(cardSlot: number) {
+    this.cancelPierce();
+    hideItemTip();
+    this.show();
+    this.pierceCard = cardSlot;
+    const h = document.createElement('div');
+    h.className = 'pierce-hammer';
+    h.setAttribute('aria-hidden', 'true');
+    h.innerHTML = HAMMER_SVG;
+    document.body.appendChild(h);
+    this.hammer = h;
+    document.body.classList.add('piercing');
+    addEventListener('mousemove', this.pierceMove, true);
+    addEventListener('click', this.pierceClick, true);
+    addEventListener('contextmenu', this.pierceCancel, true);
+    addEventListener('keydown', this.pierceKey, true);
+    this.markPierce();
+    this.onNotice('Clique na suit (na bolsa) onde quer aplicar a carta. Botão direito ou Esc cancela.');
+  }
+
+  cancelPierce() {
+    if (this.pierceCard === null && !this.hammer) return;
+    this.pierceCard = null;
+    this.pierceWaiting = false;
+    this.hammer?.remove();
+    this.hammer = null;
+    document.body.classList.remove('piercing');
+    removeEventListener('mousemove', this.pierceMove, true);
+    removeEventListener('click', this.pierceClick, true);
+    removeEventListener('contextmenu', this.pierceCancel, true);
+    removeEventListener('keydown', this.pierceKey, true);
+    this.markPierce();
+  }
+
+  /** resposta do servidor: martelada na suit (deu certo) e sai do modo */
+  pierced(ok: boolean, slot?: number) {
+    const h = this.hammer;
+    if (!ok || !h) { this.cancelPierce(); return; }
+    const el = slot === undefined ? null : this.grid.querySelector<HTMLElement>(`.inv-slot[data-s="${slot}"]`);
+    el?.classList.add('pierce-done');
+    h.classList.add('hit');
+    // a martelada termina e o cursor volta ao normal
+    setTimeout(() => { el?.classList.remove('pierce-done'); this.cancelPierce(); }, 520);
+  }
+
+  private pierceMove = (e: MouseEvent) => {
+    if (this.hammer) { this.hammer.style.left = `${e.clientX}px`; this.hammer.style.top = `${e.clientY}px`; }
+  };
+  private pierceCancel = (e: Event) => { e.preventDefault(); e.stopPropagation(); this.cancelPierce(); };
+  private pierceKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.cancelPierce(); } };
+  private pierceClick = (e: MouseEvent) => {
+    if (this.pierceCard === null || this.pierceWaiting) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const el = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-c][data-s]');
+    if (!el || !this.el.contains(el)) { this.cancelPierce(); return; }
+    const c = Number(el.dataset.c), s = Number(el.dataset.s);
+    if (c === EQUIPPED) { this.onNotice('A carta não pode ser aplicada na suit equipada. Tire a suit e coloque na bolsa antes.'); return; }
+    const it = this.items.get(keyOf(BAG, s)), d = it && this.defs.get(it.id);
+    if (!it || !d) return;
+    if (s === this.pierceCard) return;
+    if (d.parts !== SUIT_PART) { this.onNotice(`${d.name} não aceita cartas: só a suit tem piercing.`); return; }
+    if (!it.p?.length) { this.onNotice(`${d.name} não tem furos de piercing abertos.`); return; }
+    if (!it.p.includes(0)) { this.onNotice(`Todos os furos de ${d.name} já têm carta.`); return; }
+    this.pierceWaiting = true;
+    this.onPierce(this.pierceCard, s);
+  };
+
+  /** destaca a carta escolhida e as suits da bolsa com furo vazio */
+  private markPierce() {
+    for (const el of this.grid.querySelectorAll<HTMLElement>('.inv-slot')) {
+      const s = Number(el.dataset.s), it = this.items.get(keyOf(BAG, s)), d = it && this.defs.get(it.id);
+      el.classList.toggle('pierce-src', this.pierceCard === s);
+      el.classList.toggle('pierce-ok', this.pierceCard !== null && !!d && d.parts === SUIT_PART && !!it?.p?.includes(0));
+    }
+  }
+
   /** arrastar um item para outro espaço (bolsa ↔ bolsa ↔ equipamento) e duplo clique para equipar/desequipar */
   private bindDrag(root: HTMLElement) {
     const at = (t: EventTarget | null) => (t as HTMLElement | null)?.closest<HTMLElement>('[data-c][data-s]') ?? null;
     const clearDrop = () => root.querySelectorAll('.drop').forEach((x) => x.classList.remove('drop'));
     let from: [number, number] | null = null;
     root.addEventListener('dragstart', (e) => {
+      if (this.piercing) { e.preventDefault(); return; } // com o martelinho, clicar escolhe a suit (não arrasta)
       const el = at(e.target);
       if (!el?.classList.contains('has')) { e.preventDefault(); return; }
       from = [Number(el.dataset.c), Number(el.dataset.s)];
@@ -439,6 +540,7 @@ export class InventoryWindow extends GameWindow {
       if (to[0] !== from[0] || to[1] !== from[1]) this.onMove(from, to);
     });
     root.addEventListener('dblclick', (e) => {
+      if (this.piercing) return;
       const el = at(e.target);
       if (el?.classList.contains('has')) this.onUse(Number(el.dataset.c), Number(el.dataset.s));
     });

@@ -112,6 +112,13 @@ export class ItemCatalog {
   /** conjuntos (SetItem) e, para cada item que faz parte de um, o conjunto dele */
   readonly sets: SetDef[] = [];
   readonly setByItem = new Map<number, SetDef>();
+  /**
+   * Bônus das joias por enchant (CAccessoryProperty, accessory.inc): item → enchant → DST_* e valor. Vale no lugar do
+   * enchant das armas/armaduras: um anel +5 soma os DST da linha 5 (não acumula com as linhas abaixo).
+   */
+  readonly accessory = new Map<number, Map<number, [number, number][]>>();
+  /** IK3_SOCKETCARD: carta que vai nos furos de piercing da suit */
+  suitCardKind = -1;
 
   /** `useNames`: aplica a tabela de nomes por símbolo (servers/common/names.ts); false = só os textos do Resource */
   constructor(readonly resDir: string, private useNames = true) {}
@@ -187,6 +194,8 @@ export class ItemCatalog {
       this.bySymbol.set(symbol, def);
     }
     this.loadSets();
+    this.loadAccessory();
+    this.suitCardKind = defines.get('IK3_SOCKETCARD') ?? -1;
     const table = this.useNames ? nameTable() : null;
     if (table) {
       for (const d of this.byId.values()) { const n = table.items[d.symbol]; if (n) d.name = n; }
@@ -232,6 +241,51 @@ export class ItemCatalog {
   }
 
   /**
+   * accessory.inc (CAccessoryProperty::LoadScript): `Probability { … }` (chance de enchant, não usada aqui) e
+   * `Accessory { II_* { <enchant> { DST_* valor DST_* valor … } … } … }`.
+   */
+  private loadAccessory() {
+    const text = this.read('accessory.inc') ?? this.read('Accessory.inc');
+    if (!text) { console.warn('Itens: accessory.inc não encontrado (joias sem bônus de enchant)'); return; }
+    const tok: string[] = text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ').match(/[{}]|[^\s{}]+/g) ?? [];
+    const D = (s: string) => (/^-?\d+$/.test(s) ? Number(s) : this.defines.get(s));
+    let i = tok.indexOf('Accessory');
+    while (i >= 0 && i < tok.length) {
+      if (tok[++i] !== '{') break;
+      i++;
+      // II_* { n { DST v … } … }
+      while (i < tok.length && tok[i] !== '}') {
+        const item = D(tok[i++]);
+        if (tok[i] !== '{') break;
+        i++;
+        const levels = new Map<number, [number, number][]>();
+        while (i < tok.length && tok[i] !== '}') {
+          const lv = Number(tok[i++]);
+          if (tok[i] !== '{') break;
+          i++;
+          const dst: [number, number][] = [];
+          while (i + 1 < tok.length && tok[i] !== '}') {
+            const k = D(tok[i]), v = Number(tok[i + 1]);
+            if (k !== undefined && k > 0 && Number.isFinite(v)) dst.push([k, v]);
+            i += 2;
+          }
+          i++; // }
+          if (Number.isInteger(lv)) levels.set(lv, dst);
+        }
+        i++; // }
+        if (item !== undefined) this.accessory.set(item, levels);
+      }
+      i = tok.indexOf('Accessory', i);
+    }
+    console.log(`Itens: ${this.accessory.size} joias com bônus de enchant (accessory.inc)`);
+  }
+
+  /** bônus da joia no enchant `u` (vazio se não é joia ou não tem linha) */
+  accessoryDst(itemId: number, u: number): [number, number][] { return this.accessory.get(itemId)?.get(u) ?? []; }
+  /** carta de piercing da suit? */
+  isSuitCard(d: ItemDef) { return this.suitCardKind >= 0 && d.kind3 === this.suitCardKind; }
+
+  /**
    * Busca para o painel de GM: nome ou símbolo contendo `q` (sem diferenciar maiúsculas), filtrado por categoria
    * (weapon, armor, general…: dwItemKind1), no máximo `max`, os nomes "de verdade" primeiro e por nível.
    */
@@ -260,7 +314,8 @@ export class ItemCatalog {
 
   /** `view` + o conjunto do item (nome, peças e bônus por quantidade) — para a dica completa (inventário, loja, painel de GM) */
   viewFull(d: ItemDef) {
-    const s = this.setByItem.get(d.id);
-    return { ...ItemCatalog.view(d), ...(s ? { set: { name: s.name, pieces: s.elems.length, avail: s.avail.map((a) => [a.n, a.dst, a.adj] as [number, number, number]) } } : {}) };
+    const s = this.setByItem.get(d.id), acc = this.accessory.get(d.id);
+    return { ...ItemCatalog.view(d), ...(s ? { set: { name: s.name, pieces: s.elems.length, avail: s.avail.map((a) => [a.n, a.dst, a.adj] as [number, number, number]) } } : {}),
+      ...(acc ? { acc: Object.fromEntries(acc) } : {}), ...(this.isSuitCard(d) ? { card: 1 } : {}) };
   }
 }

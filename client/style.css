@@ -157,6 +157,20 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #14161a; col
 .inv-slot.locked::after { content: ''; position: absolute; left: 5px; top: 5px; width: 20px; height: 20px; background: var(--lock) no-repeat 0 0 / 80px 20px; } /* ButtLock.tga: 4 quadros 20×20 */
 /* itens: ícone 32×32 de Data/Item, quantidade no canto, busca apaga os que não batem, destino do arrasto destacado */
 .inv-slot.has, .inv-eq.has { cursor: grab; }
+/* piercing: martelinho no lugar do cursor; carta escolhida e suits com furo vazio destacadas */
+body.piercing, body.piercing * { cursor: none !important; }
+.pierce-hammer { position: fixed; z-index: 100000; width: 32px; height: 32px; margin: -26px 0 0 -6px; pointer-events: none; transform-origin: 6px 28px; animation: hammer-tap .9s ease-in-out infinite; filter: drop-shadow(1px 2px 1px rgb(0 0 0 / .45)); }
+.pierce-hammer svg { display: block; }
+.pierce-hammer.hit { animation: hammer-hit .5s cubic-bezier(.3, 0, .2, 1) 1; }
+.pierce-hammer.hit::after { content: ''; position: absolute; left: -4px; top: 18px; width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle, #fff6b0 0, #ffd040 35%, rgb(255 160 0 / 0) 70%); animation: hammer-spark .5s ease-out 1 forwards; }
+@keyframes hammer-tap { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-22deg); } }
+@keyframes hammer-hit { 0% { transform: rotate(-45deg); } 45% { transform: rotate(18deg); } 60% { transform: rotate(8deg); } 100% { transform: rotate(0); } }
+@keyframes hammer-spark { 0%, 40% { opacity: 0; transform: scale(.3); } 55% { opacity: 1; transform: scale(1.2); } 100% { opacity: 0; transform: scale(1.8); } }
+.inv-slot.pierce-src { border-color: #d89a2b; box-shadow: 0 0 0 2px #d89a2b inset; }
+.inv-slot.pierce-ok { animation: pierce-ok 1s ease-in-out infinite; }
+.inv-slot.pierce-done { box-shadow: 0 0 6px 3px #ffd040, 0 0 0 2px #ffb000 inset; }
+@keyframes pierce-ok { 0%, 100% { box-shadow: 0 0 0 1px #5aa0ff inset; } 50% { box-shadow: 0 0 0 2px #5aa0ff inset, 0 0 6px #5aa0ff; } }
+@media (prefers-reduced-motion: reduce) { .pierce-hammer, .inv-slot.pierce-ok { animation: none; } }
 .inv-slot img, .inv-eq img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
 .inv-slot img:not([src]), .inv-eq img:not([src]) { display: none; }
 .inv-slot b, .inv-eq b { position: absolute; right: 1px; bottom: 0; font: 700 10px/1 Tahoma, sans-serif; color: #fff; text-shadow: 0 0 2px #000, 0 0 1px #000; pointer-events: none; }
@@ -361,6 +375,7 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 .item-tip .price { color: #f0d060; }
 .item-tip .e1 { color: #ff7a5a; } .item-tip .e2 { color: #6aa8ff; } .item-tip .e3 { color: #ffe35a; } .item-tip .e4 { color: #7af0c0; } .item-tip .e5 { color: #c8a070; }
 .item-tip .pierce { color: #c9a8ff; letter-spacing: .02em; }
+.item-tip .hint { color: #b9c2d6; font-style: italic; }
 
 /* janela de mudança de classe (client/jobwnd.ts) */
 .jw { padding: 10px; font: 12px/1.4 Tahoma, system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; gap: 8px; }

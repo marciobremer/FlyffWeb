@@ -90,9 +90,9 @@
     "semantic_hash": ""
   },
   "client/itemtip.ts": {
-    "mtime": 1793004416.3663933,
-    "seen": 1793004544.4494753,
-    "ast_hash": "c405ceb14c50ecd1a3742e72aabc75d1",
+    "mtime": 1793007111.0340476,
+    "seen": 1793007262.1656492,
+    "ast_hash": "2410695a465b8d4ce168023247c214bf",
     "semantic_hash": ""
   },
   "client/jobs.ts": {
@@ -108,9 +108,9 @@
     "semantic_hash": ""
   },
   "client/main.ts": {
-    "mtime": 1793004416.3663933,
-    "seen": 1793004544.449479,
-    "ast_hash": "527dadc9515f849dcb8ba286dcf6941d",
+    "mtime": 1793007082.110814,
+    "seen": 1793007262.1656563,
+    "ast_hash": "fc1639dd02a4c33111ed2e15a815cb30",
     "semantic_hash": ""
   },
   "client/motionwnd.ts": {
@@ -120,9 +120,9 @@
     "semantic_hash": ""
   },
   "client/net.ts": {
-    "mtime": 1793004416.3675628,
-    "seen": 1793004544.4494817,
-    "ast_hash": "6a654d7854734d41b6fb4dc3264feec1",
+    "mtime": 1793007082.1096694,
+    "seen": 1793007262.1656604,
+    "ast_hash": "49b3ce1c5d9a426a63226b26d80cbc8e",
     "semantic_hash": ""
   },
   "client/npcmenu.ts": {
@@ -168,9 +168,9 @@
     "semantic_hash": ""
   },
   "client/ui.ts": {
-    "mtime": 1793004416.3675628,
-    "seen": 1793004544.449493,
-    "ast_hash": "c40fc20094356e36d981068b5274d553",
+    "mtime": 1793007236.2593796,
+    "seen": 1793007262.1656764,
+    "ast_hash": "5545d23fbcc6c4f459c40406973c19fb",
     "semantic_hash": ""
   },
   "client/version.ts": {
@@ -858,9 +858,9 @@
     "semantic_hash": ""
   },
   "servers/character/inventory.ts": {
-    "mtime": 1793004416.9278522,
-    "seen": 1793004544.4496496,
-    "ast_hash": "e2bfe20c33c0f3b926d365de0c097466",
+    "mtime": 1793007006.9338665,
+    "seen": 1793007262.1658812,
+    "ast_hash": "4fdc4a320d15c377d654bf42a79db7fe",
     "semantic_hash": ""
   },
   "servers/common/bootmanifest.ts": {
@@ -906,9 +906,9 @@
     "semantic_hash": ""
   },
   "servers/common/items.ts": {
-    "mtime": 1793004416.9287388,
-    "seen": 1793004544.4496596,
-    "ast_hash": "4a1eccfaebac1e5bba92b94ad3dcaab7",
+    "mtime": 1793006975.315058,
+    "seen": 1793007262.1659398,
+    "ast_hash": "a08ebfa221061eaf845c5a3e5c1b7ebb",
     "semantic_hash": ""
   },
   "servers/common/names.ts": {
@@ -948,9 +948,9 @@
     "semantic_hash": ""
   },
   "servers/world/combat.ts": {
-    "mtime": 1793004416.9287388,
-    "seen": 1793004544.4496686,
-    "ast_hash": "fdafc9e6beda42ae717b08ba5ee2d9d6",
+    "mtime": 1793006917.5407124,
+    "seen": 1793007262.1659515,
+    "ast_hash": "ff46aa89fefd43d2fd6edbc366550073",
     "semantic_hash": ""
   },
   "servers/world/drops.ts": {
@@ -990,9 +990,9 @@
     "semantic_hash": ""
   },
   "servers/world/realtime.ts": {
-    "mtime": 1793004416.9303408,
-    "seen": 1793004544.4496772,
-    "ast_hash": "7ab5d0f77dec11ae845458d7c8a92c16",
+    "mtime": 1793007006.935726,
+    "seen": 1793007262.1659622,
+    "ast_hash": "9c641ab429863e91001c32b241bc745a",
     "semantic_hash": ""
   },
   "servers/world/shops.ts": {
@@ -1008,9 +1008,9 @@
     "semantic_hash": ""
   },
   "servers/world/start.ts": {
-    "mtime": 1793004416.9303408,
-    "seen": 1793004544.449681,
-    "ast_hash": "1a59bc3edcf7b9fcf4e85060aa3ce41f",
+    "mtime": 1793006917.5412428,
+    "seen": 1793007262.1659667,
+    "ast_hash": "18a553a8bcbc8c851e8ccb33aa4c647d",
     "semantic_hash": ""
   },
   "servers/world/world.ts": {
@@ -1170,9 +1170,9 @@
     "semantic_hash": ""
   },
   "shared/player.ts": {
-    "mtime": 1793004416.9340029,
-    "seen": 1793004544.4497147,
-    "ast_hash": "84d4b9b2bd000e741d9eedebf64a58ea",
+    "mtime": 1793006956.546034,
+    "seen": 1793007262.1660104,
+    "ast_hash": "9cf2b8f9a86b77e1768daad9d851cf41",
     "semantic_hash": ""
   },
   "shared/postfx.ts": {
@@ -1737,6 +1737,18 @@
     "mtime": 1793004416.9287388,
     "seen": 1793004561.0652044,
     "ast_hash": "7e601fdb75cebf3fcc3afacf89318db2",
+    "semantic_hash": ""
+  },
+  ".claude/hooks/session-start.sh": {
+    "mtime": 1793004938.2555509,
+    "seen": 1793006555.2236516,
+    "ast_hash": "6ec0271e5cd247f8543c887ed13fb796",
+    "semantic_hash": ""
+  },
+  ".claude/settings.json": {
+    "mtime": 1793004949.7875504,
+    "seen": 1793006555.223666,
+    "ast_hash": "f25e617c98948661b1ce5ae5cf8c3766",
     "semantic_hash": ""
   }
 }

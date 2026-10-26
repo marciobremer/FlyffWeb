@@ -328,6 +328,7 @@ net.onChangeWorld = (w, p) => {
     mapLoading.show(w);
     if (w !== curWorld) { await openWorld(w, p[0], p[2]); mapLoading.show(w); }
     await view.spawnPlayer(p[0], p[2], p[1], sex, look);
+    if (view.player) view.player.runSpeed = moveSpeed;
     const ch = characters.find((c) => c.slot === selectedSlot);
     if (ch) { view.player?.inst?.setLabel(ch.name, rankOf(account?.authority), PLAYER_LABEL_LIFT); view.player?.inst?.setGuildTag(myGuild); }
     void view.player?.setCombat(combatMt);
@@ -449,12 +450,16 @@ net.onGetUp = () => {
   view.player?.revive();
   view.player?.emote('MTI_GETUP', 0); // levanta e volta a ficar em pé
 };
+/** velocidade de corrida do personagem (u/s), vinda do servidor; aplicada também ao nascer */
+let moveSpeed = 6;
 net.onStats = (s) => {
   const ch = characters.find((c) => c.slot === selectedSlot);
   if (!ch) return;
   ch.level = s.level;
   combat.interval = s.atkMs || 1000;
   if (view.player) view.player.attackRate = s.aspd || 1;
+  if (s.mv) moveSpeed = s.mv;
+  if (view.player) view.player.runSpeed = moveSpeed;
   combat.range = s.range ?? 2;
   const expPct = s.expMax > 0 ? (s.exp / s.expMax) * 100 : 0;
   hud.setStatus({ name: ch.name, level: s.level, hp: s.hp, maxHp: s.maxHp, mp: s.mp, maxMp: s.maxMp, fp: s.fp, maxFp: s.maxFp, expPct });
@@ -557,8 +562,13 @@ inventory.onUse = (c, s) => {
   // com a troca aberta, duplo clique num item da bolsa põe ele na troca
   if (tradeWnd.active) { if (it && c === 0) tradeWnd.offer(s, it.n, inventory.def(it.id)?.name ?? 'Item'); return; }
   if (it && rideToggle(it.id)) return;
+  // carta de piercing: martelinho para escolher a suit da bolsa
+  if (it && c === 0 && inventory.def(it.id)?.card) { inventory.startPierce(s); return; }
   if (!net.invUse(c, s)) chat.system('Sem conexão com o servidor.');
 };
+inventory.onPierce = (card, target) => { if (!net.pierce(card, target)) { chat.system('Sem conexão com o servidor.'); inventory.cancelPierce(); } };
+inventory.onNotice = (text) => chat.system(text);
+net.onPierced = (ok, s) => inventory.pierced(ok, s);
 
 /**
  * Montaria (prancha, vassoura, bike, asas) pela barra de atalhos ou pelo inventário, como no cliente: apertar de novo
@@ -1153,6 +1163,7 @@ async function enter() {
   const hide = hideMaskOf(ch.id);
   const equip = lookList(ch.equip ?? [], hide);
   await view.spawnPlayer(x, z, inMap ? ch.pos[1] : 100, sex, { hair: ch.hairMesh, head: ch.headMesh, equip });
+  if (view.player) view.player.runSpeed = moveSpeed;
   if (curWorld !== WORLD) mapLoading.hide();
   combatMt = ch.mt ?? 0;
   await view.player?.setCombat(combatMt);

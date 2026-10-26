@@ -28,6 +28,8 @@ export interface PlayerStats {
   bonus: { str: number; sta: number; dex: number; int: number }; acc: number; dodge: number; spd: number;
   /** classes que dá para escolher agora (nível 15 / 60) */
   jobOpts: number[];
+  /** velocidade de corrida (u/s) com os bônus de movimento (DST_SPEED) */
+  mv?: number;
 }
 
 /** item como o servidor descreve (server/items.ts ItemCatalog.view) */
@@ -46,6 +48,10 @@ export interface ItemView {
   job?: number; hand?: number;
   /** conjunto: nome, total de peças e bônus [peças, DST, valor][] (vale com aquela quantidade ou mais equipada) */
   set?: { name: string; pieces: number; avail: [number, number, number][] };
+  /** joia: bônus por enchant (accessory.inc) — enchant → [DST, valor][] */
+  acc?: Record<number, [number, number][]>;
+  /** carta de piercing da suit (IK3_SOCKETCARD): duplo clique abre o martelinho */
+  card?: 1;
 }
 /** inventário inteiro (server/inventory.ts Inventory.view): itens [container, slot, itemId, quantidade] */
 export interface InvMessage { gold: number; bag: number; items: [number, number, number, number, number?, number?, number?, number[]?, number?][]; defs: Record<number, ItemView> }
@@ -300,6 +306,8 @@ export class NetClient {
   /** inventário (ao entrar e a cada mudança), pedido recusado, e o seu próprio equipamento visível ao entrar */
   onInv: (m: InvMessage) => void = () => {};
   onInvError: (error: string) => void = () => {};
+  /** resposta do piercing: deu certo (s = espaço da suit) ou não */
+  onPierced: (ok: boolean, s?: number) => void = () => {};
   onWelcome: (eq: string[], mt: number) => void = () => {};
   /** a própria aparência mudou no servidor (equipamento/postura), ex.: por GM ou outro aviso */
   onLook: (eq: string[], mt: number) => void = () => {};
@@ -351,6 +359,8 @@ export class NetClient {
         this.onMobs((m.a ?? []) as never, (m.u ?? []) as never, (m.d ?? []) as number[]);
       } else if (m.t === 'inv') {
         this.onInv(m as unknown as InvMessage);
+      } else if (m.t === 'pierced') {
+        this.onPierced(m.ok === true, typeof m.s === 'number' ? m.s : undefined);
       } else if (m.t === 'invError') {
         this.onInvError(String(m.error));
       } else if (m.t === 'gmOpen') {
@@ -469,6 +479,8 @@ export class NetClient {
   /** inventário: mover de [container, slot] para outro, ou "usar" (duplo clique: equipa/desequipa) */
   invMove(from: [number, number], to: [number, number]) { return this.raw({ t: 'invMove', from, to }); }
   invUse(c: number, s: number) { return this.raw({ t: 'invUse', c, s }); }
+  /** piercing: carta do espaço `card` da bolsa na suit do espaço `target` (também da bolsa) */
+  pierce(card: number, target: number) { return this.raw({ t: 'pierce', card, target }); }
   /** partes do visual escondidas (bits de shared/look.ts); vai também no 'join' ao reconectar */
   hide = 0;
   setHide(m: number) { this.hide = m; return this.raw({ t: 'hide', m }); }

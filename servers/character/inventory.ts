@@ -357,6 +357,31 @@ export class Inventory {
     });
   }
 
+  /**
+   * Piercing (CDPSrvr::OnPiercing): espeta a carta do espaço `cardSlot` da bolsa no 1º furo vazio da suit do espaço
+   * `targetSlot`, também da bolsa — suit equipada não aceita (tire antes). Gasta 1 carta. Nada muda se der erro.
+   */
+  pierce(characterId: number, cardSlot: number, targetSlot: number) {
+    return this.mutate(characterId, (x): { state: InvState; card: ItemDef; suit: ItemDef } | { error: string } => {
+      const bag = (s: number) => x.state.items.find((i) => i.c === BAG && i.s === s);
+      const card = bag(cardSlot), cd = card && this.catalog.byId.get(card.id);
+      if (!card || !cd) return { error: '' };
+      if (!this.catalog.isSuitCard(cd)) return { error: `${cd.name} não é uma carta de piercing.` };
+      if (cardSlot === targetSlot) return { error: 'Escolha a suit onde aplicar a carta.' };
+      const suit = bag(targetSlot), sd = suit && this.catalog.byId.get(suit.id);
+      if (!suit || !sd) return { error: 'Escolha uma suit da bolsa (a equipada não serve: tire ela antes).' };
+      if (maxPiercing(sd.parts) === 0) return { error: `${sd.name} não aceita cartas: só a suit tem piercing.` };
+      const holes = suit.p ?? [];
+      if (!holes.length) return { error: `${sd.name} não tem furos de piercing abertos.` };
+      const free = holes.indexOf(0);
+      if (free < 0) return { error: `Todos os furos de ${sd.name} já têm carta.` };
+      suit.p = holes.map((v, i) => (i === free ? cd.id : v));
+      if (card.n > 1) card.n--; else x.state.items.splice(x.state.items.indexOf(card), 1);
+      x.touch(BAG, cardSlot); x.touch(BAG, targetSlot);
+      return { state: x.state, card: cd, suit: sd };
+    });
+  }
+
   /** tira até `n` do espaço `slot` da bolsa (venda); devolve o item e quanto saiu, ou null */
   takeFromSlot(characterId: number, slot: number, n: number): Promise<{ item: InvItem; taken: number } | null> {
     return this.mutate(characterId, (x) => {
@@ -539,7 +564,12 @@ export class Inventory {
   /** mensagem para o cliente: itens + definição (nome/ícone/…) só dos itens presentes */
   view(st: InvState) {
     const defs: Record<number, ReturnType<typeof ItemCatalog.view>> = {};
-    for (const i of st.items) { const d = this.catalog.byId.get(i.id); if (d) defs[i.id] = this.catalog.viewFull(d); }
+    for (const i of st.items) {
+      const d = this.catalog.byId.get(i.id);
+      if (d) defs[i.id] = this.catalog.viewFull(d);
+      // cartas espetadas: a dica do item mostra o nome e o bônus de cada uma
+      for (const card of i.p ?? []) { const cd = card ? this.catalog.byId.get(card) : undefined; if (cd && !defs[card]) defs[card] = this.catalog.viewFull(cd); }
+    }
     return { t: 'inv', gold: st.gold, bag: BAG_SLOTS, items: st.items.map((i) => (i.x ? [i.c, i.s, i.id, i.n, i.u, i.e, i.el, i.p ?? [], i.x] : i.p?.length ? [i.c, i.s, i.id, i.n, i.u, i.e, i.el, i.p] : [i.c, i.s, i.id, i.n, i.u, i.e, i.el])), defs };
   }
 

@@ -28,7 +28,12 @@ export interface PlayerWorld {
 }
 
 /** altura do pulo = JUMP_V² / (2·GRAVITY): 9 dava ~1,45; ×√3 triplica a altura (~4,3) mantendo a gravidade */
-const RUN = 9, WALK = 4.5, GRAVITY = 28, JUMP_V = 9 * Math.sqrt(3);
+const GRAVITY = 28, JUMP_V = 9 * Math.sqrt(3);
+/**
+ * Velocidade de corrida padrão (u/s) até o servidor mandar a do personagem: fSpeed 0,1 do propMover × 60 tiques/s.
+ * Andando (modo X) vai a ¼ da corrida, como o OBJSTAF_WALK do CActionMover.
+ */
+const RUN_DEFAULT = 6, WALK_RATIO = 0.25;
 /** maior degrau que se sobe andando; raio do corpo e alturas dos raios de parede (joelho e peito) */
 const STEP = 0.7, RADIUS = 0.35, WALL_RAYS = [0.75, 1.5];
 
@@ -103,6 +108,8 @@ export class Player {
   }
   /** velocidade de ataque (do servidor): o golpe toca nessa velocidade, no mesmo ritmo que o servidor aceita os golpes */
   attackRate = 1;
+  /** velocidade de corrida (u/s) calculada pelo servidor: fSpeed do personagem com DST_SPEED de itens, sets, cartas e buffs */
+  runSpeed = RUN_DEFAULT;
 
   /** movimento de skill (ex.: MTI_VAG_ONE_CLEANHIT) uma vez, como um golpe; sem o arquivo, usa o golpe normal */
   cast(motion: string) {
@@ -343,7 +350,7 @@ export class Player {
     let ux = f.x * input.forward + r.x * input.right;
     let uz = -(f.z * input.forward + r.z * input.right); // Three z → FlyFF z
     let len = Math.hypot(ux, uz);
-    const speed = input.walk ? WALK : RUN;
+    const speed = input.walk ? this.runSpeed * WALK_RATIO : this.runSpeed;
     let maxStep = Infinity;
     if (len > 1e-4) this.target = null;
     else if (this.target) {

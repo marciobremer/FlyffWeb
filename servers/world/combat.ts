@@ -4,7 +4,7 @@ import { decodeText } from '../../shared/formats/rgn';
 import { parseDefines, parseModelTable } from '../../shared/formats/inc';
 import { parseAni } from '../../shared/formats/chr';
 import { motionOf } from '../../shared/motions';
-import type { ItemCatalog, ItemDef } from '../common/items';
+import { fitsPart, type ItemCatalog, type ItemDef } from '../common/items';
 import type { MoverProp } from './world';
 
 /**
@@ -48,7 +48,8 @@ export interface Fighter {
 }
 
 /** um item equipado: definição, enchant e espaço (PARTS_*) */
-export interface Equipped { d: ItemDef; u: number; s: number }
+/** item equipado: definição, enchant, espaço (PARTS_*) e as cartas espetadas (piercing, 0 = furo vazio) */
+export interface Equipped { d: ItemDef; u: number; s: number; p?: number[] }
 
 export interface HitResult { hit: boolean; dmg: number; crit: boolean }
 
@@ -91,7 +92,7 @@ export class CombatRules {
     for (let lv = 0; lv < rows.length; lv++) this.gpAt[lv] = rows[lv][2] || 0;
     this.hand = items.bySymbol.get('II_WEA_HAN_HAND') ?? null;
     for (const n of ['STR', 'STA', 'DEX', 'INT', 'ADJDEF', 'ADJDEF_RATE', 'ATKPOWER_RATE', 'CHR_DMG', 'ATTACKSPEED', 'ATTACKSPEED_RATE', 'ADJ_HITRATE', 'PARRY', 'HP_MAX', 'MP_MAX', 'FP_MAX', 'HP_MAX_RATE', 'MP_MAX_RATE', 'FP_MAX_RATE',
-      'SWD_DMG', 'AXE_DMG', 'KNUCKLE_DMG', 'YOY_DMG', 'BOW_DMG', 'CRITICAL_BONUS', 'MONSTER_DMG', 'ATKPOWER', 'CHR_CHANCECRITICAL', 'STAT_ALLUP']) this.D[n] = items.defines.get('DST_' + n) ?? -999;
+      'SWD_DMG', 'AXE_DMG', 'KNUCKLE_DMG', 'YOY_DMG', 'BOW_DMG', 'CRITICAL_BONUS', 'MONSTER_DMG', 'ATKPOWER', 'CHR_CHANCECRITICAL', 'STAT_ALLUP', 'SPEED']) this.D[n] = items.defines.get('DST_' + n) ?? -999;
     const dd = (s: string) => items.defines.get(s) ?? -1;
     this.ik = { armor: dd('IK2_ARMOR'), armorEtc: dd('IK2_ARMORETC'), helmet: dd('IK3_HELMET'), suit: dd('IK3_SUIT'), gauntlet: dd('IK3_GAUNTLET'), boots: dd('IK3_BOOTS'), shield: dd('IK3_SHIELD') };
     const up = exp.slice(exp.indexOf('expUpitem'));
@@ -163,8 +164,16 @@ export class CombatRules {
     const dst = new Map<number, number>();
     for (const [k, v] of buffs) if (k > 0 && v) dst.set(k, (dst.get(k) ?? 0) + v); // buffs ativos somam como os itens
     let weapon: ItemDef | null = null, weaponUpgrade = 0, defMin = 0, defMax = 0, adjHit = 0, parry = 0;
-    for (const { d, u, s } of equipped) {
-      for (let i = 0; i < d.dest.length; i++) if (d.dest[i] > 0 && d.adj[i]) dst.set(d.dest[i], (dst.get(d.dest[i]) ?? 0) + d.adj[i]);
+    const add = (k: number, v: number) => { if (k > 0 && v) dst.set(k, (dst.get(k) ?? 0) + v); };
+    for (const { d, u, s, p } of equipped) {
+      for (let i = 0; i < d.dest.length; i++) add(d.dest[i], d.adj[i]);
+      // joia: bônus da linha do enchant dela (accessory.inc)
+      for (const [k, v] of this.items.accessoryDst(d.id, u)) add(k, v);
+      // piercing (GetPiercingAvail): os DST de cada carta espetada somam como os do item
+      for (const card of p ?? []) {
+        const cd = card ? this.items.byId.get(card) : undefined;
+        if (cd) for (let i = 0; i < cd.dest.length; i++) add(cd.dest[i], cd.adj[i]);
+      }
       if (d.adjHit > 0) adjHit += d.adjHit;
       if (d.parry > 0) parry += d.parry;
       if (s === 10) { weapon = d; weaponUpgrade = u; }
@@ -176,7 +185,7 @@ export class CombatRules {
     // conjuntos (SetDestParamSetItem): conta as peças de cada set equipadas no lugar certo e soma os bônus de 1…n peças
     const sets = new Set(equipped.map((e) => this.items.setByItem.get(e.d.id)).filter((x) => !!x));
     for (const set of sets) {
-      const n = set!.elems.filter((el) => equipped.some((e) => e.d.id === el.item && e.s === el.part)).length;
+      const n = set!.elems.filter((el) => equipped.some((e) => e.d.id === el.item && fitsPart(el.part, e.s))).length;
       for (const a of set!.avail) if (a.n <= n) dst.set(a.dst, (dst.get(a.dst) ?? 0) + a.adj);
     }
     const f: Fighter = { level: ch.level, job: ch.job, str: ch.str, sta: ch.sta, dex: ch.dex, int: ch.int, base: { str: ch.str, sta: ch.sta, dex: ch.dex, int: ch.int },
@@ -209,6 +218,14 @@ export class CombatRules {
   /** chance de acerto contra um mob "médio" do mesmo nível (referência para a janela) */
   accuracy(f: Fighter) { return Math.max(0, this.hitBonus(f)); }
   dodge(f: Fighter) { return Math.floor(f.dex * 0.5 + f.parry + this.dstOf(f, 'PARRY')); }
+
+  /** fSpeed do propMover dos personagens [MI_MALE, MI_FEMALE] (unidades por tique de 1/60 s); o startWorld lê do mundo */
+  playerFSpeed: [number, number] = [0.1, 0.1];
+  /** velocidade de corrida (u/s): CMover::GetSpeed = fSpeed + fSpeed × DST_SPEED/100 (itens, sets, cartas, buffs), 60 tiques/s */
+  runSpeed(f: Fighter, sex: number) {
+    const base = this.playerFSpeed[sex === 1 ? 1 : 0] || 0.1;
+    return Math.max(0, base * (1 + this.dstOf(f, 'SPEED') / 100)) * 60;
+  }
 
   job(j: number): JobProp { return this.jobs.get(j) ?? this.jobs.get(0) ?? { atkSpeed: 75, maxHp: 0.9, maxMp: 0.3, maxFp: 0.3, def: 1, hpRec: 1.2, swd: 4.5, axe: 5.5, staff: 0.8, stick: 3, knuckle: 5, wand: 6, blocking: 0.2, yoyo: 4.2, critical: 1, bow: 1 }; }
 

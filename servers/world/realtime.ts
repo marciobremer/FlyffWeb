@@ -39,6 +39,8 @@ import type { MoverProp } from './world';
  *   { t: 'pick', id }                               pega o item `id` do chão (perto, dono ou depois de 30 s)
  *   { t: 'gmItems', q, k, g }                       painel de GM: busca no catálogo de itens (só contas GM); g = raridade (dwItemGrade)
  *   { t: 'invUse', c, s }                           duplo clique: equipa (da bolsa) ou desequipa (para a bolsa)
+ *   { t: 'pierce', card, target }                   piercing: espeta a carta do espaço `card` da bolsa na suit do espaço `target` (também
+ *                                                   da bolsa, não equipada) — resposta { t: 'pierced', ok, s } e o inventário novo
  *   { t: 'npcMenu', key } / { t: 'npcBuff', key }     perto do NPC: o que ele oferece (loja, buffs) / receber os buffs (Buff Pang)
  *   { t: 'zckTeleport', k }                         teleporte da janela Teleporter (tecla V): destino `k` do ZckTeleporteur.inc
  *   { t: 'buffOff', id }                            tira o buff da skill `id` (botão direito no ícone)
@@ -88,7 +90,8 @@ import type { MoverProp } from './world';
  *   { t: 'used', id, hp, mp, fp, cd }               item usado: quanto curou e a espera (ms) até usar de novo
  *   { t: 'bar', slots: ({ id, icon, name } | null)[] }   sua barra de atalhos (ao entrar)
  *   { t: 'ground', a: [id, itemId, x, z, n, gold, upgrade, nome][], d: id[] }   itens no chão perto (gold > 0 = penya)
- *   { t: 'stats', hp, maxHp, mp, maxMp, fp, maxFp, exp, expMax, level }   seus atributos (ao entrar e quando mudam)
+ *   { t: 'stats', hp, maxHp, mp, maxMp, fp, maxFp, exp, expMax, level, mv }   seus atributos (ao entrar e quando mudam);
+ *                                                   mv = velocidade de corrida (u/s) com os bônus de itens e buffs
  *   { t: 'level', id, level }                       nível mudou (comando de GM)
  *   { t: 'look', id, eq, mt }                           alguém trocou o equipamento (eq = símbolos II_* equipados)
  *   { t: 'chat', id, name, text }                   mensagem de chat de alguém (inclusive a sua, ecoada pelo servidor)
@@ -382,7 +385,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     for (const i of st?.items ?? []) {
       if (i.c !== 1 || !inventory) continue;
       const d = inventory.catalog.byId.get(i.id);
-      if (d) equipped.push({ d, u: i.u, s: i.s });
+      if (d) equipped.push({ d, u: i.u, s: i.s, p: i.p });
     }
     return rules!.buildFighter(ch, equipped, buffs);
   }
@@ -412,7 +415,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     return { t: 'stats', hp: cb.hp, maxHp: cb.maxHp, mp: cb.mp, maxMp: cb.maxMp, fp: cb.fp, maxFp: cb.maxFp, exp: cb.exp, expMax: rules?.expToNext[lv] ?? 0, level: lv,
       atkMs: rules?.attackInterval(cb.f, c.player!.mt) ?? 1000, aspd: rules?.attackSpeed(cb.f) ?? 1, atk: rules?.shownAtk(cb.f) ?? [0, 0], range: rules?.attackRange(cb.f) ?? 2, def: rules?.showDefense(cb.f) ?? 0, crit: rules?.critChance(cb.f) ?? 0,
       str: cb.f.base.str, sta: cb.f.base.sta, dex: cb.f.base.dex, int: cb.f.base.int, bonus: { str: cb.f.str - cb.f.base.str, sta: cb.f.sta - cb.f.base.sta, dex: cb.f.dex - cb.f.base.dex, int: cb.f.int - cb.f.base.int },
-      acc: rules ? rules.accuracy(cb.f) : 0, dodge: rules ? rules.dodge(cb.f) : 0, spd: rules ? Math.floor(Math.floor(rules.attackSpeed(cb.f) * 100) / 2) : 0, points: cb.points, job: cb.f.job, jobOpts: rules ? rules.jobOptions(cb.f.job, lv) : [] };
+      acc: rules ? rules.accuracy(cb.f) : 0, dodge: rules ? rules.dodge(cb.f) : 0, spd: rules ? Math.floor(Math.floor(rules.attackSpeed(cb.f) * 100) / 2) : 0, points: cb.points, job: cb.f.job, jobOpts: rules ? rules.jobOptions(cb.f.job, lv) : [],
+      mv: rules ? +rules.runSpeed(cb.f, c.player!.sex).toFixed(3) : 6 };
   }
 
   /** recalcula os máximos (nível/classe mudou) mantendo a proporção atual ou enchendo */
@@ -1775,6 +1779,17 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
           if (!a) return;
           send(ws, { t: 'gmItems', list: inventory.catalog.search(q, kind, grade, 1000).map((d) => inventory.catalog.viewFull(d)) });
         }).catch((e) => console.error('painel GM: busca', e));
+      } else if (msg.t === 'pierce' && c.player && inventory && Number.isInteger(msg.card) && Number.isInteger(msg.target)) {
+        // piercing: carta (bolsa) → suit (bolsa); o servidor confere tudo e só então gasta a carta
+        const player = c.player, inv = inventory;
+        if (c.trade) { send(ws, { t: 'invError', error: 'Termine a troca antes de aplicar cartas.' }); return; }
+        c.invQueue = c.invQueue.then(async () => {
+          const r = await inv.pierce(player.id, msg.card as number, msg.target as number);
+          if ('error' in r) { send(ws, { t: 'pierced', ok: false }); if (r.error) send(ws, { t: 'invError', error: r.error }); return; }
+          send(ws, inv.view(r.state));
+          send(ws, { t: 'pierced', ok: true, s: msg.target });
+          send(ws, { t: 'chat', id: 0, name: '', text: `${r.card.name} aplicada em ${r.suit.name}.` });
+        }).catch((e) => { console.error('realtime piercing', e); send(ws, { t: 'invError', error: 'Servidor indisponível.' }); });
       } else if ((msg.t === 'invMove' || msg.t === 'invUse') && c.player && inventory) {
         const pair = (v: unknown): [number, number] | null => Array.isArray(v) && v.length === 2 && v.every((x) => Number.isInteger(x)) ? [v[0], v[1]] : null;
         const player = c.player, inv = inventory;

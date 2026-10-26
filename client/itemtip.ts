@@ -45,6 +45,10 @@ function power(d: ItemView, u: number): { label: string; min: number; max: numbe
   return { label: w ? 'Ataque' : 'Defesa', baseMin, baseMax, min: Math.floor(baseMin * mul) + opt, max: Math.floor(baseMax * mul) + opt };
 }
 
+/** definição de outro item (as cartas espetadas na suit), vinda do inventário */
+let lookup: (id: number) => ItemView | undefined = () => undefined;
+export function setTipLookup(fn: (id: number) => ItemView | undefined) { lookup = fn; }
+
 function lines(d: ItemView, it: TipItem, elementNames: string[], sellable = true): { text: string; cls?: string }[] {
   const out: { text: string; cls?: string }[] = [];
   const p = power(d, it.u);
@@ -54,7 +58,19 @@ function lines(d: ItemView, it: TipItem, elementNames: string[], sellable = true
   for (const [k, v] of d.fx ?? []) out.push({ text: fxText(k, v), cls: 'fx' });
   if (it.e) out.push({ text: `${elementNames[it.e] ?? 'Elemento'} +${it.el}`, cls: `e${it.e}` });
   // piercing (suit): um losango por furo aberto — cheio com carta, vazio sem
-  if (it.p?.length) out.push({ text: `Piercing: ${it.p.map((c) => (c ? '◆' : '◇')).join(' ')} (${it.p.filter((c) => c).length}/${it.p.length} cartas)`, cls: 'pierce' });
+  if (it.p?.length) {
+    out.push({ text: `Piercing: ${it.p.map((c) => (c ? '◆' : '◇')).join(' ')} (${it.p.filter((c) => c).length}/${it.p.length} cartas)`, cls: 'pierce' });
+    // cada carta espetada: nome e bônus (somam aos atributos quando a suit está equipada)
+    for (const card of it.p) {
+      if (!card) continue;
+      const cd = lookup(card);
+      const fx = (cd?.fx ?? []).map(([k, v]) => fxText(k, v)).join(', ');
+      out.push({ text: `  ${cd?.name ?? 'Carta'}${fx ? `: ${fx}` : ''}`, cls: 'pierce fx' });
+    }
+  }
+  // joia: bônus do enchant atual (accessory.inc)
+  if (d.acc && it.u) for (const [k, v] of d.acc[it.u] ?? []) out.push({ text: `+${it.u}: ${fxText(k, v)}`, cls: 'up fx' });
+  if (d.card) out.push({ text: 'Duplo clique e escolha a suit na bolsa para aplicar.', cls: 'hint' });
   if (d.sex === 0 || d.sex === 1) out.push({ text: `Sexo: ${SEX[d.sex]}` });
   if (d.job !== undefined && d.job > 0 && JOBS[d.job]) out.push({ text: `Classe: ${JOBS[d.job].name}` });
   if (d.lv > 1) out.push({ text: `Nível: ${d.lv}` });

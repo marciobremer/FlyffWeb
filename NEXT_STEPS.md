@@ -750,3 +750,18 @@ Comparado com `original/Source/Source/_Common/MoverAttack.cpp`, `MoverParam.cpp`
   som; volume mestre 0,5 em `localStorage['flyff.volume']` (sem janela de opções ainda). O navegador só libera áudio após um clique/tecla.
 - **O que toca**: golpe da arma (`dwSndAttack1` ao bater, `dwSndAttack2` se acertou, do item equipado — vem no `hit` para todos que veem) e skills (`dwSndAttack1` ao lançar,
   `dwSndAttack2` no impacto das magias). Faltam: sons de dano/morte de monstros e do jogador, passos, interface (cliques, abrir janela), música de fundo (.ogg em `Client/Data/Music`).
+
+## 37. Bônus de itens, velocidade e cartas de piercing (2026-10-26)
+- **Bônus nos status** (`CombatRules.buildFighter`): além dos DST_* dos itens e dos sets (que já entravam), agora somam:
+  joias pelo enchant (`accessory.inc`, `CAccessoryProperty`: item → enchant → DST, vale só a linha do enchant atual) e as cartas
+  espetadas na suit (DST de cada carta, como `GetPiercingAvail`). Set conta anel/brinco em qualquer um dos dois espaços (antes só no
+  espaço escrito no `propItemEtc.inc`). Ao ligar, o log mostra quantas joias o `accessory.inc` trouxe.
+- **Velocidade** (`CombatRules.runSpeed`): fSpeed do propMover de MI_MALE/MI_FEMALE × 60 × (1 + DST_SPEED%) — itens, sets, cartas e buffs.
+  O servidor manda em `stats.mv`; o cliente (`Player.runSpeed`) corre nela e anda a ¼ (OBJSTAF_WALK). Antes eram fixos 9 e 4,5 u/s.
+  Ainda não comparado com o cliente original; o ¼ do andar é de memória do `CActionMover`, não conferido no código.
+- **Piercing**: duplo clique numa carta (IK3_SOCKETCARD) abre o martelinho (cursor animado; carta em laranja, suits com furo livre
+  piscando em azul); clicar numa suit da bolsa manda `{ t: 'pierce', card, target }`; o servidor (`Inventory.pierce`) confere que é
+  carta, que a suit está na bolsa (equipada não aceita), que tem furo vazio, espeta no 1º furo e gasta 1 carta; resposta `pierced` toca
+  a martelada. Esc, botão direito ou clique fora cancelam. A dica da suit lista cada carta com o bônus.
+- Falta: chance de falha ao espetar (aqui é sempre sucesso — conferir no `CItemUpgrade::OnPiercing` original), tirar cartas, cartas
+  de arma (IK3_SOCKETCARD2), abrir furos por NPC (hoje só `//give-item … furos3` de GM), conferir o formato do `accessory.inc` com o arquivo real.
