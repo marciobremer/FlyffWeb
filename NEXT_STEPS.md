@@ -819,8 +819,8 @@ Comparado com `original/Source/Source/_Common/MoverAttack.cpp`, `MoverParam.cpp`
   comentados); **Bobochan** tem MMI_SMELT_SAFETY_* (upgrade seguro), MMI_PIERCING (abrir furo), MMI_SMELT_REMOVE_PIERCING,
   MMI_SMELT_REMOVE_JEWEL e MMI_SMELT_CHANGEG/UWEAPON; **Peach** tem MMI_SMELT_EXTRACTION, MIXJEWEL e SMELT_JEWEL (mais
   LVREQDOWN_CANCEL, BLESSING_CANCEL, RETURN_AWAKE, CHANGORI — não feitos: dependem de despertar/opções aleatórias, que o
-  jogo ainda não tem). No centro de Flaris os quatro estão a menos de 5 m um do outro: o menu de um NPC lista os grudados
-  ("BoBoChan ›"…), em cadeia de até 5 m, senão o de trás nunca é clicado.
+  jogo ainda não tem). No .dyo original os quatro ficam a menos de 5 m um do outro no centro de Flaris, mas no mapa do jogo
+  (com as edições) estão separados e cada um é clicado direto.
 - **Regras** (`servers/world/upgrade.ts`, `UpgradeRules`), das funções oficiais: EnchantGeneral/SmeltSafetyGeneral (Sunstone,
   tGeneral do ItemUpgrade.lua, −10% do +4 em diante), RefineAccessory/SmeltSafetyAccessory (moonstone; o accessory.inc daqui
   não tem `Probability` → chance 0 e só o fail stack ACCESSORY_NORMAL), EnchantAttribute/SmeltSafetyAttribute (carta base

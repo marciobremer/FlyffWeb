@@ -276,25 +276,6 @@ net.onNpcMenu = (m) => {
   if (m.buff) opts.push({ label: 'Receber Buffs!', run: () => net.npcBuff(m.key) });
   // ferreiro (Bobochan, Peach…): as opções do character.inc abrem a janela no modo certo
   for (const o of smithOptions(m.smith)) opts.push({ label: o.label, run: () => smithWnd.open(m.key, o.mode) });
-  // NPCs grudados (o mapa tem vários no mesmo lugar — no centro de Flaris, Boboko, Boboku, Bobochan e Peach a menos de 5 m):
-  // o menu leva aos outros, senão o de trás nunca é clicado
-  if (shopNpc && view.data) {
-    // em cadeia: NPCs a até 5 m de algum do grupo (Peach–Boboko–Bobochan–Boboku)
-    const seen = new Set([m.key.toLowerCase()]), group: [number, number][] = [shopNpc];
-    // o próprio NPC do menu (pode ter vindo de um atalho e estar a alguns metros de onde se clicou)
-    for (const o of view.data.movers) if (o.characterKey?.toLowerCase() === m.key.toLowerCase() && Math.hypot(o.pos[0] - shopNpc[0], o.pos[2] - shopNpc[1]) <= 10) group.push([o.pos[0], o.pos[2]]);
-    for (let grew = true; grew;) {
-      grew = false;
-      for (const o of view.data.movers) {
-        const k = o.characterKey;
-        if (!k || seen.has(k.toLowerCase()) || !group.some(([gx, gz]) => Math.hypot(o.pos[0] - gx, o.pos[2] - gz) <= 5)) continue;
-        seen.add(k.toLowerCase());
-        group.push([o.pos[0], o.pos[2]]);
-        grew = true;
-        opts.push({ label: `${view.data.characters.get(k.toLowerCase())?.name || k.replace(/^[A-Za-z]{4}_/, '')} ›`, run: () => { if (menuNpc) menuNpc = { inst: menuNpc.inst, key: k }; net.npcMenu(k); } });
-      }
-    }
-  }
   if (!opts.length) return;
   // ao lado do NPC, na altura da cabeça
   const inst = menuNpc?.key === m.key ? menuNpc.inst : null;
