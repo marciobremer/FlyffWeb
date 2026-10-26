@@ -415,13 +415,17 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 .jw-apply:disabled { opacity: .5; cursor: default; }
 
 /* barra de buffs (client/buffbar.ts) */
-.buff-bar { position: fixed; left: 6px; top: 86px; z-index: 50; display: flex; flex-wrap: wrap; gap: 3px; max-width: 280px; pointer-events: auto; cursor: grab; touch-action: none; user-select: none; }
+.buff-bar { position: fixed; left: 6px; top: 86px; z-index: 50; display: flex; flex-wrap: wrap; gap: 3px; max-width: 310px; pointer-events: auto; cursor: grab; touch-action: none; user-select: none; }
 .buff-bar.dragging { cursor: grabbing; }
 .buff-bar:not(:empty) { padding: 2px; border-radius: 4px; outline: 1px dashed transparent; }
 .buff-bar:hover { outline-color: rgba(255, 255, 255, .5); }
 .buff { position: relative; width: 28px; height: 28px; background: rgba(0, 0, 0, .55); border: 1px solid #b9a35a; border-radius: 3px; }
 .buff img { width: 26px; height: 26px; display: block; }
 .buff span { position: absolute; right: 0; bottom: -1px; font: 700 9px/10px Tahoma, sans-serif; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; }
+/* barra de buffs: ícones 2 px maiores; clique alterna entre horizontal e vertical */
+.buff-bar .buff { width: 30px; height: 30px; }
+.buff-bar .buff img { width: 28px; height: 28px; }
+.buff-bar.vertical { flex-direction: column; max-width: none; max-height: calc(100vh - 12px); }
 /* habilidades de party ligadas: no alto, à esquerda da janela do alvo (client/partybuffs.ts) */
 .party-buffs { position: fixed; top: 24px; right: calc(50% + 146px); z-index: 50; display: flex; gap: 3px; pointer-events: auto; }
 .party-buffs .buff { border-color: #4cff6a; }
