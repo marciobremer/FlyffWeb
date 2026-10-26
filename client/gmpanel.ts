@@ -12,6 +12,7 @@ import { hideItemTip, moveItemTip, showItemTip } from './itemtip';
  *   quantidade, enchant (joias +0–20, o resto +0–10), elemento (+0–10) e furos de piercing (suit, 0–4);
  * - Jogador: também devolve os pontos de atributo do alvo (reset de status) e mata / revive o alvo (`//kill`, `//revive`);
  *   Dark Illusion (`//invis`) deixa você invisível para os jogadores (GMs/admins veem translúcido) e os mobs largam você.
+ *   Imortal (`//god`, ligado ao entrar): os mobs batem e o dano aparece, mas o HP não cai.
  * - Monstros: lista dos monstros do jogo (nome, MI_*, nível; boss em vermelho) com busca — clicar escolhe e "Invocar"
  *   cria a quantidade pedida perto de você (`//mob`); os invocados não renascem.
  * Tudo vira comando `//…` mandado pelo chat (mesmas regras e log do servidor); as respostas aparecem na linha de status.
@@ -71,11 +72,20 @@ export class GmPanel extends GameWindow {
   private mobQty = num(1, 30, 1);
   /** Dark Illusion: liga/desliga a invisibilidade de GM (//invis) */
   private invisBtn = btn('Dark Illusion', () => this.send('//invis'));
+  /** imortal: os mobs batem e o dano aparece, mas o HP não cai (//god; ligado ao entrar) */
+  private godBtn = btn('Imortal', () => this.send('//god'));
 
   /** estado da Dark Illusion (o servidor avisa ao ligar/desligar) */
   setInvis(on: boolean) {
     this.invisBtn.textContent = on ? 'Dark Illusion: ligada' : 'Dark Illusion';
     this.invisBtn.classList.toggle('on', on);
+  }
+
+  /** estado do modo imortal (o servidor avisa ao entrar e ao ligar/desligar) */
+  setGod(on: boolean) {
+    this.godBtn.textContent = on ? 'Imortal: ligado' : 'Imortal: desligado';
+    this.godBtn.classList.toggle('on', on);
+    this.godBtn.setAttribute('aria-pressed', String(on));
   }
 
   constructor(parent: HTMLElement) {
@@ -196,6 +206,7 @@ export class GmPanel extends GameWindow {
       })),
       el('h4', { textContent: 'GM' }),
       el('div', { className: 'gm-row' }, this.invisBtn, el('span', { className: 'gm-hint', textContent: 'invisível para os jogadores; GMs e admins veem' })),
+      el('div', { className: 'gm-row' }, this.godBtn, el('span', { className: 'gm-hint', textContent: 'leva os golpes, mas o HP não cai (liga ao entrar)' })),
       el('h4', { textContent: 'Vida' }),
       el('div', { className: 'gm-row' },
         btn('Matar', () => this.send(this.withTarget('kill', ''))),

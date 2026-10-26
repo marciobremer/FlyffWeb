@@ -845,3 +845,13 @@ Comparado com `original/Source/Source/_Common/MoverAttack.cpp`, `MoverParam.cpp`
 - Janela H conferida com o CWndCharInfo (Ranger 120 sem equipamento, 15 em tudo): ataque 139 (mão = WT_MELEE_STAFF: (STR−10)×0,8
   + nível×1,1, + 2/4 da mão, média — o % de ataque entra depois da média, como o RenderATK), defesa 85 (GetSta()/2 em
   inteiros), crítico 1%, vel. de ataque 42%. Velocidade % = corrida ÷ 6,25.
+
+## 43. GM imortal (2026-10-26)
+- `//god [on|off]` (ou `//imortal`) e o botão **Imortal** no painel de GM (seção GM, abaixo da Dark Illusion): os mobs continuam
+  batendo e o dano aparece, mas o HP não cai (`mobAttack` em realtime.ts pula a subtração quando `c.god`); `//kill` também
+  recusa um alvo imortal. Liga sozinho quando um GM/admin entra no mundo (inclusive ao trocar de mapa); avisa o cliente com
+  `{ t: 'god', on }`.
+
+## 44. Barra de buffs (2026-10-26)
+- Ícones 30×30 (2 px maiores; os da party continuam 28). Clique esquerdo num ícone, sem arrastar (< 4 px), alterna a barra
+  entre horizontal e vertical (lembrado em `flyff.wnd.buffs.vertical`); arrastar continua movendo, botão direito tira o buff.

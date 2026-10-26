@@ -299,6 +299,8 @@ export class NetClient {
   onTradeClose: (text: string) => void = () => {};
   /** sua Dark Illusion de GM ligou/desligou */
   onInvis: (on: boolean) => void = () => {};
+  /** seu modo imortal de GM/admin (//god) */
+  onGod: (on: boolean) => void = () => {};
   /** o servidor mandou trocar de mundo (ticket de Azria, teleporte para outro mapa) */
   onChangeWorld: (w: string, p: [number, number, number]) => void = () => {};
   /** guild: sua guild (null = sem guild), convite recebido, o nome da sua guild mudou */
@@ -420,6 +422,8 @@ export class NetClient {
       } else if (m.t === 'invis') {
         const id = Number(m.id);
         if (id === this.myId) this.onInvis(!!m.on); else this.remotes.setInvis(id, !!m.on);
+      } else if (m.t === 'god') {
+        this.onGod(!!m.on);
       } else if (m.t === 'changeWorld') {
         this.onChangeWorld(String(m.w), m.p as [number, number, number]);
       } else if (m.t === 'guildView') {

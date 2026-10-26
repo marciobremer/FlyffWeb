@@ -718,6 +718,7 @@ let combatMt = 0, lookNow: string[] = [];
 /** você está com a Dark Illusion de GM ligada (invisível para os jogadores): seu boneco fica translúcido */
 let myInvis = false;
 net.onInvis = (on) => { myInvis = on; view.player?.inst?.setGhost(on); gmPanel.setInvis(on); };
+net.onGod = (on) => gmPanel.setGod(on);
 async function restyle(eq: string[]) {
   lookNow = eq;
   const inst = await view.player?.restyle(eq);

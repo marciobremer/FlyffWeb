@@ -85,6 +85,7 @@ import type { InvEdit } from '../character/inventory';
  *                                                   trade: pedido recebido, janela (ofertas: { gold, items: [{ s, it, d }] }), fechou
  *   { t: 'enter', player: PlayerView }              alguém entrou
  *   { t: 'invis', id, on }                          GM ficou invisível / visível (Dark Illusion; só GMs/admins e ele mesmo recebem)
+ *   { t: 'god', on }                                seu modo imortal de GM/admin (//god; ligado ao entrar)
  *   { t: 'leave', id }                              alguém saiu
  *   { t: 'states', list: [id, x, y, z, h, s][] }    atualizações agrupadas, 10 por segundo, só de quem mudou
  *   { t: 'inv', gold, bag, items: [c, s, itemId, n][], defs }   inventário inteiro (ao entrar e a cada mudança)
@@ -121,6 +122,7 @@ interface Conn { ws: WebSocket; player: PlayerView | null; accountId: number; di
   /** itens do chão que este cliente conhece */ ground: Set<number>;
   /** partes do visual escondidas pelo jogador (máscara de bits, shared/look.ts) */ hide: number;
   /** GM invisível (Dark Illusion do painel): jogadores comuns não o veem e os mobs o ignoram */ invis?: boolean;
+  /** GM/admin imortal (//god, ligado ao entrar): os golpes chegam e o dano aparece, mas o HP não cai */ god?: boolean;
   /** modo de batalha desligado (MOT_BASE_BATTLE): postura normal mesmo com arma; atacar liga de novo */ peace?: boolean; /** postura da arma equipada */ weaponMt?: number;
   /** ids dos amigos (Mensageiro) e pedidos de amizade recebidos (id de quem pediu → quando) */ friends?: Set<number>; friendReqs?: Map<number, number>;
   /** convites de party recebidos (id de quem convidou → quando) */ partyReqs?: Map<number, number>;
@@ -1411,7 +1413,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     const c = connOf(playerId), cb = c?.cb, p = c?.player;
     if (!c || !cb || !p || !rules || !m.prop || cb.dead) return;
     const r = rules.mobHitsPlayer(m.prop, cb.f);
-    if (r.hit) { cb.hp = Math.max(0, cb.hp - r.dmg); cb.lastHurt = Date.now(); cb.dirty = true; }
+    // imortal (GM/admin): o golpe acontece e o dano aparece, mas o HP não cai
+    if (r.hit && !c.god) { cb.hp = Math.max(0, cb.hp - r.dmg); cb.lastHurt = Date.now(); cb.dirty = true; }
     sendNear(p.w, m.x, m.z, { t: 'hit', k: 'm', a: m.id, d: p.id, dmg: r.dmg, f: (r.hit ? 0 : 1) | (r.crit ? 2 : 0), hp: cb.hp });
     if (cb.hp > 0) return;
     killPlayer(c);
@@ -1568,6 +1571,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     c.onlineSet = query('UPDATE characters SET online = true WHERE id = $1', [id]).then(() => {}, () => {}); // o site mostra quem está online
     const me = c.player;
     send(c.ws, { t: 'welcome', id, w: me.w, p: me.p, eq: me.eq, mt: me.mt, players: [...conns].filter((o) => o !== c && o.player && o.player.w === me.w && seesActor(c, o.player.id)).map((o) => o.player) });
+    // GM/admin entra imortal (pode desligar com //god off ou no painel)
+    if (isStaff(c)) { c.god = true; send(c.ws, { t: 'god', on: true }); }
     if (inv) send(c.ws, inventory!.view(inv));
     if (removed.length) send(c.ws, { t: 'chat', id: 0, name: '', text: `Sua classe não pode usar: ${removed.join(', ')}. Foi para a bolsa.` });
     if (c.cb) send(c.ws, statsMsg(c));
@@ -1682,10 +1687,16 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
               setInvis(c, want);
               return want ? 'Dark Illusion: você está invisível para os jogadores (GMs e admins ainda veem você).' : 'Dark Illusion desligada: todos veem você de novo.';
             },
+            god: (on) => {
+              c.god = on ?? !c.god;
+              send(ws, { t: 'god', on: c.god });
+              return c.god ? 'Imortal ligado: os mobs batem, o dano aparece, mas o seu HP não cai.' : 'Imortal desligado: você volta a perder HP e pode morrer.';
+            },
             kill: (id) => {
               const o = liveConn(id);
               if (!o?.cb || !o.player) return 'Esse personagem não está online.';
               if (o.cb.dead) return `${o.player.name} já está morto.`;
+              if (o.god) return `${o.player.name} está imortal (//god off para desligar).`;
               killPlayer(o);
               return `${o.player.name} foi morto.`;
             },
