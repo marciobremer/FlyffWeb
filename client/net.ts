@@ -74,6 +74,17 @@ export class RemotePlayers {
     void this.load(r);
   }
 
+  /**
+   * Remonta o modelo (equipamento novo) sem sumir: o modelo antigo continua na tela, andando, até o novo terminar de
+   * carregar, e os dois trocam no mesmo quadro. Trocar de novo no meio do carregamento descarta o que estava a caminho.
+   */
+  private rebuild(r: Remote, v: PlayerView) {
+    r.gone = true; // o carregamento anterior (se houver) desiste; o modelo da tela passa para o novo registro
+    const n: Remote = { ...r, view: v, gone: false, target: r.target, cur: r.cur };
+    this.list.set(v.id, n);
+    void this.load(n);
+  }
+
   private async load(r: Remote) {
     const d = this.world.data;
     if (!d) return;
@@ -99,16 +110,16 @@ export class RemotePlayers {
     this.world.attachSetSfx(inst, r.view.eq ?? []);
     void attachRide(inst, rideOf(d, r.view.eq ?? []), this.world.lib);
     if (r.s.startsWith('fly')) inst.play(this.motionFor(r));
+    // troca de equipamento: o modelo antigo sai só agora, no mesmo quadro em que o novo entra
+    r.inst?.dispose();
     r.inst = inst;
   }
 
-  /** trocou o equipamento: remonta o modelo na posição atual */
+  /** trocou o equipamento: remonta o modelo na posição atual, sem piscar */
   look(id: number, eq: string[], mt = 0) {
     const r = this.list.get(id);
     if (!r) return;
-    this.add({ ...r.view, eq, mt, p: [...r.cur], h: r.curH, s: r.s });
-    const n = this.list.get(id)!;
-    n.target = r.target; n.h = r.h;
+    this.rebuild(r, { ...r.view, eq, mt, p: [...r.cur], h: r.curH, s: r.s });
   }
 
   update(id: number, x: number, y: number, z: number, h: number, s: string) {
