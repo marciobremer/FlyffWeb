@@ -30,6 +30,8 @@ export interface PlayerStats {
   jobOpts: number[];
   /** velocidade de corrida (u/s) com os bônus de movimento (DST_SPEED) */
   mv?: number;
+  /** bônus DST_* somados de itens, joias, cartas espetadas, sets e buffs: [DST, valor][] */
+  fx?: [number, number][];
 }
 
 /** item como o servidor descreve (server/items.ts ItemCatalog.view) */

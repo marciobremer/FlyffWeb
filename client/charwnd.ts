@@ -1,6 +1,10 @@
 import { keyedImage, themeImage } from '../shared/tga';
 import { GameWindow } from './ui';
 import type { PlayerStats } from './net';
+import { fxText } from './itemtip';
+
+/** "Ataque +7%" → ["Ataque", "+7%"] (último pedaço é o valor) */
+const splitFx = (s: string): [string, string] => { const i = s.lastIndexOf(' '); return i > 0 ? [s.slice(0, i), s.slice(i + 1)] : [s, '']; };
 
 /**
  * Janela de personagem (tecla H ou menu → Personagem): nome, classe, nível, exp; STR/STA/DEX/INT com "+"/"−" para
@@ -159,5 +163,14 @@ export class CharacterWindow extends GameWindow {
     add('HP', `${s.hp} / ${s.maxHp}`);
     add('MP', `${s.mp} / ${s.maxMp}`);
     add('FP', `${s.fp} / ${s.maxFp}`);
+    // corrida em relação à base (fSpeed 0,1 × 60 = 6 u/s)
+    if (s.mv) add('Velocidade', `${Math.round((s.mv / 6) * 100)}%`);
+    // bônus somados de equipamento, joias, cartas espetadas, sets e buffs (já aplicados nos valores acima)
+    for (const [k, v] of s.fx ?? []) {
+      const [name, val] = splitFx(fxText(k, v));
+      const t = document.createElement('dt'); t.textContent = name; t.className = 'bonus';
+      const d = document.createElement('dd'); d.textContent = val; d.className = 'bonus';
+      this.derived.append(t, d);
+    }
   }
 }

@@ -300,6 +300,8 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 .cw-derived { flex: 1; min-height: 0; margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-content: start; padding: 4px 6px; overflow: auto; background: rgb(255 255 255 / .75); border: 1px solid #d8c4b8; border-radius: 4px; }
 .cw-derived dt { font-weight: 700; color: #3c4f86; }
 .cw-derived dd { margin: 0; text-align: right; }
+.cw-derived dt.bonus { font-weight: 400; color: #6b4a2a; }
+.cw-derived dt.bonus + dd.bonus { color: #2f7a3a; }
 
 /* barra de atalhos com itens: ícone, quantidade, espera escurecendo e clareando */
 .ab-slot img { position: absolute; inset: 1px; width: 28px; height: 28px; object-fit: contain; pointer-events: none; }

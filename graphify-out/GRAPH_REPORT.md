@@ -1,25 +1,25 @@
-# Graph Report - FlyffWeb  (2026-10-26)
+# Graph Report - Projeto_Atools  (2026-10-26)
 
 ## Corpus Check
-- 249 files · ~240,202 words
+- 249 files · ~240,474 words
 - Verdict: corpus is large enough that graph structure adds value.
-- Unclassified: 20 file(s) not represented in the graph (top: (none) 7, .css 5, .bat 3)
+- Unclassified: 21 file(s) not represented in the graph (top: (none) 8, .css 5, .bat 3)
 
 ## Summary
-- 2653 nodes · 6212 edges · 136 communities (84 shown, 52 thin omitted)
-- Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 387 edges (avg confidence: 0.87)
+- 2654 nodes · 6216 edges · 131 communities (85 shown, 46 thin omitted)
+- Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 390 edges (avg confidence: 0.87)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `59cfbebd`
+- Built from commit: `9ab0b720`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - client/main.ts
 - sfxRuntime.ts
-- Player
-- admin/index.ts
+- shared/worldedits.ts
+- internal.ts
 - data.ts
 - inventory.ts
 - editor/main.ts
@@ -30,7 +30,7 @@
 - htdocs/package.json
 - mssql-pg.js
 - servers/main.ts
-- realtime.ts
+- PartyManager
 - connectToDatabase
 - cashshop-payments.js
 - MobWorld
@@ -39,7 +39,7 @@
 - items.ts
 - tga.ts
 - auth/http.ts
-- start.ts
+- ShopCatalog
 - net.ts
 - app
 - WorldEditor
@@ -49,7 +49,7 @@
 - .raw
 - client/party.ts
 - ActionBar
-- .load
+- castSkill
 - next
 - Combat
 - paypal-ranking.js
@@ -59,20 +59,20 @@
 - attachRealtime
 - gmpanel.ts
 - terrain.ts
-- GmPanel
+- refreshFighter
 - ANALYSIS.md — Passo 1: análise do ATools e do mapa WdMadrigal
 - api
 - ui.ts
 - InventoryWindow
-- NEXT_STEPS.md — contexto e próximos passos (para o Opus 5.5)
+- saveCombat
 - FriendsWindow
 - RemotePlayers
 - 3. Restaurar no Windows (sem Docker)
-- FlyFF Web Port – World Editor (WebGL / Three.js)
+- ChatWindow
 - collision.ts
 - admin.js
-- drops.ts
-- query
+- realtime.ts
+- db/index.ts
 - SkillWindow
 - react
 - ranking/page.js
@@ -80,28 +80,27 @@
 - import-flyff.ts
 - GameWindow
 - charwnd.ts
-- .open
-- world/combat.ts
+- .frame
+- test-persist.ts
 - emailUtils.js
 - vercel.json
 - client/teleport.ts
-- TradeWindow
+- LookPiece
 - admin/paypal-ranking/page.js
 - shops/page.js
 - react-data-table-component
 - dds.ts
-- GameProcess
+- admin/index.ts
 - runGmCommand
 - BuffBar
-- ShopWindow
 - FlyFF Web (editor de mapa + cliente do jogo)
-- motionOf
-- .updateFly
+- net.ts
+- Player
 - compilerOptions
 - GuildWindow
-- 7. Fase 1 do jogo multiplayer — reorganização (CONCLUÍDA em 2026-10-17)
+- .open
 - api.ts
-- .loadTile
+- .constructor
 - probe_o3d.py
 - GameAudio
 - skillFx
@@ -112,7 +111,6 @@
 - 008_legacy_views.sql
 - NpcMenu
 - vote-pingback/route.js
-- WaterSystem
 - Announcer
 - .onReset
 - VersionWatcher
@@ -128,8 +126,6 @@
 - 007_website.sql
 - shared/world.ts
 - SkillCatalog
-- SiteProcess
-- MotionWindow
 - JobWindow
 - playerClick
 - create_topup_items_table.sql
@@ -138,8 +134,8 @@
 - react-toastify
 - app/paypal-ranking/page.js
 - middleware.js
-- 35. Buffs e magias (2026-10-23)
-- 4. Ossos do personagem
+- .setModel
+- join
 
 ## God Nodes (most connected - your core abstractions)
 1. `WorldView` - 95 edges
@@ -158,53 +154,57 @@
   NEXT_STEPS.md → client/ui.ts
 - `Passo 1 – Análise do código-fonte do World Editor (ATUAL)` --references--> `WorldEditor`  [INFERRED]
   docs/README-inicial.md → editor/editor.ts
+- `27. Reorganização das pastas — fase 1 (2026-10-23)` --references--> `pageAlias()`  [INFERRED]
+  NEXT_STEPS.md → servers/common/config.ts
 - `7. Proposta de arquitetura (Passo 2)` --references--> `Landscape`  [INFERRED]
   docs/ANALYSIS.md → shared/formats/lnd.ts
 - `3. Pontos que exigem atenção (aprendidos na prática)` --references--> `objectMatrix()`  [INFERRED]
   NEXT_STEPS.md → shared/math.ts
-- `11. Ajustes visuais (2026-10-17)` --references--> `keyedImage()`  [INFERRED]
-  NEXT_STEPS.md → shared/tga.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (136 total, 52 thin omitted)
+## Communities (131 total, 46 thin omitted)
 
 ### Community 0 - "client/main.ts"
 Cohesion: 0.03
-Nodes (75): Account, actionBar, announcer, api(), audio, backToLogin(), boot, bootEl (+67 more)
+Nodes (80): Account, actionBar, announcer, api(), audio, backToLogin(), boot, bootEl (+72 more)
 
 ### Community 1 - "sfxRuntime.ts"
 Cohesion: 0.06
 Nodes (45): PreviewSfx, parseSfx(), sampleKey(), Sfx, SfxAlphaType, Blend, Glow, SfxBillType (+37 more)
 
-### Community 3 - "admin/index.ts"
-Cohesion: 0.13
-Nodes (18): ann, ANN_FILE, AnnLoop, bootedAt, game, PUBLIC, send(), server (+10 more)
+### Community 2 - "shared/worldedits.ts"
+Cohesion: 0.17
+Nodes (11): defaultFilter(), EnvironmentEdits, FilterSettings, NpcAdded, NpcMove, SCREEN_FILTERS, ScreenFilter, SHADOW_AREA (+3 more)
+
+### Community 3 - "internal.ts"
+Cohesion: 0.31
+Nodes (7): 13. Painel admin (2026-10-18), revokeAccount(), SESSION_MS, sessions, ANNOUNCE_MAX, dbCounters, internalMiddleware()
 
 ### Community 4 - "data.ts"
-Cohesion: 0.07
-Nodes (43): MotionEntry, DEFINE_FILES, ServerWorld, DEFINE_FILES, fetchBuf(), fetchList(), WorldData, parseDyo() (+35 more)
+Cohesion: 0.08
+Nodes (30): 31. Editor: mover/adicionar/remover NPCs e salvar o Ambiente (2026-10-23), DEFINE_FILES, ServerWorld, parseDefines(), parseModelTable(), parseTerrain(), parseWaterLists(), SECTION (+22 more)
 
 ### Community 5 - "inventory.ts"
-Cohesion: 0.08
-Nodes (20): BAG, BAG_SLOTS, baseJob(), Cached, Ctx, dualWieldable(), EQUIP, Inventory (+12 more)
+Cohesion: 0.06
+Nodes (28): BAG, BAG_SLOTS, baseJob(), Cached, Ctx, dualWieldable(), EQUIP, Inventory (+20 more)
 
 ### Community 6 - "editor/main.ts"
-Cohesion: 0.11
-Nodes (26): applyOverlayVisibility(), buildOverlays(), buildPlaces(), checked(), clearOverlays(), envFromPanel(), filterFromPanel(), filterLabels() (+18 more)
+Cohesion: 0.10
+Nodes (30): applyOverlayVisibility(), buildOverlays(), buildPlaces(), checked(), clearOverlays(), envFromPanel(), filterFromPanel(), filterLabels() (+22 more)
 
 ### Community 7 - "humans.ts"
-Cohesion: 0.06
-Nodes (40): InventoryPreview, Remote, applyEnchantGlow(), BLUE, drawSize, ELEMENT_COLOR, Emitter, EnchantGlow (+32 more)
+Cohesion: 0.07
+Nodes (34): 17. Itens no banco: inventário, equipados e penya (2026-10-18), BLUE, drawSize, ELEMENT_COLOR, Emitter, EnchantGlow, ORB_COLOR, PART_WEIGHT (+26 more)
 
 ### Community 9 - "package.json"
 Cohesion: 0.05
 Nodes (45): dependencies, fflate@^0.8.3, pg@^8.23.1, three@^0.170.0, ws@^8.22.0, devDependencies, tsx@^4.23.15, @types/node@^22.20.5 (+37 more)
 
 ### Community 10 - "movers.ts"
-Cohesion: 0.07
-Nodes (32): Bone, Motion, MotionFrame, parseAni(), parseChr(), R, Skeleton, O3dPart (+24 more)
+Cohesion: 0.06
+Nodes (33): Bone, Motion, MotionFrame, parseAni(), parseChr(), R, Skeleton, O3dPart (+25 more)
 
 ### Community 11 - "htdocs/package.json"
 Cohesion: 0.07
@@ -215,12 +215,8 @@ Cohesion: 0.07
 Nodes (22): bindParams(), caseMap(), cfg, closeParen(), DB_SCHEMA, FORMAT_TOKENS, getPgPool(), getPool() (+14 more)
 
 ### Community 13 - "servers/main.ts"
-Cohesion: 0.09
-Nodes (30): 27. Reorganização das pastas — fase 1 (2026-10-23), 28. O site (htdocs) em http://localhost:8080 (2026-10-23), setCharacterInventory(), ADMIN_PORT, ANNOUNCE_MAX, DIST, GAME_PORT, pageAlias() (+22 more)
-
-### Community 14 - "realtime.ts"
-Cohesion: 0.09
-Nodes (19): INVENTORY_CHANNEL, InvState, TRADE_SLOTS, TradeOffer, EXP_TABLE, MAX_PARTYLEVEL, Party, PARTY_MAX (+11 more)
+Cohesion: 0.07
+Nodes (42): 28. O site (htdocs) em http://localhost:8080 (2026-10-23), setCharacterInventory(), BootEntry, BootManifest, FILE, CLIENT_DIR, GAME_PORT, pageAlias() (+34 more)
 
 ### Community 15 - "connectToDatabase"
 Cohesion: 0.09
@@ -231,36 +227,36 @@ Cohesion: 0.15
 Nodes (33): dynamic, POST(), runtime, dynamic, POST(), runtime, dynamic, POST() (+25 more)
 
 ### Community 17 - "MobWorld"
-Cohesion: 0.12
+Cohesion: 0.11
 Nodes (9): cellOf(), CORPSE_MS, isBoss(), Mob, MOB_ATTACK_RANGE, MobHooks, MobState, MobWorld (+1 more)
 
 ### Community 18 - "bindUi"
-Cohesion: 0.14
-Nodes (18): download(), bindUi(), doExport(), editor, envInfo(), openWorld(), putEdits(), renderNpcList() (+10 more)
+Cohesion: 0.18
+Nodes (14): download(), bindUi(), doExport(), editor, envInfo(), openWorld(), putEdits(), renderNpcList() (+6 more)
 
 ### Community 19 - "gameAccount.js"
 Cohesion: 0.13
 Nodes (27): cookie@^1.0.2, dynamic, GET(), POST(), POST(), GET(), dynamic, GET() (+19 more)
 
 ### Community 20 - "items.ts"
-Cohesion: 0.12
-Nodes (24): EXTRA_DIR, DEFINE_FILES, PAIR, SetDef, SPEC_COLUMNS, nameTable, DIR, editsMtime() (+16 more)
+Cohesion: 0.11
+Nodes (23): EXTRA_DIR, DEFINE_FILES, fitsPart(), ItemDef, PAIR, SetDef, SPEC_COLUMNS, nameTable (+15 more)
 
 ### Community 21 - "tga.ts"
-Cohesion: 0.16
-Nodes (13): MenuItem, StatusInfo, 9. Tela de login (2026-10-17), decodeDxt(), TargetInfo, decodeTga(), iconImage(), icons (+5 more)
+Cohesion: 0.11
+Nodes (27): BuffView, MenuItem, StatusInfo, MotionEntry, fetchBuf(), fetchList(), bitsOf(), ctz() (+19 more)
 
 ### Community 22 - "auth/http.ts"
-Cohesion: 0.17
-Nodes (24): 13. Painel admin (2026-10-18), authRoute(), failures, hashToken(), login(), loginRemembered(), startSession(), LEGACY_SALT (+16 more)
+Cohesion: 0.23
+Nodes (19): authRoute(), failures, hashToken(), login(), loginRemembered(), startSession(), LEGACY_SALT, newToken() (+11 more)
 
-### Community 23 - "start.ts"
-Cohesion: 0.13
-Nodes (13): 31. Editor: mover/adicionar/remover NPCs e salvar o Ambiente (2026-10-23), Session, WORLD, PORT, realtime, server, RealtimeOptions, WorldRuntime (+5 more)
+### Community 23 - "ShopCatalog"
+Cohesion: 0.31
+Nodes (3): WorldRuntime, ShopCatalog, parseDyo()
 
 ### Community 24 - "net.ts"
-Cohesion: 0.13
-Nodes (14): QueuedSkill, three, ModelEntry, modelFileName(), getPlaceholderGeometry(), ModelLibrary, ModelPart, placeholderGeo (+6 more)
+Cohesion: 0.16
+Nodes (8): ModelEntry, modelFileName(), getPlaceholderGeometry(), ModelLibrary, ModelPart, placeholderGeo, placeholderMaterial(), placeholderMats
 
 ### Community 25 - "app"
 Cohesion: 0.06
@@ -271,16 +267,20 @@ Cohesion: 0.12
 Nodes (5): EditContext, WorldEditor, fmt(), pick(), 5. Próximos passos sugeridos (ordem de valor)
 
 ### Community 27 - "CombatRules"
-Cohesion: 0.14
-Nodes (3): CombatRules, rand(), MoverProp
+Cohesion: 0.06
+Nodes (24): 11. Ajustes visuais (2026-10-17), 15. Correções após o teste em duas máquinas (2026-10-18), 16. Inventário, barra de atalhos e chat (2026-10-18), 18. Comandos de GM no chat (2026-10-18), 19. Postura de combate por arma e classe (2026-10-18), 1. Como rodar, 21. Combate contra mobs — v1 (2026-10-18), 22. Drops: itens e penya no chão (2026-10-18) (+16 more)
+
+### Community 28 - "MoverManager"
+Cohesion: 0.09
+Nodes (6): Remote, 7. Fase 1 do jogo multiplayer — reorganização (CONCLUÍDA em 2026-10-17), objectMatrix(), mobMotion(), MoverInstance, MoverManager
 
 ### Community 31 - "client/party.ts"
 Cohesion: 0.11
-Nodes (10): icon(), PartyListRow, PartyListWindow, PartyMember, partyTime(), PartyView, PartyWindow, SKILLS (+2 more)
+Nodes (9): icon(), PartyListRow, PartyListWindow, PartyMember, partyTime(), PartyView, PartyWindow, SKILLS (+1 more)
 
-### Community 32 - "ActionBar"
-Cohesion: 0.11
-Nodes (3): ActionBar, ChatWindow, 24. Poções/comidas e barra de atalhos (2026-10-18)
+### Community 33 - "castSkill"
+Cohesion: 0.31
+Nodes (9): partyExpShares(), castSkill(), dropLoot(), leaveParty(), partyMsg(), playerAttack(), pushParty(), rewardKill() (+1 more)
 
 ### Community 34 - "next"
 Cohesion: 0.13
@@ -291,76 +291,68 @@ Cohesion: 0.17
 Nodes (23): dynamic, POST(), runtime, dynamic, GET(), runtime, dynamic, GET() (+15 more)
 
 ### Community 37 - "enter"
-Cohesion: 0.13
-Nodes (12): GameHud, provisionalMax(), enter(), hideMaskOf(), openWorld(), renderSlots(), saySelect, showPreview() (+4 more)
-
-### Community 38 - "NpcEditor"
-Cohesion: 0.15
-Nodes (3): applyQuality(), NpcEditor, WithSrc
+Cohesion: 0.10
+Nodes (8): GameHud, provisionalMax(), enter(), MotionWindow, 10. Interface do jogo: menu e janela de status (2026-10-17), 8. Fase 2 — banco de dados (decidido em 2026-10-17), lookList(), setGlowLevel()
 
 ### Community 39 - "lucide-react"
 Cohesion: 0.12
 Nodes (5): sweetalert2@^11.6.13, UserPanelPage(), DashboardCards(), lucide-react, sweetalert2
 
 ### Community 40 - "attachRealtime"
-Cohesion: 0.07
-Nodes (59): rates, partyExpShares(), attachRealtime(), addExp(), autosave(), buffsMsg(), castSkill(), changeJob() (+51 more)
+Cohesion: 0.12
+Nodes (23): attachRealtime(), changeWorld(), friendMsg(), giveLoot(), guildMsg(), guildView(), killPlayer(), mobAttack() (+15 more)
 
 ### Community 41 - "gmpanel.ts"
-Cohesion: 0.12
-Nodes (22): ELEMENT_KEYS, JOBS, KINDS, box(), DST, EXPUP_ARMOR, EXPUP_WEAPON, fxText() (+14 more)
+Cohesion: 0.05
+Nodes (40): btn(), el(), ELEMENT_KEYS, field(), GmPanel, JOBS, KINDS, num() (+32 more)
 
 ### Community 42 - "terrain.ts"
 Cohesion: 0.13
 Nodes (17): allPatches, ATTR_COLORS, baseAttributes(), buildTerrain(), buildVertexColorMesh(), ColorMode, disposeTerrain(), fillColors() (+9 more)
 
-### Community 43 - "GmPanel"
-Cohesion: 0.23
-Nodes (6): btn(), el(), field(), GmPanel, num(), select()
+### Community 43 - "refreshFighter"
+Cohesion: 0.36
+Nodes (8): buffsMsg(), expireBuffs(), fighterFrom(), npcBuff(), refreshFighter(), removeBuff(), saveBuffs(), statsMsg()
 
 ### Community 44 - "ANALYSIS.md — Passo 1: análise do ATools e do mapa WdMadrigal"
-Cohesion: 0.09
-Nodes (22): 0. Divergências em relação ao README (corrigir antes do Passo 2), 10. Efeitos .sfx (Sfx.cpp / SfxModel.cpp) — validado nos 1.567 arquivos de Data/SFX (0 bytes sobrando), 1. Arquivos de um mundo (`Resource/World/WdMadrigal`), 2.1 `.wld` (texto), 2.2 `.lnd` (validado nos 900 arquivos: 0 desalinhamentos, `offset final == tamanho`), 2.3 Objeto (usado em `.lnd` e `.dyo`)  — `CObject::CreateObject(file)` + `CObject::Read`, 2.4 Matriz de transformação (Object.cpp `_updateMatrix`), 2.5 `.dyo` (+14 more)
+Cohesion: 0.05
+Nodes (41): 0. Divergências em relação ao README (corrigir antes do Passo 2), 10. Efeitos .sfx (Sfx.cpp / SfxModel.cpp) — validado nos 1.567 arquivos de Data/SFX (0 bytes sobrando), 1. Arquivos de um mundo (`Resource/World/WdMadrigal`), 2.1 `.wld` (texto), 2.2 `.lnd` (validado nos 900 arquivos: 0 desalinhamentos, `offset final == tamanho`), 2.3 Objeto (usado em `.lnd` e `.dyo`)  — `CObject::CreateObject(file)` + `CObject::Read`, 2.4 Matriz de transformação (Object.cpp `_updateMatrix`), 2.5 `.dyo` (+33 more)
 
 ### Community 45 - "api"
-Cohesion: 0.22
-Nodes (16): annState(), annTick(), api(), readJson(), saveAnn(), AccountRow, banAccount(), createAccount() (+8 more)
+Cohesion: 0.32
+Nodes (11): AccountRow, banAccount(), createAccount(), like(), listAccounts(), setPassword(), unbanAccount(), unbanByName() (+3 more)
 
 ### Community 46 - "ui.ts"
-Cohesion: 0.13
-Nodes (18): ItemView, DragItem, ShopView, TradeItem, TradeSide, TradeView, BarItem, ELEMENT_NAMES (+10 more)
+Cohesion: 0.11
+Nodes (18): friendRequestPrompt(), FriendView, GuildMember, GuildView, JOBS, TREE_BG, POSITIONS, SkillView (+10 more)
 
 ### Community 47 - "InventoryWindow"
 Cohesion: 0.13
 Nodes (4): setTipLookup(), InventoryWindow, keyOf(), hideBit()
 
-### Community 48 - "NEXT_STEPS.md — contexto e próximos passos (para o Opus 5.5)"
-Cohesion: 0.09
-Nodes (19): 11. Ajustes visuais (2026-10-17), 12. Fase 2 — multiplayer: jogadores se vendo (2026-10-17), 16. Inventário, barra de atalhos e chat (2026-10-18), 18. Comandos de GM no chat (2026-10-18), 19. Postura de combate por arma e classe (2026-10-18), 1. Como rodar, 21. Combate contra mobs — v1 (2026-10-18), 22. Drops: itens e penya no chão (2026-10-18) (+11 more)
+### Community 48 - "saveCombat"
+Cohesion: 0.22
+Nodes (11): 29. Fase 3: personagem na memória e um processo por mapa (2026-10-23), addExp(), autosave(), changeJob(), recalcMax(), saveCombat(), savePosition(), shutdown() (+3 more)
 
 ### Community 51 - "3. Restaurar no Windows (sem Docker)"
 Cohesion: 0.10
 Nodes (19): Ligar, O que é necessário para rodar, Observações, ReactioN MMO em Docker, 1. O que está (e o que NÃO está) neste repositório, 2. Programas necessários, 3.1 Baixar o projeto e colocar os arquivos do FlyFF, 3.2 Criar o banco no PostgreSQL (+11 more)
 
-### Community 52 - "FlyFF Web Port – World Editor (WebGL / Three.js)"
-Cohesion: 0.10
-Nodes (19): Arquivos relacionados que também aparecem, Estrutura conhecida (baseada em engenharia reversa da comunidade + ATools):, Estrutura Esperada do Projeto, FlyFF Web Port – World Editor (WebGL / Three.js), Formato `.lnd` (Landscape) – Detalhado, Formato `.wld` (World), Formatos de Arquivo de Mundo (FlyFF), Instruções para o Claude Code (Passo a Passo) (+11 more)
-
 ### Community 53 - "collision.ts"
-Cohesion: 0.13
-Nodes (15): build(), cellKey(), CollisionWorld, e1, e2, heightOnTri(), pv, qv (+7 more)
+Cohesion: 0.09
+Nodes (19): 20. Painel de GM (2026-10-18), build(), cellKey(), CollisionWorld, e1, e2, heightOnTri(), pv (+11 more)
 
 ### Community 54 - "admin.js"
 Cohesion: 0.22
 Nodes (17): acc, action(), annRender(), annSetSlot(), annSlots, api(), drawChart(), esc() (+9 more)
 
-### Community 55 - "drops.ts"
-Cohesion: 0.20
-Nodes (8): Drop, DropRules, DropSet, DropTable, GROUND_MS, MonsterDrops, OWNER_MS, rand()
+### Community 55 - "realtime.ts"
+Cohesion: 0.07
+Nodes (32): Session, cached, cleanRates(), DEFAULT_RATES, KEYS, RATE_MAX, RATE_MIN, rates (+24 more)
 
-### Community 56 - "query"
-Cohesion: 0.13
-Nodes (19): notifyInventory(), cfg, dbCounters, pgpassLookup(), pool, query(), transaction(), askPassword() (+11 more)
+### Community 56 - "db/index.ts"
+Cohesion: 0.27
+Nodes (8): cfg, pgpassLookup(), pool, transaction(), dir, main(), main(), TABLES
 
 ### Community 57 - "SkillWindow"
 Cohesion: 0.27
@@ -383,20 +375,16 @@ Cohesion: 0.14
 Nodes (14): ACCOUNT_DB, accounts, args, blockDate(), CHAR_DB, characters, DRY, LegacyAccount (+6 more)
 
 ### Community 62 - "GameWindow"
-Cohesion: 0.12
-Nodes (9): friendRequestPrompt(), FriendView, GuildMember, GuildView, JOBS, TREE_BG, POSITIONS, SkillView (+1 more)
+Cohesion: 0.20
+Nodes (3): DragItem, ShopView, GameWindow
 
 ### Community 63 - "charwnd.ts"
 Cohesion: 0.29
 Nodes (6): CharacterWindow, imgBtn(), JOB_NAMES, Stat, STATS, PlayerStats
 
-### Community 64 - ".open"
-Cohesion: 0.14
-Nodes (4): fetchRanking(), PostFx, defaultShadow(), ShadowSettings
-
-### Community 65 - "world/combat.ts"
-Cohesion: 0.21
-Nodes (9): 30. Atributos, equipamentos e dica do item conforme o servidor original (2026-10-23), fitsPart(), ItemDef, Equipped, Fighter, HitResult, JobProp, Stats (+1 more)
+### Community 65 - "test-persist.ts"
+Cohesion: 0.60
+Nodes (4): main(), post(), sleep(), [user = 'teste', pass = 'teste', charName = 'Bremer']
 
 ### Community 66 - "emailUtils.js"
 Cohesion: 0.27
@@ -410,9 +398,9 @@ Nodes (13): buildCommand, builds, development, main, env, NEXT_PUBLIC_API_URL, g
 Cohesion: 0.29
 Nodes (5): TeleportWindow, TYPE_NAME, parseTeleports(), TeleportDest, TeleportType
 
-### Community 69 - "TradeWindow"
-Cohesion: 0.20
-Nodes (4): hideItemTip(), moveItemTip(), showItemTip(), TradeWindow
+### Community 69 - "LookPiece"
+Cohesion: 0.50
+Nodes (3): CharacterInfo, CharacterInfo, LookPiece
 
 ### Community 70 - "admin/paypal-ranking/page.js"
 Cohesion: 0.29
@@ -427,12 +415,12 @@ Cohesion: 0.16
 Nodes (8): dayjs@^1.11.13, react-data-table-component@^7.7.0, GCashDonationsPage(), TableSkeleton(), TableSkeleton(), TradeLogsPage(), dayjs, react-data-table-component
 
 ### Community 73 - "dds.ts"
-Cohesion: 0.11
-Nodes (20): bitsOf(), ctz(), loadDds(), parseDds(), parser, computeEnvironment(), Environment, findContinent() (+12 more)
+Cohesion: 0.17
+Nodes (12): computeEnvironment(), Environment, findContinent(), hexRgb(), S_LIGHT, skyBlend(), Continent, WldInfo (+4 more)
 
-### Community 74 - "GameProcess"
-Cohesion: 0.19
-Nodes (5): GameProcess, autoStart(), onlineAccounts(), shutdown(), site
+### Community 74 - "admin/index.ts"
+Cohesion: 0.10
+Nodes (23): GameProcess, ann, ANN_FILE, AnnLoop, annState(), annTick(), api(), autoStart() (+15 more)
 
 ### Community 75 - "runGmCommand"
 Cohesion: 0.15
@@ -442,21 +430,25 @@ Nodes (11): ELEMENT_NAMES, ELEMENTS, findTarget(), gmAuthority(), GmContext, GmT
 Cohesion: 0.18
 Nodes (10): Banco de dados (PostgreSQL `flyffweb`), Contas e login, Coordenadas, Estrutura, FlyFF Web (editor de mapa + cliente do jogo), Formato de exportação (`flyff-web-world` v1), Limitações conhecidas, O que faz (MVP) (+2 more)
 
-### Community 79 - "motionOf"
-Cohesion: 0.17
-Nodes (9): 17. Itens no banco: inventário, equipados e penya (2026-10-18), BASE, motionOf(), motionsFor(), MotionState, nn(), getMotion(), motionReady() (+1 more)
+### Community 79 - "net.ts"
+Cohesion: 0.15
+Nodes (19): GroundRow, Item, InvMessage, PlayerView, three, applyEnchantGlow(), OT, BASE (+11 more)
+
+### Community 80 - "Player"
+Cohesion: 0.09
+Nodes (6): 4. Ossos do personagem, 9. Tela de login (2026-10-17), getMotion(), motionReady(), Player, PlayerWorld
 
 ### Community 81 - "compilerOptions"
 Cohesion: 0.18
 Nodes (10): compilerOptions, lib, module, moduleResolution, noEmit, skipLibCheck, strict, target (+2 more)
 
 ### Community 84 - "api.ts"
-Cohesion: 0.15
-Nodes (19): apiMiddleware(), entryCache, fromThisMachine(), gameEntry(), BootEntry, BootManifest, bootTotal(), dataVersion() (+11 more)
-
-### Community 85 - ".loadTile"
 Cohesion: 0.22
-Nodes (4): 20. Painel de GM (2026-10-18), humanKey(), isHumanEntry(), key()
+Nodes (17): apiMiddleware(), entryCache, fromThisMachine(), gameEntry(), bootTotal(), dataVersion(), load(), saveBootManifest() (+9 more)
+
+### Community 85 - ".constructor"
+Cohesion: 0.22
+Nodes (3): applyQuality(), defaultShadow(), ShadowSettings
 
 ### Community 86 - "probe_o3d.py"
 Cohesion: 0.24
@@ -465,6 +457,10 @@ Nodes (3): gm(), parse(), R
 ### Community 89 - "scripts"
 Cohesion: 0.15
 Nodes (12): devDependencies, javascript-obfuscator@^4.1.1, tailwindcss@^4, @tailwindcss/postcss@^4, scripts, build, dev, lint (+4 more)
+
+### Community 90 - "ItemCatalog"
+Cohesion: 0.23
+Nodes (5): ItemCatalog, askPassword(), [cmd, ...rest], pos, readNewPassword()
 
 ### Community 92 - "next-auth"
 Cohesion: 0.25
@@ -491,25 +487,29 @@ Cohesion: 0.15
 Nodes (17): accounts, accounts_username_lower, characters, characters_account, characters_account_slot, characters_name_lower, character_items, remember_tokens (+9 more)
 
 ### Community 111 - "game-process.ts"
-Cohesion: 0.28
-Nodes (4): GameStats, GameStatus, LogLine, SiteStatus
+Cohesion: 0.15
+Nodes (5): GameStats, GameStatus, LogLine, SiteProcess, SiteStatus
 
 ### Community 112 - "007_website.sql"
 Cohesion: 0.17
 Nodes (17): idx_topup_items_category, idx_vote_logs_account, idx_vote_logs_ip_address, idx_vote_logs_vote_time, ix_paypal_cashshop_orders_character_name, ix_topup_requests_created_at, ix_topup_requests_status, ix_topup_requests_streamer_code (+9 more)
 
 ### Community 113 - "shared/world.ts"
-Cohesion: 0.08
-Nodes (40): GroundRow, Item, InvMessage, PlayerView, Action, EditableTile, flip, Snap (+32 more)
+Cohesion: 0.09
+Nodes (33): QueuedSkill, Action, EditableTile, flip, Snap, encodeTile(), exportWorld(), objRow() (+25 more)
 
 ### Community 132 - "middleware.js"
 Cohesion: 0.67
 Nodes (3): config, middleware(), validSession()
 
+### Community 134 - "join"
+Cohesion: 0.20
+Nodes (10): 35. Buffs e magias (2026-10-23), cleanBar(), jobForLevel(), join(), loadBuffs(), loadFriends(), loadGuildOf(), reconcilePoints() (+2 more)
+
 ## Knowledge Gaps
 - **9 isolated node(s):** `Bill`, `Particle`, `CustomMesh`, `Bill`, `Bottom` (+4 more)
   These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 697 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **52 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **46 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
@@ -521,8 +521,8 @@ _Questions this graph is uniquely positioned to answer:_
 - **What connects `Bill`, `Particle`, `CustomMesh` to the rest of the system?**
   _9 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `client/main.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.032407407407407406 - nodes in this community are weakly interconnected._
-- **Why does `WorldView` connect `WorldView` to `client/main.ts`, `sfxRuntime.ts`, `Player`, `data.ts`, `editor/main.ts`, `humans.ts`, `bindUi`, `net.ts`, `MoverManager`, `Combat`, `enter`, `NpcEditor`, `terrain.ts`, `RemotePlayers`, `.open`, `dds.ts`, `FlyFF Web (editor de mapa + cliente do jogo)`, `7. Fase 1 do jogo multiplayer — reorganização (CONCLUÍDA em 2026-10-17)`, `.loadTile`, `skillFx`, `TargetWindow`, `shared/world.ts`, `playerClick`?**
+  _Cohesion score 0.03261160117615611 - nodes in this community are weakly interconnected._
+- **Why does `WorldView` connect `WorldView` to `client/main.ts`, `sfxRuntime.ts`, `editor/main.ts`, `bindUi`, `net.ts`, `MoverManager`, `Combat`, `enter`, `NpcEditor`, `terrain.ts`, `RemotePlayers`, `collision.ts`, `.frame`, `dds.ts`, `FlyFF Web (editor de mapa + cliente do jogo)`, `net.ts`, `Player`, `.open`, `.constructor`, `skillFx`, `TargetWindow`, `shared/world.ts`, `playerClick`?**
   _High betweenness centrality (0.104) - this node is a cross-community bridge._
 - **Are the 3 inferred relationships involving `attachRealtime()` (e.g. with `.activeSkills()` and `.expNext()`) actually correct?**
   _`attachRealtime()` has 3 INFERRED edges - model-reasoned connections that need verification._

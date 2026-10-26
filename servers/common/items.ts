@@ -119,6 +119,11 @@ export class ItemCatalog {
   readonly accessory = new Map<number, Map<number, [number, number][]>>();
   /** IK3_SOCKETCARD: carta que vai nos furos de piercing da suit */
   suitCardKind = -1;
+  /**
+   * Bônus de cada carta espetada (CPiercingAvail, blocos `Piercing II_* { DST_* valor … }` do propItemEtc.inc). As cartas
+   * não têm DST no Spec_Item: o bônus vem só daqui (ex.: Volcano = HP máx. +7%, Lighting = ataque +7%).
+   */
+  readonly piercing = new Map<number, [number, number][]>();
 
   /** `useNames`: aplica a tabela de nomes por símbolo (servers/common/names.ts); false = só os textos do Resource */
   constructor(readonly resDir: string, private useNames = true) {}
@@ -216,6 +221,14 @@ export class ItemCatalog {
     /** pula um bloco { … } (com aninhados) a partir do índice do '{' e devolve o índice depois do '}' */
     const skip = (i: number) => { let depth = 0; do { if (tok[i] === '{') depth++; else if (tok[i] === '}') depth--; i++; } while (depth > 0 && i < tok.length); return i; };
     for (let i = 0; i < tok.length; i++) {
+      // Piercing II_* { DST_* valor … } (CProject::LoadPiercingAvail)
+      if (tok[i] === 'Piercing' && tok[i + 2] === '{') {
+        const item = D(tok[i + 1]), end = skip(i + 2), dst: [number, number][] = [];
+        for (let k = i + 3; k + 1 < end - 1; k += 2) { const d = D(tok[k]), v = Number(tok[k + 1]); if (d !== undefined && d > 0 && Number.isFinite(v)) dst.push([d, v]); }
+        if (item !== undefined && dst.length) this.piercing.set(item, [...(this.piercing.get(item) ?? []), ...dst]);
+        i = end - 1;
+        continue;
+      }
       if (tok[i] !== 'SetItem') continue;
       const id = Number(tok[i + 1]), ids = tok[i + 2];
       i += 3;
@@ -284,6 +297,8 @@ export class ItemCatalog {
   accessoryDst(itemId: number, u: number): [number, number][] { return this.accessory.get(itemId)?.get(u) ?? []; }
   /** carta de piercing da suit? */
   isSuitCard(d: ItemDef) { return this.suitCardKind >= 0 && d.kind3 === this.suitCardKind; }
+  /** bônus da carta quando espetada (vazio se não tem linha Piercing) */
+  piercingDst(itemId: number): [number, number][] { return this.piercing.get(itemId) ?? []; }
 
   /**
    * Busca para o painel de GM: nome ou símbolo contendo `q` (sem diferenciar maiúsculas), filtrado por categoria
@@ -314,8 +329,9 @@ export class ItemCatalog {
 
   /** `view` + o conjunto do item (nome, peças e bônus por quantidade) — para a dica completa (inventário, loja, painel de GM) */
   viewFull(d: ItemDef) {
-    const s = this.setByItem.get(d.id), acc = this.accessory.get(d.id);
-    return { ...ItemCatalog.view(d), ...(s ? { set: { name: s.name, pieces: s.elems.length, avail: s.avail.map((a) => [a.n, a.dst, a.adj] as [number, number, number]) } } : {}),
+    const s = this.setByItem.get(d.id), acc = this.accessory.get(d.id), pierce = this.piercing.get(d.id);
+    // carta: a dica mostra o bônus que ela dá espetada
+    return { ...ItemCatalog.view(d), ...(pierce ? { fx: pierce } : {}), ...(s ?{ set: { name: s.name, pieces: s.elems.length, avail: s.avail.map((a) => [a.n, a.dst, a.adj] as [number, number, number]) } } : {}),
       ...(acc ? { acc: Object.fromEntries(acc) } : {}), ...(this.isSuitCard(d) ? { card: 1 } : {}) };
   }
 }

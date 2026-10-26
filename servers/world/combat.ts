@@ -169,11 +169,8 @@ export class CombatRules {
       for (let i = 0; i < d.dest.length; i++) add(d.dest[i], d.adj[i]);
       // joia: bônus da linha do enchant dela (accessory.inc)
       for (const [k, v] of this.items.accessoryDst(d.id, u)) add(k, v);
-      // piercing (GetPiercingAvail): os DST de cada carta espetada somam como os do item
-      for (const card of p ?? []) {
-        const cd = card ? this.items.byId.get(card) : undefined;
-        if (cd) for (let i = 0; i < cd.dest.length; i++) add(cd.dest[i], cd.adj[i]);
-      }
+      // piercing (DestParamPiercingAvail): os DST de cada carta espetada (blocos Piercing do propItemEtc.inc)
+      for (const card of p ?? []) if (card) for (const [k, v] of this.items.piercingDst(card)) add(k, v);
       if (d.adjHit > 0) adjHit += d.adjHit;
       if (d.parry > 0) parry += d.parry;
       if (s === 10) { weapon = d; weaponUpgrade = u; }
@@ -221,10 +218,13 @@ export class CombatRules {
 
   /** fSpeed do propMover dos personagens [MI_MALE, MI_FEMALE] (unidades por tique de 1/60 s); o startWorld lê do mundo */
   playerFSpeed: [number, number] = [0.1, 0.1];
-  /** velocidade de corrida (u/s): CMover::GetSpeed = fSpeed + fSpeed × DST_SPEED/100 (itens, sets, cartas, buffs), 60 tiques/s */
+  /**
+   * velocidade de corrida (u/s): CMover::GetSpeed com __JEFF_11 (ligado no WorldServer e no Neuz) = fSpeed + fSpeed × DST_SPEED/1000
+   * — o DST_SPEED de itens, sets, cartas e buffs vale por mil, não por cento —, a 60 tiques/s (FRAME_PER_SEC)
+   */
   runSpeed(f: Fighter, sex: number) {
     const base = this.playerFSpeed[sex === 1 ? 1 : 0] || 0.1;
-    return Math.max(0, base * (1 + this.dstOf(f, 'SPEED') / 100)) * 60;
+    return Math.max(0, base * (1 + this.dstOf(f, 'SPEED') / 1000)) * 60;
   }
 
   job(j: number): JobProp { return this.jobs.get(j) ?? this.jobs.get(0) ?? { atkSpeed: 75, maxHp: 0.9, maxMp: 0.3, maxFp: 0.3, def: 1, hpRec: 1.2, swd: 4.5, axe: 5.5, staff: 0.8, stick: 3, knuckle: 5, wand: 6, blocking: 0.2, yoyo: 4.2, critical: 1, bow: 1 }; }
@@ -279,8 +279,13 @@ export class CombatRules {
     return [Math.max(1, min), Math.max(1, max)];
   }
 
-  /** ataque mostrado na janela: GetHitMinMax + DST_ATKPOWER (que entra fixo em cada golpe) */
-  shownAtk(f: Fighter): [number, number] { const [a, b] = this.playerAtk(f), k = this.dstOf(f, 'ATKPOWER'); return [a + k, b + k]; }
+  /** ataque mostrado na janela: GetHitMinMax × DST_ATKPOWER_RATE (cartas Lighting, buffs) + DST_ATKPOWER, como no golpe */
+  shownAtk(f: Fighter): [number, number] {
+    const [a, b] = this.playerAtk(f), k = this.dstOf(f, 'ATKPOWER'), r = 1 + this.dstOf(f, 'ATKPOWER_RATE') / 100;
+    return [Math.floor(a * r) + k, Math.floor(b * r) + k];
+  }
+  /** todos os bônus DST_* somados (itens, joias, cartas, sets, buffs) para a janela de status */
+  bonusList(f: Fighter): [number, number][] { return [...f.dst].filter(([k, v]) => k > 0 && v !== 0).sort((x, y) => x[0] - y[0]); }
 
   private mobAtk(m: MoverProp): [number, number] {
     let min = m.atkMin, max = m.atkMax;

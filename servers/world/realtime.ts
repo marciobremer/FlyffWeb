@@ -7,6 +7,7 @@ import type { MobWorld } from './mobs';
 import { INVENTORY_CHANNEL, type Inventory, type InvState } from '../character/inventory';
 import { gmAuthority, runGmCommand } from './gm';
 import { rankOf, type Rank } from '../../shared/rank';
+import { RIDE_TAG } from '../../shared/look';
 import { TRADE_SLOTS, type TradeOffer } from '../character/inventory';
 import { ItemCatalog } from '../common/items';
 import type { CombatRules, Equipped, Fighter } from './combat';
@@ -119,7 +120,9 @@ interface Conn { ws: WebSocket; player: PlayerView | null; accountId: number; di
   /** trocando de mundo: a conexão fecha e o cliente entra de novo no mundo novo (não sai da party nem avisa os amigos) */ switching?: boolean;
   /** de onde veio ao entrar num mapa de ticket (usar o ticket de novo volta para cá) */ ticketFrom?: { w: string; p: [number, number, number] };
   /** guild do personagem (cargo: 0 mestre … 4 rookie) e convites de guild recebidos */ guild?: { id: number; name: string; rank: number } | null; guildReqs?: Map<number, number>;
-  /** último emote/emoticon (ms) — no máximo 3 por segundo */ emoteAt?: number }
+  /** último emote/emoticon (ms) — no máximo 3 por segundo */ emoteAt?: number;
+  /** anti-speedhack: última mensagem de posição (ms), reserva de deslocamento (u), último puxão de volta e quantos já levou */
+  move?: { at: number; budget: number; pulledAt: number; pulls: number } }
 
 /** item no chão (drop de mob) */
 interface GroundItem { /** mundo */ w: string; id: number; itemId: number; count: number; upgrade: number; gold: number; x: number; z: number; owner: number; ownerUntil: number; expires: number }
@@ -150,6 +153,15 @@ const TICK_MS = 100;
 const inWorld = (p: unknown[]): p is number[] => p.length === 3 && p.every((v) => typeof v === 'number' && Number.isFinite(v)) && (p as number[])[0] > 0 && (p as number[])[2] > 0 && (p as number[])[0] <= 30 * 512 && (p as number[])[2] <= 30 * 512 && (p as number[])[1] > -500 && (p as number[])[1] < 3000;
 /** maior deslocamento aceito entre duas mensagens (100 ms; corrida ≈ 1 unidade, queda/rede lenta com folga) — acima disso é ignorado */
 const MAX_STEP = 60;
+/**
+ * Anti-speedhack: o deslocamento no chão (XZ) gasta uma reserva que enche a SPEED_SLACK × a velocidade calculada pelo servidor
+ * (corrida pelo fSpeed + DST_SPEED; voando, o teto do voo), guardando até SPEED_BURST_S segundos — cobre mensagens que chegam
+ * juntas depois de um soluço da rede. Passou da reserva: a posição não muda e o cliente volta para a do servidor (no máximo
+ * 1 vez a cada PULLBACK_MS).
+ */
+const SPEED_SLACK = 1.25, SPEED_BURST_S = 3, SPEED_EXTRA = 2, PULLBACK_MS = 1000;
+/** teto do voo (u/s): |fv| até 0,3 × 1,1 (turbo) por tique de 1/60 s, como em Player.updateFly */
+const FLY_MAX_SPEED = 0.33 * 60;
 /** chat: tamanho máximo da mensagem e limite de 5 mensagens a cada 5 s por conexão */
 const CHAT_MAX = 200, CHAT_BURST = 5, CHAT_WINDOW_MS = 5000;
 
@@ -410,13 +422,35 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     cb.dirty = true;
   }
 
+  /** velocidade máxima no chão ou no ar (u/s) para o anti-speedhack */
+  function maxSpeed(c: Conn) {
+    const p = c.player!, run = rules && c.cb ? rules.runSpeed(c.cb.f, p.sex) : 6;
+    return p.eq.some((s) => s.startsWith(RIDE_TAG)) ? Math.max(run, FLY_MAX_SPEED) : run;
+  }
+
+  /** confere um passo de `d` unidades contra a reserva de deslocamento; recusado, manda o cliente de volta à posição do servidor */
+  function moveOk(c: Conn, d: number) {
+    const now = Date.now(), v = maxSpeed(c) * SPEED_SLACK, cap = v * SPEED_BURST_S + SPEED_EXTRA;
+    const m = (c.move ??= { at: now, budget: cap, pulledAt: 0, pulls: 0 });
+    m.budget = Math.min(cap, m.budget + (v * (now - m.at)) / 1000);
+    m.at = now;
+    if (d <= MAX_STEP && d <= m.budget) { m.budget -= d; return true; }
+    if (now - m.pulledAt >= PULLBACK_MS) {
+      m.pulledAt = now; m.pulls++;
+      const p = c.player!;
+      console.warn(`[speed] ${p.name} (#${p.id}): passo de ${d.toFixed(1)} u com reserva de ${m.budget.toFixed(1)} u (máx. ${(v / SPEED_SLACK).toFixed(2)} u/s) — puxado de volta (${m.pulls}ª vez)`);
+      send(c.ws, { t: 'teleport', p: p.p });
+    }
+    return false;
+  }
+
   function statsMsg(c: Conn) {
     const cb = c.cb!, lv = c.player!.level;
     return { t: 'stats', hp: cb.hp, maxHp: cb.maxHp, mp: cb.mp, maxMp: cb.maxMp, fp: cb.fp, maxFp: cb.maxFp, exp: cb.exp, expMax: rules?.expToNext[lv] ?? 0, level: lv,
       atkMs: rules?.attackInterval(cb.f, c.player!.mt) ?? 1000, aspd: rules?.attackSpeed(cb.f) ?? 1, atk: rules?.shownAtk(cb.f) ?? [0, 0], range: rules?.attackRange(cb.f) ?? 2, def: rules?.showDefense(cb.f) ?? 0, crit: rules?.critChance(cb.f) ?? 0,
       str: cb.f.base.str, sta: cb.f.base.sta, dex: cb.f.base.dex, int: cb.f.base.int, bonus: { str: cb.f.str - cb.f.base.str, sta: cb.f.sta - cb.f.base.sta, dex: cb.f.dex - cb.f.base.dex, int: cb.f.int - cb.f.base.int },
       acc: rules ? rules.accuracy(cb.f) : 0, dodge: rules ? rules.dodge(cb.f) : 0, spd: rules ? Math.floor(Math.floor(rules.attackSpeed(cb.f) * 100) / 2) : 0, points: cb.points, job: cb.f.job, jobOpts: rules ? rules.jobOptions(cb.f.job, lv) : [],
-      mv: rules ? +rules.runSpeed(cb.f, c.player!.sex).toFixed(3) : 6 };
+      mv: rules ? +rules.runSpeed(cb.f, c.player!.sex).toFixed(3) : 6, fx: rules ? rules.bonusList(cb.f) : [] };
   }
 
   /** recalcula os máximos (nível/classe mudou) mantendo a proporção atual ou enchendo */
@@ -1579,7 +1613,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         const p: unknown[] = Array.isArray(msg.p) ? msg.p : [];
         if (!inWorld(p)) return;
         const q = c.player.p;
-        if (Math.hypot(p[0] - q[0], p[2] - q[2]) > MAX_STEP) return;
+        if (!moveOk(c, Math.hypot(p[0] - q[0], p[2] - q[2]))) return;
         const h = Number(msg.h);
         c.player.p = [p[0], p[1], p[2]];
         if (Number.isFinite(h)) c.player.h = ((h % 360) + 360) % 360;

@@ -765,3 +765,21 @@ Comparado com `original/Source/Source/_Common/MoverAttack.cpp`, `MoverParam.cpp`
   a martelada. Esc, botão direito ou clique fora cancelam. A dica da suit lista cada carta com o bônus.
 - Falta: chance de falha ao espetar (aqui é sempre sucesso — conferir no `CItemUpgrade::OnPiercing` original), tirar cartas, cartas
   de arma (IK3_SOCKETCARD2), abrir furos por NPC (hoje só `//give-item … furos3` de GM), conferir o formato do `accessory.inc` com o arquivo real.
+- **Correções (2026-10-26, depois)**: (a) as cartas **não têm DST no Spec_Item** — o bônus vem dos blocos `Piercing II_* { DST_* valor }`
+  do `propItemEtc.inc` (`CProject::LoadPiercingAvail`, 115 cartas; ex.: Volcano HP máx. +7%, Lightning ataque +7%). Agora
+  `ItemCatalog.piercing`/`piercingDst` lê esses blocos, o `buildFighter` soma por eles e a dica da carta mostra o bônus. Antes a carta
+  espetada não dava nada. (b) DST_SPEED é **por mil** no `GetSpeed` (`__JEFF_11`, ligado no WorldServer e no Neuz): capa +15 = +1,5%
+  (antes contava 15%). A base 0,1 × 60 = 6 u/s confere com o original (FRAME_PER_SEC 60, andar = fSpeed/4 no `ActionMoverState.cpp`).
+  (c) Janela H: o ataque mostrado aplica DST_ATKPOWER_RATE (como o golpe), e lista a velocidade (% da base) e todos os bônus somados
+  (`stats.fx`, de `CombatRules.bonusList`).
+
+## 38. Proteção contra speedhack (2026-10-26)
+- **Reserva de deslocamento** (`moveOk` em `servers/world/realtime.ts`): cada `state` gasta a distância no plano XZ de uma reserva que
+  enche a 1,25 × a velocidade do servidor (`CombatRules.runSpeed`, a mesma do `stats.mv`; com prancha/vassoura equipada vale o teto
+  do voo, 0,33 × 60 ≈ 19,8 u/s, de `Player.updateFly`) e guarda até 3 s (+2 u) — cobre mensagens que chegam juntas depois de um soluço
+  da rede. O eixo Y não conta (queda e pulo livres).
+- Passou da reserva (ou dos 60 u por mensagem, que antes eram só ignorados): a posição não muda e o servidor manda `teleport` com a
+  posição dele — o cliente volta (rubber-band), no máximo 1 vez por segundo, e o log mostra `[speed] nome (#id): passo … puxado de volta`.
+- Falta: testar com latência real (soluços > 3 s puxam de volta quem joga limpo); punir reincidente (kick depois de N puxões?);
+  conferir o teto do voo com o `fFlightSpeed` das pranchas mais rápidas; checar parede/colisão (teleporte através de obstáculos curtos
+  continua passando, só a velocidade é conferida).

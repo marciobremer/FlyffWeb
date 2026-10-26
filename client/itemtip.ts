@@ -23,9 +23,12 @@ const DST: Record<number, string> = {
 };
 /** DST em percentual (IsDst_Rate do original) */
 const PCT = new Set([8, 9, 11, 14, 17, 19, 20, 24, 29, 47, 51, 52, 53, 54, 65, 66, 67, 72, 73, 75, 77, 79, 80, 99, 101, 102, 103, 104, 105, 108, 109, 110, 111, 112]);
-/** "FOR +5", "Ataque +10%" — velocidade de ataque (DST_ATTACKSPEED) aparece como valor/20 %, como o original */
-const fxText = (k: number, v: number) => {
-  const shown = k === 24 ? Math.trunc(v / 2 / 10) : v;
+/**
+ * "FOR +5", "Ataque +10%" — velocidade de ataque (DST_ATTACKSPEED) aparece como valor/20 %, como o original; velocidade de
+ * movimento (DST_SPEED) vale por mil no GetSpeed (__JEFF_11), então mostra valor/10 % (o efeito de verdade)
+ */
+export const fxText = (k: number, v: number) => {
+  const shown = k === 24 ? Math.trunc(v / 2 / 10) : k === 11 ? v / 10 : v;
   return `${DST[k] ?? `Efeito #${k}`} ${shown >= 0 ? '+' : ''}${shown}${PCT.has(k) ? '%' : ''}`;
 };
 
