@@ -2,6 +2,7 @@ import { itemIcon, skillIcon, themeImage, themeTiles } from '../shared/tga';
 import type { ItemView } from './net';
 import { hideItemTip, moveItemTip, setTipLookup, showItemTip } from './itemtip';
 import { InventoryPreview } from './invpreview';
+import { loadAniCursor, type AniCursor } from './anicursor';
 import { hideBit, type LookPiece } from '../shared/look';
 
 /**
@@ -166,7 +167,16 @@ export interface InvDef extends ItemView {}
 const BAG = 0, EQUIPPED = 1;
 /** PARTS_UPPER_BODY: a suit, única peça com piercing */
 const SUIT_PART = 2;
-/** martelinho do modo de piercing (cabo de madeira, cabeça de ferro); a ponta de baixo da cabeça fica no ponto do mouse */
+/**
+ * Martelo do modo de piercing: o cursor CUR_HAMMER do Neuz é o `anvil` de Data/Cursors; o do tema CurDefault6 é o .ani animado
+ * (2 quadros, levanta e bate). Carregado na 1ª vez; sem ele, fica o SVG reserva (cabo de madeira, cabeça de ferro).
+ */
+const HAMMER_ANI = '/res/Data/Cursors/CurDefault6/anvil.ani';
+let hammerAni: Promise<AniCursor | null> | null = null;
+/** último ponto do mouse na tela: o martelo aparece ali na hora, sem esperar o mouse mexer */
+const mouse = { x: innerWidth / 2, y: innerHeight / 2 };
+addEventListener('pointermove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; }, { capture: true, passive: true });
+addEventListener('pointerdown', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; }, { capture: true, passive: true });
 const HAMMER_SVG = '<svg viewBox="0 0 32 32" width="32" height="32"><g transform="rotate(-35 16 16)"><rect x="14.5" y="10" width="3.2" height="20" rx="1.4" fill="#9a6a3a" stroke="#4a2e14" stroke-width="1"/><rect x="7" y="3" width="18" height="8.5" rx="1.6" fill="#c9ced6" stroke="#3b4048" stroke-width="1.2"/><rect x="8.4" y="4.2" width="15.2" height="2.2" rx="1" fill="#f2f5f9" opacity=".8"/></g></svg>';
 const keyOf = (c: number, s: number) => `${c}:${s}`;
 
@@ -193,6 +203,9 @@ export class InventoryWindow extends GameWindow {
   /** carta escolhida (duplo clique) esperando o clique na suit; o martelinho segue o mouse enquanto isso */
   private pierceCard: number | null = null;
   private hammer: HTMLElement | null = null;
+  /** hotspot do martelo (pixels a descontar da posição do mouse) e o timer que troca os quadros */
+  private hammerHot: [number, number] = [0, 0];
+  private hammerTimer = 0;
   private pierceWaiting = false;
   /** personagem 3D no centro (client/invpreview.ts) */
   readonly preview = new InventoryPreview();
@@ -435,10 +448,27 @@ export class InventoryWindow extends GameWindow {
     const h = document.createElement('div');
     h.className = 'pierce-hammer';
     h.setAttribute('aria-hidden', 'true');
-    h.innerHTML = HAMMER_SVG;
+    h.style.visibility = 'hidden'; // até os quadros chegarem (na 1ª vez é um fetch; depois já está pronto)
     document.body.appendChild(h);
     this.hammer = h;
+    this.hammerHot = [0, 0];
+    this.pierceMove(mouse);
     document.body.classList.add('piercing');
+    void (hammerAni ??= loadAniCursor(HAMMER_ANI)).then((ani) => {
+      if (this.hammer !== h) return; // cancelado enquanto carregava
+      if (!ani) { h.classList.add('svg'); h.innerHTML = HAMMER_SVG; h.style.visibility = ''; return; }
+      const img = document.createElement('img');
+      img.alt = '';
+      img.draggable = false;
+      h.replaceChildren(img);
+      this.hammerHot = ani.hotspot;
+      this.pierceMove(mouse);
+      // anima como o Windows toca o .ani: cada quadro pelo tempo dele, em laço
+      let i = 0;
+      const step = () => { img.src = ani.frames[i]; this.hammerTimer = window.setTimeout(() => { i = (i + 1) % ani.frames.length; step(); }, ani.ms[i]); };
+      step();
+      h.style.visibility = '';
+    });
     addEventListener('mousemove', this.pierceMove, true);
     addEventListener('click', this.pierceClick, true);
     addEventListener('contextmenu', this.pierceCancel, true);
@@ -451,6 +481,7 @@ export class InventoryWindow extends GameWindow {
     if (this.pierceCard === null && !this.hammer) return;
     this.pierceCard = null;
     this.pierceWaiting = false;
+    clearTimeout(this.hammerTimer);
     this.hammer?.remove();
     this.hammer = null;
     document.body.classList.remove('piercing');
@@ -472,8 +503,9 @@ export class InventoryWindow extends GameWindow {
     setTimeout(() => { el?.classList.remove('pierce-done'); this.cancelPierce(); }, 520);
   }
 
-  private pierceMove = (e: MouseEvent) => {
-    if (this.hammer) { this.hammer.style.left = `${e.clientX}px`; this.hammer.style.top = `${e.clientY}px`; }
+  private pierceMove = (e: { clientX: number; clientY: number } | { x: number; y: number }) => {
+    const [x, y] = 'clientX' in e ? [e.clientX, e.clientY] : [e.x, e.y];
+    if (this.hammer) { this.hammer.style.left = `${x - this.hammerHot[0]}px`; this.hammer.style.top = `${y - this.hammerHot[1]}px`; }
   };
   private pierceCancel = (e: Event) => { e.preventDefault(); e.stopPropagation(); this.cancelPierce(); };
   private pierceKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.cancelPierce(); } };

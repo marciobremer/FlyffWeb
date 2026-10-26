@@ -9,6 +9,8 @@ import { MAP_SIZE, PATCHES } from './formats/types';
 export type ColorMode = 'textures' | 'layers' | 'attrs' | 'height';
 const N = MAP_SIZE + 1;
 const PATCH = MAP_SIZE / PATCHES; // 8 células
+/** renderOrder base das camadas do chão: bem abaixo de tudo o mais, para o chão misturado ficar pronto antes dos transparentes */
+const TERRAIN_ORDER = -1000;
 
 // ---------- cores (modos sem textura) ----------
 const layerColorCache = new Map<number, Color>();
@@ -265,7 +267,9 @@ export function buildTerrain(land: Landscape, mpu: number, mode: ColorMode, tex:
       const mat = layerMaterial(pending, lightMap, blend, li);
       mats.push(mat);
       const mesh = new Mesh(g, mat);
-      mesh.renderOrder = li;
+      // camadas em ordem entre si, mas antes de qualquer outro transparente (efeitos .sfx, brilho do enchant, folhas…): esses
+      // não gravam profundidade, e uma camada de chão desenhada depois pintava por cima deles (efeito "apagado" conforme o chão)
+      mesh.renderOrder = TERRAIN_ORDER + li;
       mesh.userData.kind = 'terrain';
       group.add(mesh);
     }

@@ -563,12 +563,24 @@ inventory.onUse = (c, s) => {
   if (tradeWnd.active) { if (it && c === 0) tradeWnd.offer(s, it.n, inventory.def(it.id)?.name ?? 'Item'); return; }
   if (it && rideToggle(it.id)) return;
   // carta de piercing: martelinho para escolher a suit da bolsa
-  if (it && c === 0 && inventory.def(it.id)?.card) { inventory.startPierce(s); return; }
+  if (it && c === 0 && inventory.def(it.id)?.card) { inventory.startPierce(s); pierceFx(); return; }
   if (!net.invUse(c, s)) chat.system('Sem conexão com o servidor.');
 };
 inventory.onPierce = (card, target) => { if (!net.pierce(card, target)) { chat.system('Sem conexão com o servidor.'); inventory.cancelPierce(); } };
 inventory.onNotice = (text) => chat.system(text);
-net.onPierced = (ok, s) => inventory.pierced(ok, s);
+net.onPierced = (ok, s) => {
+  inventory.pierced(ok, s);
+  // deu certo: som e efeito de sucesso no personagem (CItemUpgrade::OnPiercing: SND_INF_UPGRADESUCCESS e XI_INT_SUCCESS)
+  const me = view.player?.pos, id = view.data?.defines.get('XI_INT_SUCCESS');
+  if (!ok || !me) return;
+  audio.play('SND_INF_UPGRADESUCCESS', [me[0], me[1], me[2]]);
+  if (id !== undefined) view.playSfx(id, [me[0], me[1], me[2]]);
+};
+/** modo martelo: efeito XI_INT_INCHANT em volta do personagem enquanto escolhe a suit, como o CWndInventory do Neuz */
+function pierceFx() {
+  const id = view.data?.defines.get('XI_INT_INCHANT');
+  if (id !== undefined) view.playSfxFollow(id, () => { const p = inventory.piercing ? view.player?.pos : null; return p ? [p[0], p[1], p[2]] : null; }, 600);
+}
 
 /**
  * Montaria (prancha, vassoura, bike, asas) pela barra de atalhos ou pelo inventário, como no cliente: apertar de novo

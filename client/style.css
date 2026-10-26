@@ -159,12 +159,12 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #14161a; col
 .inv-slot.has, .inv-eq.has { cursor: grab; }
 /* piercing: martelinho no lugar do cursor; carta escolhida e suits com furo vazio destacadas */
 body.piercing, body.piercing * { cursor: none !important; }
-.pierce-hammer { position: fixed; z-index: 100000; width: 32px; height: 32px; margin: -26px 0 0 -6px; pointer-events: none; transform-origin: 6px 28px; animation: hammer-tap .9s ease-in-out infinite; filter: drop-shadow(1px 2px 1px rgb(0 0 0 / .45)); }
-.pierce-hammer svg { display: block; }
-.pierce-hammer.hit { animation: hammer-hit .5s cubic-bezier(.3, 0, .2, 1) 1; }
-.pierce-hammer.hit::after { content: ''; position: absolute; left: -4px; top: 18px; width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle, #fff6b0 0, #ffd040 35%, rgb(255 160 0 / 0) 70%); animation: hammer-spark .5s ease-out 1 forwards; }
+.pierce-hammer { position: fixed; z-index: 100000; width: 32px; height: 32px; pointer-events: none; filter: drop-shadow(1px 2px 1px rgb(0 0 0 / .45)); }
+.pierce-hammer img, .pierce-hammer svg { display: block; width: 32px; height: 32px; image-rendering: pixelated; }
+/* sem os quadros do anvil.ani (arquivo faltando): o SVG reserva bate sozinho */
+.pierce-hammer.svg { margin: -26px 0 0 -6px; transform-origin: 6px 28px; animation: hammer-tap .9s ease-in-out infinite; }
+.pierce-hammer.hit::after { content: ''; position: absolute; left: -2px; top: 20px; width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle, #fff6b0 0, #ffd040 35%, rgb(255 160 0 / 0) 70%); animation: hammer-spark .5s ease-out 1 forwards; }
 @keyframes hammer-tap { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-22deg); } }
-@keyframes hammer-hit { 0% { transform: rotate(-45deg); } 45% { transform: rotate(18deg); } 60% { transform: rotate(8deg); } 100% { transform: rotate(0); } }
 @keyframes hammer-spark { 0%, 40% { opacity: 0; transform: scale(.3); } 55% { opacity: 1; transform: scale(1.2); } 100% { opacity: 0; transform: scale(1.8); } }
 .inv-slot.pierce-src { border-color: #d89a2b; box-shadow: 0 0 0 2px #d89a2b inset; }
 .inv-slot.pierce-ok { animation: pierce-ok 1s ease-in-out infinite; }
