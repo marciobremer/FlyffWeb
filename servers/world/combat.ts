@@ -200,6 +200,8 @@ export class CombatRules {
   }
   /** valores para a janela de personagem: defesa média contra mobs e chance de crítico (%) */
   showDefense(f: Fighter) { return this.defense(f, false); }
+  /** dano crítico extra (%, DST_CRITICAL_BONUS de itens, sets e buffs): multiplica o golpe crítico */
+  critBonus(f: Fighter) { return this.dstOf(f, 'CRITICAL_BONUS'); }
   critChance(f: Fighter) { return Math.max(0, Math.floor(Math.floor(f.dex / 10) * this.job(f.job).critical) + this.dstOf(f, 'CHR_CHANCECRITICAL')); }
 
   /**

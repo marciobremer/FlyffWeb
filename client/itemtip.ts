@@ -63,13 +63,10 @@ function lines(d: ItemView, it: TipItem, elementNames: string[], sellable = true
   // piercing (suit): um losango por furo aberto — cheio com carta, vazio sem
   if (it.p?.length) {
     out.push({ text: `Piercing: ${it.p.map((c) => (c ? '◆' : '◇')).join(' ')} (${it.p.filter((c) => c).length}/${it.p.length} cartas)`, cls: 'pierce' });
-    // cada carta espetada: nome e bônus (somam aos atributos quando a suit está equipada)
-    for (const card of it.p) {
-      if (!card) continue;
-      const cd = lookup(card);
-      const fx = (cd?.fx ?? []).map(([k, v]) => fxText(k, v)).join(', ');
-      out.push({ text: `  ${cd?.name ?? 'Carta'}${fx ? `: ${fx}` : ''}`, cls: 'pierce fx' });
-    }
+    // bônus das cartas somados por atributo, sem os nomes (como GetPiercingAvail soma os DST): "Ataque +20%", "MP máx. +10%"
+    const sum = new Map<number, number>();
+    for (const card of it.p) if (card) for (const [k, v] of lookup(card)?.fx ?? []) sum.set(k, (sum.get(k) ?? 0) + v);
+    for (const [k, v] of sum) out.push({ text: fxText(k, v), cls: 'pierce fx' });
   }
   // joia: bônus do enchant atual (accessory.inc)
   if (d.acc && it.u) for (const [k, v] of d.acc[it.u] ?? []) out.push({ text: `+${it.u}: ${fxText(k, v)}`, cls: 'up fx' });

@@ -156,7 +156,8 @@ export class CharacterWindow extends GameWindow {
     const add = (dt: string, dd: string) => { const t = document.createElement('dt'); t.textContent = dt; const d = document.createElement('dd'); d.textContent = dd; this.derived.append(t, d); };
     add('Ataque', `${s.atk[0]} ~ ${s.atk[1]}`);
     add('Defesa', String(s.def));
-    add('Crítico', `${s.crit}%`);
+    add('Chance de crítico', `${s.crit}%`);
+    add('Dano crítico', `+${s.cdmg ?? 0}%`);
     add('Vel. de ataque', `${s.spd}%`);
     add('Precisão extra', `${s.acc}%`);
     add('Esquiva', String(s.dodge));
