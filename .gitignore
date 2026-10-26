@@ -40,3 +40,6 @@ Thumbs.db
 *.rar
 *.zip
 *.7z
+
+# graphify
+graphify-out/cache/
