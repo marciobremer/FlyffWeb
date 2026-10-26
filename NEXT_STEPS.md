@@ -796,3 +796,20 @@ Comparado com `original/Source/Source/_Common/MoverAttack.cpp`, `MoverParam.cpp`
   também passou os chips que estavam na bolsa para o contador). `Inventory.add` desvia o chip para o contador (drop, compra, GM);
   vai no `inv` como `chips`. Só o red chip: o blue chip continua item.
 - Falta: loja que cobra red chip (VENDOR_TYPE_CHIP) ainda não existe — quando existir, cobrar do contador; trade de red chip.
+
+## 40. Janela de personagem nova, mini mapa (N) e mapa grande (M) (2026-10-26)
+- **Janela H** (`client/charwnd.ts`) no layout do CWndCharInfo v15+: aba Personagem com Básico (nome, classe + selo
+  Icon_MasterMark1–6/HeroMark/LegendMark de `Data/Icon`, nível, servidor, canal — `SERVER_NAME`/`CHANNEL_NAME` fixos no
+  arquivo), Detalhe em duas colunas (ataque = média min/máx como o RenderATK, crítico, defesa, vel. ataque, velocidade,
+  precisão, dano crítico/Adoch = DST_CRITICAL_BONUS, bloqueio corpo/dist. = DST_BLOCK_MELEE/RANGE até 96%, conjuração/DCT =
+  DST_SPELL_RATE, PvM = DST_MONSTER_DMG, PvP = DST_PVP_DMG — servidor manda em `stats` via `CombatRules.panel`), atributos com
+  o total (dica separa pontos e itens), PVP/PK (zerado: o jogo ainda não tem PK); aba Fama/Master com HP/MP/FP, exp e os
+  bônus somados.
+- **Mini mapa** (`client/minimap.ts`, `MiniMap`): imagens de cima de cada pedaço de terreno (`World/<mundo>/<mundo>XX-YY.dds`,
+  256×256 para 512 u, o m_texMiniMap do CLandscape), norte (+z) para cima; seta do personagem (rotação 180° − heading), NPC
+  amarelo, mob vermelho, jogador branco, party verde; zoom +/− e roda do mouse. Abre ao entrar; N abre/fecha (lembrado).
+- **Mapa grande** (`WorldMap`, tecla M): figuras do `propMapComboBoxData.inc` (WORLD_*.dds/Town_*.dds de Data/Theme/Default,
+  1280×960) com `SetRealPositionRect` → x = (x − x1)/(x2 − x1), y = (z2 − z)/(z2 − z1) (CWndMapEx); abre na menor região
+  com o personagem, lista de mundo/regiões/cidades; mundo sem figura (Kebaras, Azria…) monta com os pedaços de terreno.
+- Falta: ícones de NPC por função (loja, quest) e monstros por região (texMapMonster_*.inc) no mapa grande; clicar no mapa
+  para andar; dungeons do propMapComboBoxData (são de outros mundos, falta casar figura ↔ mundo).

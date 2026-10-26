@@ -92,7 +92,7 @@ export class CombatRules {
     for (let lv = 0; lv < rows.length; lv++) this.gpAt[lv] = rows[lv][2] || 0;
     this.hand = items.bySymbol.get('II_WEA_HAN_HAND') ?? null;
     for (const n of ['STR', 'STA', 'DEX', 'INT', 'ADJDEF', 'ADJDEF_RATE', 'ATKPOWER_RATE', 'CHR_DMG', 'ATTACKSPEED', 'ATTACKSPEED_RATE', 'ADJ_HITRATE', 'PARRY', 'HP_MAX', 'MP_MAX', 'FP_MAX', 'HP_MAX_RATE', 'MP_MAX_RATE', 'FP_MAX_RATE',
-      'SWD_DMG', 'AXE_DMG', 'KNUCKLE_DMG', 'YOY_DMG', 'BOW_DMG', 'CRITICAL_BONUS', 'MONSTER_DMG', 'ATKPOWER', 'CHR_CHANCECRITICAL', 'STAT_ALLUP', 'SPEED']) this.D[n] = items.defines.get('DST_' + n) ?? -999;
+      'SWD_DMG', 'AXE_DMG', 'KNUCKLE_DMG', 'YOY_DMG', 'BOW_DMG', 'CRITICAL_BONUS', 'MONSTER_DMG', 'ATKPOWER', 'CHR_CHANCECRITICAL', 'STAT_ALLUP', 'SPEED', 'BLOCK_MELEE', 'BLOCK_RANGE', 'SPELL_RATE', 'PVP_DMG']) this.D[n] = items.defines.get('DST_' + n) ?? -999;
     const dd = (s: string) => items.defines.get(s) ?? -1;
     this.ik = { armor: dd('IK2_ARMOR'), armorEtc: dd('IK2_ARMORETC'), helmet: dd('IK3_HELMET'), suit: dd('IK3_SUIT'), gauntlet: dd('IK3_GAUNTLET'), boots: dd('IK3_BOOTS'), shield: dd('IK3_SHIELD') };
     const up = exp.slice(exp.indexOf('expUpitem'));
@@ -202,6 +202,14 @@ export class CombatRules {
   showDefense(f: Fighter) { return this.defense(f, false); }
   /** dano crítico extra (%, DST_CRITICAL_BONUS de itens, sets e buffs): multiplica o golpe crítico */
   critBonus(f: Fighter) { return this.dstOf(f, 'CRITICAL_BONUS'); }
+  /**
+   * resto do "Detalhe" da janela de personagem (CWndCharInfo): bloqueio corpo a corpo e à distância (GetBlockMelee/Range,
+   * 0–96%), redução do tempo de conjuração (GetSpellCastSpeed, DST_SPELL_RATE) e dano extra em monstro e em jogador (%)
+   */
+  panel(f: Fighter) {
+    const block = (n: string) => Math.max(0, Math.min(96, this.dstOf(f, n)));
+    return { mBlock: block('BLOCK_MELEE'), rBlock: block('BLOCK_RANGE'), dct: this.dstOf(f, 'SPELL_RATE'), pvm: this.dstOf(f, 'MONSTER_DMG'), pvp: this.dstOf(f, 'PVP_DMG') };
+  }
   critChance(f: Fighter) { return Math.max(0, Math.floor(Math.floor(f.dex / 10) * this.job(f.job).critical) + this.dstOf(f, 'CHR_CHANCECRITICAL')); }
 
   /**

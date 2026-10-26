@@ -138,11 +138,17 @@ export function themeDds(file: string): Promise<string | null> { return iconFrom
 /** ícone de skill (`szIcon` do propSkill.txt, em `Data/Icon`) — mesmos formatos dos ícones de item */
 export function skillIcon(file: string): Promise<string | null> { return iconFrom('Icon', file); }
 
-function iconFrom(dir: string, file: string): Promise<string | null> {
-  const key = `${dir}/${file}`;
+function iconFrom(dir: string, file: string): Promise<string | null> { return resImage(`Data/${dir}/${file}`); }
+
+/**
+ * Qualquer imagem .dds/.png de `/res` (caminho relativo, ex.: `World/WdMadrigal/WdMadrigal01-04.dds`, o mini mapa de um
+ * pedaço de terreno) como data URL, com cache; null se não achar/decodificar.
+ */
+export function resImage(path: string): Promise<string | null> {
+  const key = path;
   let p = items.get(key);
   if (!p) {
-    const url = `/res/Data/${dir}/` + file;
+    const url = '/res/' + path, file = path;
     p = /\.png$/i.test(file) ? Promise.resolve(url) : fetchBuf(url).then((buf) => {
       if (!buf) return null;
       let img: ImageData | null = null;

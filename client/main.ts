@@ -11,6 +11,7 @@ import { GmPanel } from './gmpanel';
 import { Combat } from './combat';
 import { GroundItems } from './ground';
 import { CharacterWindow } from './charwnd';
+import { MiniMap, WorldMap, type MapDot, type MapView } from './minimap';
 import { ShopWindow } from './shop';
 import { SkillWindow } from './skillwnd';
 import { JobWindow } from './jobwnd';
@@ -484,6 +485,24 @@ net.onGuildReq = (id, name, guild) => friendRequestPrompt(document.body, name, (
 /** party (tecla P) e lista de partys (tecla L) */
 const partyWnd = new PartyWindow(document.body);
 const partyListWnd = new PartyListWindow(document.body);
+/** mini mapa (N: abre/fecha; começa aberto ao entrar) e mapa grande (M) */
+const miniMap = new MiniMap(document.body);
+const worldMap = new WorldMap(document.body);
+miniMap.onClose = () => navOpen(false);
+/** o mini mapa começa aberto; fechar (N ou ×) fica lembrado neste navegador */
+function navOpen(set?: boolean): boolean {
+  try { if (set !== undefined) localStorage.setItem('flyff.nav.open', set ? '1' : '0'); return localStorage.getItem('flyff.nav.open') !== '0'; } catch { return set ?? true; }
+}
+/** o que os dois mapas desenham: mundo, pedaços de terreno, personagem e pontos (NPC, mob, jogadores) */
+function mapView(): MapView | null {
+  const p = view.player, d = view.data;
+  if (!p || !d) return null;
+  const dots: MapDot[] = [];
+  for (const o of d.movers) dots.push({ x: o.pos[0], z: o.pos[2], kind: 'npc' });
+  for (const [x, z] of view.moverMgr.externalPositions()) dots.push({ x, z, kind: 'mob' });
+  for (const r of remotes.positions()) dots.push({ x: r.x, z: r.z, kind: r.party ? 'party' : 'player', name: r.name });
+  return { world: d.name, landW: d.wld.width, landH: d.wld.height, hasTile: (x, z) => d.hasTile(x, z), tileSize: 128 * d.wld.mpu, x: p.pos[0], z: p.pos[2], heading: p.heading, dots };
+}
 hud.onParty = () => partyWnd.toggle();
 hud.onPartyList = () => partyListWnd.toggle();
 partyWnd.onLeave = () => net.party('partyLeave');
@@ -695,6 +714,8 @@ addEventListener('keydown', (e) => {
   else if (e.code === 'KeyP' && !e.repeat) partyWnd.toggle();
   else if (e.code === 'KeyG' && !e.repeat) guildWnd.toggle();
   else if (e.code === 'KeyL' && !e.repeat) partyListWnd.toggle();
+  else if (e.code === 'KeyN' && !e.repeat) { miniMap.toggle(); navOpen(miniMap.visible); }
+  else if (e.code === 'KeyM' && !e.repeat) { if (worldMap.visible) worldMap.hide(); else worldMap.open(); }
   else if (e.code === 'Enter') { e.preventDefault(); chat.focus(); }
   else if (/^Digit[0-9]$/.test(e.code)) actionBar.use((Number(e.code.slice(5)) + 9) % 10);
 });
@@ -857,6 +878,7 @@ view.onFrame = (dt) => {
     npcFrame(performance.now());
     if (p?.active) net.sendState(p.pos, p.heading, p.animState, performance.now());
     flyHud(p?.flying ? p : null);
+    if (miniMap.visible || worldMap.visible) { const mv = mapView(); miniMap.draw(mv); worldMap.draw(mv); }
   }
 };
 view.start();
@@ -1093,7 +1115,7 @@ async function backToLogin() {
   view.player?.remove();
   view.labelRenderer.domElement.hidden = false;
   hud.hide();
-  inventory.hide(); inventory.clear(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); shopWnd.hide(); skillWnd.hide(); teleportWnd.hide(); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
+  inventory.hide(); inventory.clear(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); miniMap.hide(); worldMap.hide(); shopWnd.hide(); skillWnd.hide(); teleportWnd.hide(); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
   $('help').hidden = true;
   $('charScreen').hidden = true;
   $('loginScreen').hidden = false;
@@ -1206,6 +1228,7 @@ async function enter() {
   requestAnimationFrame(() => requestAnimationFrame(() => hud.setPortrait(view.portrait())));
   // multiplayer: entra no mundo compartilhado com este personagem
   inGame = true;
+  if (navOpen()) miniMap.show();
   void motionWnd.loadTables(); // comandos de emoticon no chat
   net.connect(token, ch.id, () => view.player?.pos ?? [x, 100, z]);
 }

@@ -681,6 +681,8 @@ export class MoverManager {
 
   /** posição (FlyFF), HP (milésimos), estado e instância de um mob do servidor */
   externalInfo(id: number) { const e = this.external.get(id); return e ? { pos: e.cur, hp: e.hp, s: e.s, inst: e.inst } : null; }
+  /** posição (x, z) dos mobs do servidor vivos — pontos vermelhos do mini mapa */
+  externalPositions(): [number, number][] { const out: [number, number][] = []; for (const e of this.external.values()) if (!e.gone && e.hp > 0) out.push([e.cur[0], e.cur[2]]); return out; }
 
   setExternalHp(id: number, hp: number) { const e = this.external.get(id); if (e) e.hp = hp; }
 

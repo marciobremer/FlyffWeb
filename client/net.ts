@@ -23,7 +23,9 @@ export interface PlayerStats {
   hp: number; maxHp: number; mp: number; maxMp: number; fp: number; maxFp: number; exp: number; expMax: number; level: number; atkMs: number; /** velocidade de ataque (multiplicador da animação de golpe) */ aspd?: number; atk: [number, number];
   /** alcance do golpe normal com a arma equipada (2 corpo a corpo; arco/ioiô mais) */
   range?: number;
-  def: number; crit: number; /** dano crítico extra (%) */ cdmg?: number; str: number; sta: number; dex: number; int: number; points: number; job: number;
+  def: number; crit: number; /** dano crítico extra (%) */ cdmg?: number;
+  /** bloqueio corpo a corpo / à distância, redução de conjuração e dano extra em monstro / jogador (%) */
+  mBlock?: number; rBlock?: number; dct?: number; pvm?: number; pvp?: number; str: number; sta: number; dex: number; int: number; points: number; job: number;
   /** bônus de atributo vindo dos equipamentos, precisão extra, esquiva e velocidade de ataque (%) */
   bonus: { str: number; sta: number; dex: number; int: number }; acc: number; dodge: number; spd: number;
   /** classes que dá para escolher agora (nível 15 / 60) */
@@ -240,6 +242,10 @@ export class RemotePlayers {
 
   /** posição atual (suavizada) de um jogador remoto */
   pos(id: number): [number, number, number] | null { const r = this.list.get(id); return r ? [...r.cur] : null; }
+  /** outros jogadores à vista (x, z, nome, se é da party) — mini mapa e mapa grande */
+  positions(): { x: number; z: number; name: string; party: boolean }[] {
+    return [...this.list.values()].map((r) => ({ x: r.cur[0], z: r.cur[2], name: r.view.name, party: this.partyIds.has(r.view.id) }));
+  }
 
   /** a cada quadro: aproxima posição/rumo do último recebido (meia-vida ~60 ms) e anima */
   frame(dt: number) {
