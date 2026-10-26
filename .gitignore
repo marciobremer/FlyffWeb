@@ -27,7 +27,10 @@ _backup_antes_fase1/
 *.bak
 
 # configuração local do Claude Code / logs / lixo
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+!.claude/skills/
 *.log
 &1
 .DS_Store
