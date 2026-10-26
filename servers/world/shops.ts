@@ -37,6 +37,8 @@ export class ShopCatalog {
    */
   readonly npcBuffs = new Map<string, { skill: number; level: number; minLv: number; maxLv: number; ms: number }[]>();
   readonly npcNames = new Map<string, string>();
+  /** menus de ferreiro de cada NPC (AddMenu MMI_PIERCING, MMI_SMELT_*, MMI_CHANGEELEM… do character.inc), por chave */
+  readonly npcMenus = new Map<string, Set<string>>();
 
   constructor(resDir: string, private items: ItemCatalog, world = 'WdMadrigal') {
     const read = (f: string) => {
@@ -111,6 +113,13 @@ export class ShopCatalog {
       let j = k + 2;
       while (j < tokens.length && tokens[j] !== ')') { if (tokens[j] !== ',') args.push(tokens[j]); j++; }
       k = j;
+      if (t === 'AddMenu' && /^MMI_(PIERCING|SMELT_|CHANGEELEM)/.test(args[0] ?? '')) {
+        const k = shop.key.toLowerCase();
+        let set = this.npcMenus.get(k);
+        if (!set) this.npcMenus.set(k, (set = new Set()));
+        set.add(args[0]);
+        continue;
+      }
       if (t === 'AddShopItem') {
         const tab = Number(args[0]), id = this.items.defines.get(args[1]), price = Number(args[2]);
         if (!Number.isInteger(tab) || tab < 0 || tab > 7 || id === undefined || !this.items.byId.has(id)) continue;

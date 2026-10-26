@@ -6,6 +6,7 @@ import { parseAni } from '../../shared/formats/chr';
 import { motionOf } from '../../shared/motions';
 import { fitsPart, type ItemCatalog, type ItemDef } from '../common/items';
 import type { MoverProp } from './world';
+import type { UpgradeRules } from './upgrade';
 
 /**
  * Fórmulas de combate portadas do servidor original (Source/_Common/MoverAttack.cpp, MoverParam.cpp,
@@ -45,11 +46,12 @@ export interface Fighter {
   dst: Map<number, number>;
   /** precisão e esquiva extras (nAdjHitRate / dwParry dos itens) */
   adjHit: number; parry: number;
+  /** elemento e nível da arma (ataque) e da suit (defesa) — [0, 0] sem elemento */
+  wElem: [number, number]; sElem: [number, number];
 }
 
-/** um item equipado: definição, enchant e espaço (PARTS_*) */
-/** item equipado: definição, enchant, espaço (PARTS_*) e as cartas espetadas (piercing, 0 = furo vazio) */
-export interface Equipped { d: ItemDef; u: number; s: number; p?: number[] }
+/** item equipado: definição, enchant, espaço (PARTS_*), cartas espetadas (piercing, 0 = furo vazio), elemento e joias da ultimate */
+export interface Equipped { d: ItemDef; u: number; s: number; p?: number[]; e?: number; el?: number; g?: number[] }
 
 export interface HitResult { hit: boolean; dmg: number; crit: boolean }
 
@@ -164,8 +166,13 @@ export class CombatRules {
     const dst = new Map<number, number>();
     for (const [k, v] of buffs) if (k > 0 && v) dst.set(k, (dst.get(k) ?? 0) + v); // buffs ativos somam como os itens
     let weapon: ItemDef | null = null, weaponUpgrade = 0, defMin = 0, defMax = 0, adjHit = 0, parry = 0;
+    let wElem: [number, number] = [0, 0], sElem: [number, number] = [0, 0];
     const add = (k: number, v: number) => { if (k > 0 && v) dst.set(k, (dst.get(k) ?? 0) + v); };
-    for (const { d, u, s, p } of equipped) {
+    for (const { d, u, s, p, e, el, g } of equipped) {
+      // arma ultimate: joias engastadas (GetDestParamUltimate, só na mão direita)
+      if (s === 10 && g?.length && this.upgrade) for (const [k, v] of this.upgrade.gemDst(g)) add(k, v);
+      if (e && s === 10) wElem = [e, el ?? 0];
+      if (e && s === 2) sElem = [e, el ?? 0];
       for (let i = 0; i < d.dest.length; i++) add(d.dest[i], d.adj[i]);
       // joia: bônus da linha do enchant dela (accessory.inc)
       for (const [k, v] of this.items.accessoryDst(d.id, u)) add(k, v);
@@ -186,7 +193,7 @@ export class CombatRules {
       for (const a of set!.avail) if (a.n <= n) dst.set(a.dst, (dst.get(a.dst) ?? 0) + a.adj);
     }
     const f: Fighter = { level: ch.level, job: ch.job, str: ch.str, sta: ch.sta, dex: ch.dex, int: ch.int, base: { str: ch.str, sta: ch.sta, dex: ch.dex, int: ch.int },
-      weapon, weaponUpgrade, weaponMul: weapon ? 1 + this.expUpFor(weapon, weaponUpgrade) / 100 : 1, defMin, defMax, dst, adjHit, parry };
+      weapon, weaponUpgrade, weaponMul: weapon ? 1 + this.expUpFor(weapon, weaponUpgrade) / 100 : 1, defMin, defMax, dst, adjHit, parry, wElem, sElem };
     const all = this.dstOf(f, 'STAT_ALLUP');
     f.str += this.dstOf(f, 'STR') + all; f.sta += this.dstOf(f, 'STA') + all; f.dex += this.dstOf(f, 'DEX') + all; f.int += this.dstOf(f, 'INT') + all;
     return f;
@@ -225,6 +232,9 @@ export class CombatRules {
   /** chance de acerto contra um mob "médio" do mesmo nível (referência para a janela) */
   accuracy(f: Fighter) { return Math.max(0, this.hitBonus(f)); }
   dodge(f: Fighter) { return Math.floor(f.dex * 0.5 + f.parry + this.dstOf(f, 'PARRY')); }
+
+  /** regras do ferreiro (joias da ultimate e fator de elemento); o realtime liga quando há inventário */
+  upgrade: UpgradeRules | null = null;
 
   /** fSpeed do propMover dos personagens [MI_MALE, MI_FEMALE] (unidades por tique de 1/60 s); o startWorld lê do mundo */
   playerFSpeed: [number, number] = [0.1, 0.1];
@@ -326,7 +336,9 @@ export class CombatRules {
       min = Math.floor(min * a * bonus); max = Math.floor(max * b * bonus);
     }
     // DST_ATKPOWER soma depois dos multiplicadores (AttackArbiter: nATK += GetParam(DST_ATKPOWER))
-    const atk = Math.floor(rand(min, max) * (1 + this.dstOf(f, 'ATKPOWER_RATE') / 100) * (1 + this.dstOf(f, 'MONSTER_DMG') / 100)) + this.dstOf(f, 'ATKPOWER');
+    // elemento da arma contra o do mob (GetDamagePropertyFactor, n/10000)
+    const elem = 1 + (this.upgrade?.elementFactor(f.wElem[0], f.wElem[1], m.element, m.elementLevel) ?? 0) / 10000;
+    const atk = Math.floor(rand(min, max) * elem * (1 + this.dstOf(f, 'ATKPOWER_RATE') / 100) * (1 + this.dstOf(f, 'MONSTER_DMG') / 100)) + this.dstOf(f, 'ATKPOWER');
     return { hit: true, dmg: Math.max(1, atk - this.mobDef(m)), crit };
   }
 
@@ -340,6 +352,8 @@ export class CombatRules {
     if (m.level > f.level) atk = Math.floor(atk * (1 + 0.05 * (m.level - f.level)));
     const crit = Math.random() * 100 < Math.floor(m.dex / 10);
     if (crit) atk = Math.floor(atk * (f.level > m.level ? 1.4 + Math.random() * 0.4 : 1.1 + Math.random() * 0.3));
+    // elemento do mob contra o da suit (GetDamagePropertyFactor: a suit é a defesa de elemento do jogador)
+    atk = Math.max(0, Math.floor(atk * (1 + (this.upgrade?.elementFactor(m.element, m.elementLevel, f.sElem[0], f.sElem[1]) ?? 0) / 10000)));
     // o mob sempre causa ao menos 10 % do ataque dele (PostCalcGeneric)
     return { hit: true, dmg: Math.max(1, atk - this.playerDef(f), Math.floor(atk * 0.1)), crit };
   }

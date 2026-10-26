@@ -160,11 +160,43 @@ const EQUIP_OFFSET = [9, 25];
 const MODEL_RECT = { x: 58, y: 52, w: 184, h: 176 };
 
 /** u = enchant (+0–10), e = elemento (0 nenhum, 1 fogo, 2 água, 3 elétrico, 4 vento, 5 terra), el = nível do elemento */
-export interface InvItem { c: number; s: number; id: number; n: number; u: number; e: number; el: number; /** piercing: carta por espaço aberto (0 = vazio) */ p?: number[]; /** item de tempo ativado (ticket): vale até (ms) */ x?: number }
+export interface InvItem { c: number; s: number; id: number; n: number; u: number; e: number; el: number; /** piercing: carta por espaço aberto (0 = vazio) */ p?: number[]; /** item de tempo ativado (ticket): vale até (ms) */ x?: number;
+  /** arma ultimate: joias engastadas por espaço aberto (0 = vazio) */ g?: number[] }
 export const ELEMENT_NAMES = ['', 'Fogo', 'Água', 'Elétrico', 'Vento', 'Terra'];
 export interface InvDef extends ItemView {}
 
 const BAG = 0, EQUIPPED = 1;
+
+/**
+ * Pergunta no visual do jogo (a caixinha da lixeira, no lugar do confirm() do navegador) dentro de `host`: texto e os botões
+ * `okLabel` (vermelho) e Cancelar. Enter confirma, Esc cancela. Resolve true/false; `close()` cancela de fora.
+ */
+export function askBox(host: HTMLElement, text: string, okLabel: string): { done: Promise<boolean>; close: () => void } {
+  const box = document.createElement('div');
+  box.className = 'inv-ask';
+  box.setAttribute('role', 'alertdialog');
+  box.setAttribute('aria-label', text);
+  const msg = document.createElement('p');
+  msg.textContent = text;
+  const ok = document.createElement('button');
+  ok.type = 'button'; ok.className = 'gm-btn danger'; ok.textContent = okLabel;
+  const cancel = document.createElement('button');
+  cancel.type = 'button'; cancel.className = 'gm-btn'; cancel.textContent = 'Cancelar';
+  let finish: (v: boolean) => void = () => {};
+  const done = new Promise<boolean>((resolve) => { finish = (v) => { box.remove(); resolve(v); finish = () => {}; }; });
+  ok.addEventListener('click', () => finish(true));
+  cancel.addEventListener('click', () => finish(false));
+  box.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+    else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); finish(true); }
+  });
+  const row = document.createElement('div');
+  row.append(ok, cancel);
+  box.append(msg, row);
+  host.appendChild(box);
+  cancel.focus();
+  return { done, close: () => finish(false) };
+}
 /** PARTS_UPPER_BODY: a suit, única peça com piercing */
 const SUIT_PART = 2;
 /**
@@ -209,6 +241,10 @@ export class InventoryWindow extends GameWindow {
   onSort: () => void = () => {};
   /** piercing: espetar a carta do espaço `card` da bolsa na suit do espaço `target` / aviso para o chat */
   onPierce: (card: number, target: number) => void = () => {};
+  /** martelo de upgrade: material do espaço `material` no item do espaço `target` (bolsa) */
+  onUpgrade: (material: number, target: number) => void = () => {};
+  /** janela do ferreiro aberta: clicar num item da bolsa escolhe ele para a janela (null = clique normal) */
+  pick: ((c: number, s: number) => void) | null = null;
   onNotice: (text: string) => void = () => {};
   /** carta escolhida (duplo clique) esperando o clique na suit; o martelinho segue o mouse enquanto isso */
   private pierceCard: number | null = null;
@@ -217,6 +253,8 @@ export class InventoryWindow extends GameWindow {
   private hammerHot: [number, number] = [0, 0];
   private hammerTimer = 0;
   private pierceWaiting = false;
+  /** o martelo é de upgrade (Sunstone, moonstone, carta de elemento…) e não de carta de piercing */
+  private hammerUpgrade = false;
   /** personagem 3D no centro (client/invpreview.ts) */
   readonly preview = new InventoryPreview();
   private hideMask = 0;
@@ -305,14 +343,14 @@ export class InventoryWindow extends GameWindow {
   }
 
   /** estado vindo do servidor */
-  setState(gold: number, open: number, items: [number, number, number, number, number?, number?, number?, number[]?, number?][], defs: Record<number, InvDef>, chips = 0) {
+  setState(gold: number, open: number, items: [number, number, number, number, number?, number?, number?, number[]?, number?, number[]?][], defs: Record<number, InvDef>, chips = 0) {
     this.penya.value = gold.toLocaleString('pt-BR');
     this.chips.value = chips.toLocaleString('pt-BR');
     for (const d of Object.values(defs)) this.defs.set(d.id, d);
     this.items.clear();
-    for (const [c, s, id, n, u = 0, e = 0, el = 0, p, x] of items) this.items.set(keyOf(c, s), { c, s, id, n, u, e, el, ...(p?.length ? { p } : {}), ...(x ? { x } : {}) });
-    // a carta escolhida sumiu (gasta, movida, trocada): sai do modo de piercing
-    if (this.pierceCard !== null && !this.pierceWaiting) { const it = this.items.get(keyOf(BAG, this.pierceCard)); if (!it || !this.defs.get(it.id)?.card) this.cancelPierce(); }
+    for (const [c, s, id, n, u = 0, e = 0, el = 0, p, x, g] of items) this.items.set(keyOf(c, s), { c, s, id, n, u, e, el, ...(p?.length ? { p } : {}), ...(x ? { x } : {}), ...(g?.length ? { g } : {}) });
+    // a carta/o material escolhido sumiu (gasto, movido, trocado): sai do modo martelo
+    if (this.pierceCard !== null && !this.pierceWaiting) { const it = this.items.get(keyOf(BAG, this.pierceCard)); if (!it || (!this.hammerUpgrade && !this.defs.get(it.id)?.card)) this.cancelPierce(); }
     // itens de tempo: repinta de minuto em minuto (o visto some e o item fica cinza quando acaba)
     clearInterval(this.timedTimer);
     if ([...this.items.values()].some((i) => i.x)) this.timedTimer = window.setInterval(() => { this.renderBag(); }, 60_000);
@@ -370,7 +408,17 @@ export class InventoryWindow extends GameWindow {
     if (it.n > 1) qty.select();
   }
 
-  private closeAsk() { this.ask?.remove(); this.ask = null; }
+  private closeAsk() { this.ask?.remove(); this.ask = null; this.askClose?.(); this.askClose = null; }
+  private askClose: (() => void) | null = null;
+
+  /** pergunta no inventário (mesma caixinha da lixeira); fecha uma que estivesse aberta */
+  confirm(text: string, okLabel: string): Promise<boolean> {
+    this.closeAsk();
+    hideItemTip();
+    const a = askBox(this.body, text, okLabel);
+    this.askClose = a.close;
+    return a.done.then((v) => { if (this.askClose === a.close) this.askClose = null; return v; });
+  }
 
   /**
    * O item sob o mouse mudou (carta espetada, enchant, troca…): redesenha a dica dele na hora. Sem isso a dica só voltava
@@ -534,11 +582,12 @@ export class InventoryWindow extends GameWindow {
    * Duplo clique numa carta: o cursor vira um martelinho (como o modo de upgrade do CWndInventory) e o próximo clique numa
    * suit da bolsa aplica a carta. Clique fora, botão direito ou Esc cancelam. As suits que ainda têm furo vazio piscam.
    */
-  startPierce(cardSlot: number) {
+  startPierce(cardSlot: number, upgrade = false) {
     this.cancelPierce();
     hideItemTip();
     this.show();
     this.pierceCard = cardSlot;
+    this.hammerUpgrade = upgrade;
     const h = document.createElement('div');
     h.className = 'pierce-hammer';
     h.setAttribute('aria-hidden', 'true');
@@ -568,8 +617,13 @@ export class InventoryWindow extends GameWindow {
     addEventListener('contextmenu', this.pierceCancel, true);
     addEventListener('keydown', this.pierceKey, true);
     this.markPierce();
-    this.onNotice('Clique na suit (na bolsa) onde quer aplicar a carta. Botão direito ou Esc cancela.');
+    this.onNotice(upgrade ? 'Clique no item (na bolsa) que quer melhorar. Botão direito ou Esc cancela.' : 'Clique na suit (na bolsa) onde quer aplicar a carta. Botão direito ou Esc cancela.');
   }
+
+  /** item de um espaço (c = 0 bolsa, 1 equipado) — para a janela do ferreiro */
+  item(c: number, s: number) { return this.items.get(keyOf(c, s)); }
+  /** itens da bolsa (para contar materiais) */
+  bagItems() { return [...this.items.values()].filter((i) => i.c === BAG); }
 
   cancelPierce() {
     if (this.pierceCard === null && !this.hammer) return;
@@ -610,10 +664,16 @@ export class InventoryWindow extends GameWindow {
     const el = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-c][data-s]');
     if (!el || !this.el.contains(el)) { this.cancelPierce(); return; }
     const c = Number(el.dataset.c), s = Number(el.dataset.s);
-    if (c === EQUIPPED) { this.onNotice('A carta não pode ser aplicada na suit equipada. Tire a suit e coloque na bolsa antes.'); return; }
+    if (c === EQUIPPED) { this.onNotice(this.hammerUpgrade ? 'O item equipado não recebe upgrade: tire ele e coloque na bolsa antes.' : 'A carta não pode ser aplicada na suit equipada. Tire a suit e coloque na bolsa antes.'); return; }
     const it = this.items.get(keyOf(BAG, s)), d = it && this.defs.get(it.id);
     if (!it || !d) return;
     if (s === this.pierceCard) return;
+    if (this.hammerUpgrade) {
+      if (d.parts < 0) { this.onNotice(`${d.name} não recebe upgrade: só equipamentos.`); return; }
+      this.pierceWaiting = true;
+      this.onUpgrade(this.pierceCard, s);
+      return;
+    }
     if (d.parts !== SUIT_PART) { this.onNotice(`${d.name} não aceita cartas: só a suit tem piercing.`); return; }
     if (!it.p?.length) { this.onNotice(`${d.name} não tem furos de piercing abertos.`); return; }
     if (!it.p.includes(0)) { this.onNotice(`Todos os furos de ${d.name} já têm carta.`); return; }
@@ -626,7 +686,7 @@ export class InventoryWindow extends GameWindow {
     for (const el of this.grid.querySelectorAll<HTMLElement>('.inv-slot')) {
       const s = Number(el.dataset.s), it = this.items.get(keyOf(BAG, s)), d = it && this.defs.get(it.id);
       el.classList.toggle('pierce-src', this.pierceCard === s);
-      el.classList.toggle('pierce-ok', this.pierceCard !== null && !!d && d.parts === SUIT_PART && !!it?.p?.includes(0));
+      el.classList.toggle('pierce-ok', this.pierceCard !== null && !!d && (this.hammerUpgrade ? d.parts >= 0 && s !== this.pierceCard : d.parts === SUIT_PART && !!it?.p?.includes(0)));
     }
   }
 
@@ -677,6 +737,12 @@ export class InventoryWindow extends GameWindow {
       if (!from || !el) return;
       const to: [number, number] = [Number(el.dataset.c), Number(el.dataset.s)];
       if (to[0] !== from[0] || to[1] !== from[1]) this.onMove(from, to);
+    });
+    // janela do ferreiro aberta: um clique escolhe o item para ela
+    root.addEventListener('click', (e) => {
+      if (!this.pick || this.piercing) return;
+      const el = at(e.target);
+      if (el?.classList.contains('has')) this.pick(Number(el.dataset.c), Number(el.dataset.s));
     });
     root.addEventListener('dblclick', (e) => {
       if (this.piercing) return;

@@ -595,3 +595,25 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 .gwnd-body.wmap { gap: 4px; padding: 4px; }
 .wmap-select { flex: none; align-self: flex-start; min-width: 200px; }
 .wmap-canvas { flex: 1; min-height: 0; width: 100%; display: block; border: 1px solid #8a7466; border-radius: 3px; background: #0d1a24; }
+
+/* janela do ferreiro (Bobochan, Peach): explicação, espaços escolhidos na bolsa, o que vai gastar, opção e resultado */
+.gwnd-body.smith { gap: 6px; padding: 6px 8px; font: 12px Tahoma, sans-serif; }
+.smith-help { margin: 0; color: #4a3a30; line-height: 1.35; }
+.smith-slots { display: grid; gap: 4px; }
+.smith-slot { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 3px 6px; border: 1px dashed #b9a39a; border-radius: 5px; background: #fff; color: #7a6a60; font: inherit; text-align: left; cursor: pointer; }
+.smith-slot.has { border-style: solid; color: #222; font-weight: 700; }
+.smith-slot img { width: 32px; height: 32px; flex: none; }
+.smith-slot img:not([src]) { visibility: hidden; }
+.smith-info { margin: 0; padding: 0 0 0 16px; color: #2a3c8f; }
+.smith-info li.missing { color: #c0392b; }
+.smith-option { display: flex; align-items: center; gap: 4px; color: #333; cursor: pointer; }
+.smith-option[hidden] { display: none; }
+.smith-run { align-self: center; min-width: 120px; }
+.smith-run:disabled { opacity: .5; cursor: default; filter: none; }
+.smith-result { min-height: 32px; margin: 0; padding: 4px 6px; border-radius: 4px; color: #333; }
+.smith-result.ok { background: #e3f6e3; color: #1e6b1e; font-weight: 700; }
+.smith-result.fail { background: #fde2df; color: #a12a1e; font-weight: 700; }
+.smith-result.refused { background: #fff4d6; color: #7a5a10; }
+/* a mesma pergunta da lixeira na janela do ferreiro */
+.gwnd-body.smith { position: relative; }
+.smith .inv-ask { bottom: 46px; }

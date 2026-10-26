@@ -22,6 +22,8 @@ export interface MoverProp {
   attackSpeed: number; reAttackDelay: number; hp: number; naturalArmor: number; exp: number;
   /** dwCorrectionValue (%): multiplica a chance dos DropKind; dwFlying: voador (drop vai direto para a bolsa) */
   correction: number; flying: boolean;
+  /** eElementType (1 fogo, 2 água, 3 elétrico, 4 vento, 5 terra; 0 nenhum) e wElementAtk (nível do elemento) */
+  element: number; elementLevel: number;
 }
 
 export class ServerWorld {
@@ -68,6 +70,7 @@ export class ServerWorld {
           symbol: c[0].trim(), str: n(3), sta: n(4), dex: n(5), int: n(6), hr: n(7), er: n(8), belligerence: (c[10] ?? '').trim(), rank: (c[15] ?? '').trim(),
           level: Math.max(1, n(12)), atkMin: n(20), atkMax: n(21), atk1: (c[22] ?? '').trim(), attackSpeed: n(33), reAttackDelay: n(34),
           hp: Math.max(1, n(35)), naturalArmor: n(37), exp: n(62), correction: n(61), flying: this.flyingMovers.has(id),
+          element: n(41) >= 0 && n(41) <= 5 ? n(41) : 0, elementLevel: Math.max(0, n(42)),
         });
       }
     }

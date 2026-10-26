@@ -7,7 +7,7 @@ import { JOBS } from './jobs';
  * original — expUpitem e enchant^1.5), velocidade de ataque, sexo, nível, bônus (FOR, VIG, HP…), elemento e preço.
  * Para peça equipável aparece uma segunda dica ao lado: "[ Equipado ]" com o que já está no espaço, para comparar.
  */
-export interface TipItem { id: number; n: number; u: number; e: number; el: number; /** piercing: carta por furo (0 = vazio) */ p?: number[] }
+export interface TipItem { id: number; n: number; u: number; e: number; el: number; /** piercing: carta por furo (0 = vazio) */ p?: number[]; /** joias da ultimate por espaço (0 = vazio) */ g?: number[] }
 
 /** DST_* (defineAttribute.h) → nome; cobre todos os bônus usados por armas e armaduras (o resto aparece como "Efeito #n") */
 const DST: Record<number, string> = {
@@ -67,6 +67,13 @@ function lines(d: ItemView, it: TipItem, elementNames: string[], sellable = true
     const sum = new Map<number, number>();
     for (const card of it.p) if (card) for (const [k, v] of lookup(card)?.fx ?? []) sum.set(k, (sum.get(k) ?? 0) + v);
     for (const [k, v] of sum) out.push({ text: fxText(k, v), cls: 'pierce fx' });
+  }
+  // arma ultimate: espaços de joia (abre 1 por nível do +6 ao +10) e as joias engastadas
+  if (it.g?.length) {
+    out.push({ text: `Joias: ${it.g.map((g) => (g ? '◆' : '◇')).join(' ')} (${it.g.filter((g) => g).length}/${it.g.length})`, cls: 'pierce' });
+    const count = new Map<number, number>();
+    for (const g of it.g) if (g) count.set(g, (count.get(g) ?? 0) + 1);
+    for (const [g, n] of count) out.push({ text: `${lookup(g)?.name ?? 'Joia'}${n > 1 ? ` ×${n}` : ''}`, cls: 'pierce fx' });
   }
   // joia: bônus do enchant atual (accessory.inc)
   if (d.acc && it.u) for (const [k, v] of d.acc[it.u] ?? []) out.push({ text: `+${it.u}: ${fxText(k, v)}`, cls: 'up fx' });

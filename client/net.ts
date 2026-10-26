@@ -56,9 +56,11 @@ export interface ItemView {
   acc?: Record<number, [number, number][]>;
   /** carta de piercing da suit (IK3_SOCKETCARD): duplo clique abre o martelinho */
   card?: 1;
+  /** arma geral/unique/ultimate (0/1/2), elemento da carta de elemento (1–5) e em que arma ela converte (ferreiro) */
+  ref?: number; elem?: number; to?: string;
 }
 /** inventário inteiro (server/inventory.ts Inventory.view): itens [container, slot, itemId, quantidade] */
-export interface InvMessage { gold: number; /** Red Chip (contador fora da bolsa) */ chips?: number; bag: number; items: [number, number, number, number, number?, number?, number?, number[]?, number?][]; defs: Record<number, ItemView> }
+export interface InvMessage { gold: number; /** Red Chip (contador fora da bolsa) */ chips?: number; bag: number; items: [number, number, number, number, number?, number?, number?, number[]?, number?, number[]?][]; defs: Record<number, ItemView> }
 
 
 interface Remote { view: PlayerView; inst: MoverInstance | null; target: [number, number, number]; cur: [number, number, number]; h: number; curH: number; s: string; gone: boolean; /** último golpe tocado (MTI_ATK1/2 alternando) */ hit?: number }
@@ -316,7 +318,9 @@ export class NetClient {
   onEmote: (id: number, motion: string, mode: number) => void = () => {};
   onEmo: (id: number, index: number) => void = () => {};
   /** o que o NPC clicado oferece (abre o menu do NPC) */
-  onNpcMenu: (m: { key: string; name: string; shop: boolean; buff: boolean }) => void = () => {};
+  onNpcMenu: (m: { key: string; name: string; shop: boolean; buff: boolean; smith: string[] }) => void = () => {};
+  /** resultado do ferreiro/martelo: deu certo, efeito (success/fail; null = recusado antes), espaço do item e a mensagem */
+  onSmith: (ok: boolean, fx: 'success' | 'fail' | null, s: number | null, text: string) => void = () => {};
   /** item usado (quanto curou, espera) e sua barra de atalhos */
   onUsed: (id: number, gains: { hp: number; mp: number; fp: number }, cd: number) => void = () => {};
   onBar: (slots: ({ k?: 'item' | 'skill'; id: number; icon: string; name: string } | null)[]) => void = () => {};
@@ -446,7 +450,9 @@ export class NetClient {
       } else if (m.t === 'emo') {
         this.onEmo(Number(m.id), Number(m.i));
       } else if (m.t === 'npcMenu') {
-        this.onNpcMenu({ key: String(m.key), name: String(m.name ?? ''), shop: !!m.shop, buff: !!m.buff });
+        this.onNpcMenu({ key: String(m.key), name: String(m.name ?? ''), shop: !!m.shop, buff: !!m.buff, smith: Array.isArray(m.smith) ? (m.smith as string[]) : [] });
+      } else if (m.t === 'smith') {
+        this.onSmith(m.ok === true, m.fx === 'success' || m.fx === 'fail' ? m.fx : null, typeof m.s === 'number' ? m.s : null, String(m.text ?? ''));
       } else if (m.t === 'shop') {
         this.onShop(m as unknown as import('./shop').ShopView);
       } else if (m.t === 'used') {
@@ -501,6 +507,10 @@ export class NetClient {
   /** lixeira: apaga `n` do item do espaço `s` da bolsa / organiza a bolsa por tipo */
   invDrop(s: number, n: number) { return this.raw({ t: 'invDrop', s, n }); }
   invSort() { return this.raw({ t: 'invSort' }); }
+  /** martelo: material do espaço `m` no item do espaço `s` (bolsa), sem proteção */
+  upgrade(s: number, m: number) { return this.raw({ t: 'upgrade', s, m }); }
+  /** ferreiro (perto do NPC `key`): safe (upgrade seguro), pierceSize, pierceRemove, removeGem, trans, makeGem, mixJewel, setGem */
+  smith(key: string, op: string, args: { s?: number; m?: number; g?: number; safe?: boolean; rate?: boolean } = {}) { return this.raw({ t: 'smith', key, op, ...args }); }
   /** piercing: carta do espaço `card` da bolsa na suit do espaço `target` (também da bolsa) */
   pierce(card: number, target: number) { return this.raw({ t: 'pierce', card, target }); }
   /** partes do visual escondidas (bits de shared/look.ts); vai também no 'join' ao reconectar */

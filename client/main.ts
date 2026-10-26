@@ -12,6 +12,7 @@ import { Combat } from './combat';
 import { GroundItems } from './ground';
 import { CharacterWindow } from './charwnd';
 import { MiniMap, WorldMap, type MapDot, type MapView } from './minimap';
+import { SmithWindow, smithOptions, isUpgradeMaterial } from './smith';
 import { ShopWindow } from './shop';
 import { SkillWindow } from './skillwnd';
 import { JobWindow } from './jobwnd';
@@ -273,6 +274,27 @@ net.onNpcMenu = (m) => {
   const opts: NpcMenuOption[] = [];
   if (m.shop) opts.push({ label: 'Comércio', run: () => net.shopOpen(m.key) });
   if (m.buff) opts.push({ label: 'Receber Buffs!', run: () => net.npcBuff(m.key) });
+  // ferreiro (Bobochan, Peach…): as opções do character.inc abrem a janela no modo certo
+  for (const o of smithOptions(m.smith)) opts.push({ label: o.label, run: () => smithWnd.open(m.key, o.mode) });
+  // NPCs grudados (o mapa tem vários no mesmo lugar — no centro de Flaris, Boboko, Boboku, Bobochan e Peach a menos de 5 m):
+  // o menu leva aos outros, senão o de trás nunca é clicado
+  if (shopNpc && view.data) {
+    // em cadeia: NPCs a até 5 m de algum do grupo (Peach–Boboko–Bobochan–Boboku)
+    const seen = new Set([m.key.toLowerCase()]), group: [number, number][] = [shopNpc];
+    // o próprio NPC do menu (pode ter vindo de um atalho e estar a alguns metros de onde se clicou)
+    for (const o of view.data.movers) if (o.characterKey?.toLowerCase() === m.key.toLowerCase() && Math.hypot(o.pos[0] - shopNpc[0], o.pos[2] - shopNpc[1]) <= 10) group.push([o.pos[0], o.pos[2]]);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const o of view.data.movers) {
+        const k = o.characterKey;
+        if (!k || seen.has(k.toLowerCase()) || !group.some(([gx, gz]) => Math.hypot(o.pos[0] - gx, o.pos[2] - gz) <= 5)) continue;
+        seen.add(k.toLowerCase());
+        group.push([o.pos[0], o.pos[2]]);
+        grew = true;
+        opts.push({ label: `${view.data.characters.get(k.toLowerCase())?.name || k.replace(/^[A-Za-z]{4}_/, '')} ›`, run: () => { if (menuNpc) menuNpc = { inst: menuNpc.inst, key: k }; net.npcMenu(k); } });
+      }
+    }
+  }
   if (!opts.length) return;
   // ao lado do NPC, na altura da cabeça
   const inst = menuNpc?.key === m.key ? menuNpc.inst : null;
@@ -583,7 +605,36 @@ inventory.onUse = (c, s) => {
   if (it && rideToggle(it.id)) return;
   // carta de piercing: martelinho para escolher a suit da bolsa
   if (it && c === 0 && inventory.def(it.id)?.card) { inventory.startPierce(s); pierceFx(); return; }
+  // material de upgrade (Sunstone, orichalcum brilhante, moonstone, carta de elemento): o mesmo martelo, para escolher o item
+  if (it && c === 0 && isUpgradeMaterial(inventory.def(it.id)?.sym)) { inventory.startPierce(s, true); pierceFx(); return; }
   if (!net.invUse(c, s)) chat.system('Sem conexão com o servidor.');
+};
+/**
+ * Martelo de upgrade (sem pergaminho de proteção, como o duplo clique do original): se falhar a partir do +3 — e sempre na
+ * ultimate — o item é destruído, então confirma antes.
+ */
+inventory.onUpgrade = (m, s) => {
+  const it = inventory.all.get(`0:${s}`), d = it && inventory.def(it.id), sym = inventory.def(inventory.all.get(`0:${m}`)?.id ?? -1)?.sym ?? '';
+  const ultimate = sym === 'II_GEN_MAT_ORICHALCUM02', element = sym.startsWith('II_GEN_MAT_ELE_');
+  const risk = it && d && (ultimate || (element ? it.el >= 3 : it.u >= 3));
+  const send = () => { if (!net.upgrade(s, m)) { chat.system('Sem conexão com o servidor.'); inventory.cancelPierce(); } };
+  if (!risk) { send(); return; }
+  void inventory.confirm(`Sem pergaminho de proteção, se falhar ${d.name}${it.u ? ` +${it.u}` : ''} é destruído. Para não perder o item, use o "Upgrade seguro" do BoBoChan (Flaris).`, 'Melhorar')
+    .then((yes) => { if (yes) send(); else inventory.cancelPierce(); });
+};
+/** janela do ferreiro (menus do Bobochan e da Peach) */
+const smithWnd = new SmithWindow(document.body, inventory);
+smithWnd.onRun = (key, op, args) => net.smith(key, op, args);
+/** resultado do ferreiro/martelo: chat, martelada, som e efeito (SND_INF_UPGRADESUCCESS/FAIL, XI_INT_SUCCESS/FAIL) */
+net.onSmith = (ok, fx, s, text) => {
+  if (text) chat.system(text);
+  inventory.pierced(fx !== null, s ?? undefined);
+  smithWnd.result(ok, fx, s, text);
+  const me = view.player?.pos;
+  if (!fx || !me) return;
+  audio.play(fx === 'success' ? 'SND_INF_UPGRADESUCCESS' : 'SND_INF_UPGRADEFAIL', [me[0], me[1], me[2]]);
+  const id = view.data?.defines.get(fx === 'success' ? 'XI_INT_SUCCESS' : 'XI_INT_FAIL');
+  if (id !== undefined) view.playSfx(id, [me[0], me[1], me[2]]);
 };
 inventory.onPierce = (card, target) => { if (!net.pierce(card, target)) { chat.system('Sem conexão com o servidor.'); inventory.cancelPierce(); } };
 inventory.onNotice = (text) => chat.system(text);
@@ -657,6 +708,7 @@ function rideToggle(id: number): boolean {
 net.onInvError = (error) => chat.system(error);
 net.onInv = (m) => {
   inventory.setState(m.gold, m.bag, m.items, m.defs, m.chips ?? 0);
+  smithWnd.refresh();
   // prancha/vassoura equipada (PARTS_RIDE = 13): velocidade e giro dela no voo
   const ride = m.items.find(([c, s]) => c === 1 && s === 13);
   view.player?.setFlyParams(ride ? m.defs[ride[2]]?.fly ?? null : null);
@@ -1115,7 +1167,7 @@ async function backToLogin() {
   view.player?.remove();
   view.labelRenderer.domElement.hidden = false;
   hud.hide();
-  inventory.hide(); inventory.clear(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); miniMap.hide(); worldMap.hide(); shopWnd.hide(); skillWnd.hide(); teleportWnd.hide(); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
+  inventory.hide(); inventory.clear(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); miniMap.hide(); worldMap.hide(); smithWnd.hide(); shopWnd.hide(); skillWnd.hide(); teleportWnd.hide(); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
   $('help').hidden = true;
   $('charScreen').hidden = true;
   $('loginScreen').hidden = false;

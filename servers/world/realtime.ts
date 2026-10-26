@@ -23,6 +23,8 @@ import { rates } from '../common/rates';
 import { parseTeleports } from '../../shared/formats/teleport';
 import { PartyManager, PARTY_MAX, PARTY_SKILLS, partyExpShares, type Party } from './party';
 import type { MoverProp } from './world';
+import { UpgradeRules, type SmithResult } from './upgrade';
+import type { InvEdit } from '../character/inventory';
 
 /**
  * Tempo real (fase 2): WebSocket em `/ws` no mesmo servidor HTTP (Vite em dev, `server/index.ts` em produção).
@@ -42,6 +44,10 @@ import type { MoverProp } from './world';
  *   { t: 'invUse', c, s }                           duplo clique: equipa (da bolsa) ou desequipa (para a bolsa)
  *   { t: 'invDrop', s, n }                          lixeira: apaga `n` do item do espaço `s` da bolsa (não volta)
  *   { t: 'invSort' }                                organiza a bolsa por tipo e junta as pilhas
+ *   { t: 'upgrade', s, m }                          martelo: material `m` (Sunstone, orichalcum brilhante, moonstone em joia, carta de
+ *                                                   elemento) no item `s` da bolsa, sem proteção — resposta { t: 'smith', ok, fx, s, text }
+ *   { t: 'smith', key, op, s, m, g, safe, rate }    ferreiro perto do NPC `key`: safe (upgrade seguro), pierceSize, pierceRemove,
+ *                                                   removeGem, trans, makeGem, mixJewel, setGem (servers/world/upgrade.ts); `safe` = upgrade seguro
  *   { t: 'pierce', card, target }                   piercing: espeta a carta do espaço `card` da bolsa na suit do espaço `target` (também
  *                                                   da bolsa, não equipada) — resposta { t: 'pierced', ok, s } e o inventário novo
  *   { t: 'npcMenu', key } / { t: 'npcBuff', key }     perto do NPC: o que ele oferece (loja, buffs) / receber os buffs (Buff Pang)
@@ -198,6 +204,15 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     try { const b = fs.readFileSync(path.join(inventory.catalog.resDir, 'ZckTeleporteur.inc')); return parseTeleports(decodeText(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer, 'windows-1252')); } catch { return []; }
   })();
   const rules = opts.combat ?? null;
+  /** ferreiro (upgrade, elemento, piercing, ultimate) — também dá ao combate as joias da ultimate e o fator de elemento */
+  const smith = inventory ? new UpgradeRules(inventory.catalog) : null;
+  if (rules && smith) rules.upgrade = smith;
+  /** operação de ferreiro → menus do NPC (character.inc) que a liberam */
+  const SMITH_MENUS: Record<string, string[]> = {
+    safe: ['MMI_SMELT_SAFETY_GENERAL', 'MMI_SMELT_SAFETY_ACCESSORY', 'MMI_SMELT_SAFETY_ELEMENT', 'MMI_SMELT_SAFETY_PIERCING'],
+    pierceSize: ['MMI_PIERCING'], pierceRemove: ['MMI_SMELT_REMOVE_PIERCING', 'MMI_PIERCING_REMOVE'], removeGem: ['MMI_SMELT_REMOVE_JEWEL'],
+    trans: ['MMI_SMELT_CHANGEGWEAPON', 'MMI_SMELT_CHANGEUWEAPON'], makeGem: ['MMI_SMELT_EXTRACTION'], mixJewel: ['MMI_SMELT_MIXJEWEL'], setGem: ['MMI_SMELT_JEWEL'],
+  };
   const dropRules = opts.drops ?? null;
   void query('UPDATE characters SET online = false WHERE online').catch(() => {}); // servidor (re)iniciou: ninguém está online
   const skillCat = opts.skills ?? null;
@@ -399,7 +414,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     for (const i of st?.items ?? []) {
       if (i.c !== 1 || !inventory) continue;
       const d = inventory.catalog.byId.get(i.id);
-      if (d) equipped.push({ d, u: i.u, s: i.s, p: i.p });
+      if (d) equipped.push({ d, u: i.u, s: i.s, p: i.p, e: i.e, el: i.el, g: i.g });
     }
     return rules!.buildFighter(ch, equipped, buffs);
   }
@@ -1784,7 +1799,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         const key = msg.key.slice(0, 40), k = key.toLowerCase();
         const shops = W(c).shops;
         if (!shops?.near(key, c.player.p[0], c.player.p[2])) return;
-        send(ws, { t: 'npcMenu', key, name: shops.npcNames.get(k) ?? key, shop: shops.shops.has(k) || shops.tokenShops.has(k), buff: shops.npcBuffs.has(k) });
+        send(ws, { t: 'npcMenu', key, name: shops.npcNames.get(k) ?? key, shop: shops.shops.has(k) || shops.tokenShops.has(k), buff: shops.npcBuffs.has(k), smith: [...(shops.npcMenus.get(k) ?? [])] });
       } else if (msg.t === 'npcBuff' && c.player && typeof msg.key === 'string') {
         npcBuff(c, msg.key.slice(0, 40));
       } else if (msg.t === 'buffOff' && c.player && Number.isInteger(msg.id)) {
@@ -1831,6 +1846,38 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
           if (!a) return;
           send(ws, { t: 'gmItems', list: inventory.catalog.search(q, kind, grade, 1000).map((d) => inventory.catalog.viewFull(d)) });
         }).catch((e) => console.error('painel GM: busca', e));
+      } else if ((msg.t === 'upgrade' || msg.t === 'smith') && c.player && inventory && smith) {
+        // upgrade pelo martelo (duplo clique no material, sem proteção) ou pelas janelas do ferreiro (perto do NPC com o menu)
+        const player = c.player, inv = inventory, int = (v: unknown) => (Number.isInteger(v) ? (v as number) : -1);
+        // recusa: responde como o ferreiro (a janela sai do "trabalhando…") e o martelo volta ao normal
+        const refuse = (text: string) => send(ws, { t: 'smith', ok: false, fx: null, s: null, text });
+        if (c.trade) { refuse('Termine a troca antes de mexer nos itens.'); return; }
+        let run: ((x: InvEdit) => SmithResult) | null = null;
+        const s = int(msg.s), m = int(msg.m), g = int(msg.g), safe = msg.safe === true, rate = msg.rate === true;
+        if (msg.t === 'upgrade') run = (x) => smith.enchant(x, s, m, { safe: false, rate: false });
+        else {
+          const op = String(msg.op), key = String(msg.key ?? '').slice(0, 40), menus = W(c).shops?.npcMenus.get(key.toLowerCase());
+          if (!SMITH_MENUS[op]?.some((k) => menus?.has(k))) { refuse('Este NPC não faz isso.'); return; }
+          if (!W(c).shops?.near(key, player.p[0], player.p[2])) { refuse('Chegue perto do ferreiro para isso.'); return; }
+          run = op === 'safe' ? (x) => smith.enchant(x, s, m, { safe: true, rate })
+            : op === 'pierceSize' ? (x) => smith.pierceSize(x, s, safe)
+            : op === 'pierceRemove' ? (x) => smith.pierceRemove(x, s)
+            : op === 'removeGem' ? (x) => smith.removeGem(x, s)
+            : op === 'trans' ? (x) => smith.transWeapon(x, s, safe)
+            : op === 'makeGem' ? (x) => smith.makeGem(x, s)
+            : op === 'mixJewel' ? (x) => smith.mixJewel(x)
+            : op === 'setGem' ? (x) => smith.setGem(x, s, g) : null;
+        }
+        if (!run) return;
+        const job = run;
+        c.invQueue = c.invQueue.then(async () => {
+          const r = await inv.edit(player.id, job);
+          if (r.fx) {
+            send(ws, inv.view(await inv.state(player.id)));
+            console.log(`[ferreiro] ${player.name} (#${player.id}) ${msg.t === 'upgrade' ? 'martelo' : String(msg.op)}: ${r.text}`);
+          }
+          send(ws, { t: 'smith', ok: r.ok, fx: r.fx ?? null, s: r.slot ?? null, text: r.text });
+        }).catch((e) => { console.error('realtime ferreiro', e); refuse('Servidor indisponível.'); });
       } else if (msg.t === 'pierce' && c.player && inventory && Number.isInteger(msg.card) && Number.isInteger(msg.target)) {
         // piercing: carta (bolsa) → suit (bolsa); o servidor confere tudo e só então gasta a carta
         const player = c.player, inv = inventory;

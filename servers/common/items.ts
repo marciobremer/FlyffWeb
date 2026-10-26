@@ -46,6 +46,14 @@ export interface ItemDef {
   ignorePart: number;
   /** dwItemGrade (defineItemGrade.h): 100 comum, 200 unique (verde), 300 ultimate, 400 baruna */
   grade: number;
+  /** eItemType (_FIRE 1, _WATER 2, _ELECTRICITY 3, _WIND 4, _EARTH 5; 0 nenhum): elemento da carta de elemento e da arma */
+  element: number;
+  /**
+   * dwReferStat1: arma geral/unique/ultimate (WEAPON_GENERAL 0, UNIQUE 1, ULTIMATE 2; -1 outros); dwReferStat2: DST_* que a joia
+   * de arma ultimate dá; dwReferTarget1: item em que a arma vira ao converter (geral → unique → ultimate); dwReferTarget2: chance
+   * própria da conversão (n/1.000.000), -1 = a do Ultimate_UltimateWeapon.txt
+   */
+  referStat1: number; referStat2: number; referTarget1: number; referTarget2: number;
 }
 
 /**
@@ -155,7 +163,8 @@ export class ItemCatalog {
       d1: col('dwDestParam1'), d2: col('dwDestParam2'), d3: col('dwDestParam3'), d4: col('dwDestParam4'), d5: col('dwDestParam5'), d6: col('dwDestParam6'),
       a1: col('nAdjParamVal1'), a2: col('nAdjParamVal2'), a3: col('nAdjParamVal3'), a4: col('nAdjParamVal4'), a5: col('nAdjParamVal5'), a6: col('nAdjParamVal6'),
       ready: col('dwSkillReady'), range: col('dwAttackRange'), job: col('dwItemJob'), hand: col('dwHanded'), hit: col('nAdjHitRate'), parry: col('dwParry'), sa1: col('dwSndAttack1'), sa2: col('dwSndAttack2'),
-      ignore: col('dwBasePartsIgnore'), grade: col('dwItemGrade'), fs: col('fFlightSpeed'), flr: col('fFlightLRAngle'), ftb: col('fFlightTBAngle'),
+      ignore: col('dwBasePartsIgnore'), grade: col('dwItemGrade'), elem: col('eItemType'),
+      rs1: col('dwReferStat1'), rs2: col('dwReferStat2'), rt1: col('dwReferTarget1'), rt2: col('dwReferTarget2'), fs: col('fFlightSpeed'), flr: col('fFlightLRAngle'), ftb: col('fFlightTBAngle'),
     };
     const float = (v: string | undefined) => { const n = Number((v ?? '').trim()); return Number.isFinite(n) ? n : 0; };
     if (C.id < 0 || C.icon < 0) { console.warn('Itens: cabeçalho do arquivo de itens não reconhecido'); return this; }
@@ -186,7 +195,14 @@ export class ItemCatalog {
         ignorePart: C.ignore < 0 ? -1 : num(c[C.ignore], -1),
         // a raridade vem como símbolo ITEM_GRADE_*; várias linhas têm colunas a mais/menos, então procura o símbolo na linha
         grade: num(c.find((v) => /^ITEM_GRADE_[A-Z]+$/.test(v.trim())) ?? (C.grade >= 0 ? c[C.grade] : undefined), 100) || 100,
+        element: C.elem < 0 ? 0 : num(c[C.elem], 0),
+        // NULL_ID (0xffffffff) e lixo viram -1
+        referStat1: C.rs1 < 0 ? -1 : num(c[C.rs1], -1), referStat2: C.rs2 < 0 ? -1 : num(c[C.rs2], -1),
+        referTarget1: C.rt1 < 0 ? -1 : num(c[C.rt1], -1), referTarget2: C.rt2 < 0 ? -1 : num(c[C.rt2], -1),
       };
+      if (def.element < 0 || def.element > 5) def.element = 0;
+      if (def.referStat1 > 2) def.referStat1 = -1;
+      for (const k of ['referStat2', 'referTarget1', 'referTarget2'] as const) if (def[k] >= 0x7fffffff || def[k] < 0) def[k] = -1;
       if (def.parts === 13) { // PARTS_RIDE: prancha, vassoura, bike, asas…
         def.fly = [float(c[C.fs]), float(c[C.flr]), float(c[C.ftb])];
         // como a raridade, procura o símbolo na linha (algumas têm colunas a mais/menos)
@@ -324,14 +340,19 @@ export class ItemCatalog {
   static view(d: ItemDef) {
     const fx = d.dest.map((k, i) => [k, d.adj[i]]).filter(([k, v]) => k > 0 && v !== 0);
     return { id: d.id, sym: d.symbol, name: d.name, icon: d.icon, pack: d.packMax, parts: d.parts, sex: d.sex, lv: d.level, cost: d.cost,
-      k1: d.kind1, k2: d.kind2, k3: d.kind3, amin: d.abilityMin, amax: d.abilityMax, aspd: d.attackSpeed, rare: d.rare, wt: d.weaponType, gr: d.grade, job: d.job, hand: d.handed, fx, ...(d.fly ? { fly: d.fly } : {}) };
+      k1: d.kind1, k2: d.kind2, k3: d.kind3, amin: d.abilityMin, amax: d.abilityMax, aspd: d.attackSpeed, rare: d.rare, wt: d.weaponType, gr: d.grade, job: d.job, hand: d.handed, fx, ...(d.fly ? { fly: d.fly } : {}),
+      // arma geral/unique/ultimate (0/1/2) e elemento da carta de elemento — para o ferreiro e o martelo
+      ...(d.referStat1 >= 0 ? { ref: d.referStat1 } : {}), ...(d.element ? { elem: d.element } : {}) };
   }
 
   /** `view` + o conjunto do item (nome, peças e bônus por quantidade) — para a dica completa (inventário, loja, painel de GM) */
   viewFull(d: ItemDef) {
     const s = this.setByItem.get(d.id), acc = this.accessory.get(d.id), pierce = this.piercing.get(d.id);
+    const to = d.referStat1 === 0 || d.referStat1 === 1 ? this.byId.get(d.referTarget1)?.name : undefined;
     // carta: a dica mostra o bônus que ela dá espetada
     return { ...ItemCatalog.view(d), ...(pierce ? { fx: pierce } : {}), ...(s ?{ set: { name: s.name, pieces: s.elems.length, avail: s.avail.map((a) => [a.n, a.dst, a.adj] as [number, number, number]) } } : {}),
-      ...(acc ? { acc: Object.fromEntries(acc) } : {}), ...(this.isSuitCard(d) ? { card: 1 } : {}) };
+      ...(acc ? { acc: Object.fromEntries(acc) } : {}), ...(this.isSuitCard(d) ? { card: 1 } : {}),
+      // arma que converte (Bobochan): em qual ela vira
+      ...(to ? { to } : {}) };
   }
 }

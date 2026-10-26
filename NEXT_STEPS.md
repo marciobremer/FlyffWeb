@@ -813,3 +813,27 @@ Comparado com `original/Source/Source/_Common/MoverAttack.cpp`, `MoverParam.cpp`
   com o personagem, lista de mundo/regiões/cidades; mundo sem figura (Kebaras, Azria…) monta com os pedaços de terreno.
 - Falta: ícones de NPC por função (loja, quest) e monstros por região (texMapMonster_*.inc) no mapa grande; clicar no mapa
   para andar; dungeons do propMapComboBoxData (são de outros mundos, falta casar figura ↔ mundo).
+
+## 41. Ferreiro: upgrade, elemento, piercing e ultimate (Bobochan e Peach) (2026-10-26)
+- **Quem faz o quê** (character.inc oficial): Boboko e Boboku só têm Diálogo/Comércio (no Boboku piercing/elemento estão
+  comentados); **Bobochan** tem MMI_SMELT_SAFETY_* (upgrade seguro), MMI_PIERCING (abrir furo), MMI_SMELT_REMOVE_PIERCING,
+  MMI_SMELT_REMOVE_JEWEL e MMI_SMELT_CHANGEG/UWEAPON; **Peach** tem MMI_SMELT_EXTRACTION, MIXJEWEL e SMELT_JEWEL (mais
+  LVREQDOWN_CANCEL, BLESSING_CANCEL, RETURN_AWAKE, CHANGORI — não feitos: dependem de despertar/opções aleatórias, que o
+  jogo ainda não tem). No centro de Flaris os quatro estão a menos de 5 m um do outro: o menu de um NPC lista os grudados
+  ("BoBoChan ›"…), em cadeia de até 5 m, senão o de trás nunca é clicado.
+- **Regras** (`servers/world/upgrade.ts`, `UpgradeRules`), das funções oficiais: EnchantGeneral/SmeltSafetyGeneral (Sunstone,
+  tGeneral do ItemUpgrade.lua, −10% do +4 em diante), RefineAccessory/SmeltSafetyAccessory (moonstone; o accessory.inc daqui
+  não tem `Probability` → chance 0 e só o fail stack ACCESSORY_NORMAL), EnchantAttribute/SmeltSafetyAttribute (carta base
+  do elemento, AddAttribute), OnPiercingSize/SmeltSafetyPiercingSize (tSuitProb, 100.000 penya), OnPiercingRemove (1.000.000),
+  CUltimateWeapon MakeGem/MakeItem/SetGem/RemoveGem/TransWeapon/EnchantWeapon (Ultimate_UltimateWeapon.txt e
+  Ultimate_GemAbility.txt). Fail stack (`__UPGRADE_SUCCESS`, UpgradeSuccess.inc) por dwReferStat1 (geral/unique/ultimate/
+  ARMOR_SET) e joias; tentativas em `character_items.upgrade_tries`. Sem proteção, falhar no +3 em diante (e sempre na
+  ultimate e ao abrir furo) destrói o item, como o original.
+- **Combate**: joias da ultimate somam DST (GetDestParamUltimate, só a arma da mão direita); elemento da arma contra o do mob
+  e do mob contra o da suit pelo GetDamagePropertyFactor (tabela de vantagem + nDamageRate/nDefenseRate/nAddAtkDmgRate);
+  `MoverProp.element/elementLevel` = eElementType/wElementAtk do propMover (colunas 41/42).
+- **Cliente**: duplo clique em Sunstone, orichalcum brilhante, moonstone ou carta de elemento abre o mesmo martelo das cartas
+  (sem proteção, confirma se pode destruir); janela do ferreiro (`client/smith.ts`) com um modo por opção do menu, itens
+  escolhidos clicando na bolsa; dica do item mostra as joias da ultimate. Mensagens `upgrade`/`smith` → `{ t: 'smith' }`.
+- Banco: migração 019 (`upgrade_tries`, `gems`). Falta: as quatro opções da Peach acima, cartas de arma (IK3_SOCKETCARD2) e
+  furos em arma, pergaminhos de chance por faixa (IK3_GENERAL_ENCHANT_RATE do `__UPGRADE_SUCCESS_SCROLL`).

@@ -28,11 +28,13 @@ const GOLD_MAX = 2_100_000_000;
 export const RED_CHIP = 26460;
 
 /** item num espaço; u = enchant (+0–10), e = elemento (0 nenhum, 1 fogo, 2 água, 3 elétrico, 4 vento, 5 terra), el = nível do elemento */
-export interface InvItem { c: number; s: number; id: number; n: number; u: number; e: number; el: number; /** piercing: um item de carta por espaço aberto (0 = vazio) */ p?: number[]; /** item de tempo ativado: vale até (ms) */ x?: number }
+export interface InvItem { c: number; s: number; id: number; n: number; u: number; e: number; el: number; /** piercing: um item de carta por espaço aberto (0 = vazio) */ p?: number[]; /** item de tempo ativado: vale até (ms) */ x?: number;
+  /** falhas seguidas de upgrade no nível atual (fail stack do UpgradeSuccess.inc) */ t?: number;
+  /** arma ultimate: joias engastadas, um item por espaço aberto (0 = vazio) */ g?: number[] }
 /** melhorias pedidas ao criar um item (painel de GM) */
 export interface ItemUpgrade { u?: number; e?: number; el?: number; /** espaços de piercing abertos (suit: até 4) */ p?: number }
-const plain = (i: { u: number; e: number; el: number; p?: number[] }) => !i.u && !i.e && !i.el && !i.p?.length;
-const sameUpgrade = (a: InvItem, b: InvItem) => a.u === b.u && a.e === b.e && a.el === b.el && (a.p ?? []).join() === (b.p ?? []).join();
+const plain = (i: { u: number; e: number; el: number; p?: number[]; g?: number[] }) => !i.u && !i.e && !i.el && !i.p?.length && !i.g?.length;
+const sameUpgrade = (a: InvItem, b: InvItem) => a.u === b.u && a.e === b.e && a.el === b.el && (a.p ?? []).join() === (b.p ?? []).join() && (a.g ?? []).join() === (b.g ?? []).join();
 export interface InvState { gold: number; /** Red Chip (II_CHP_RED): contador como o penya, fora da bolsa */ chips: number; items: InvItem[] }
 /** o que um lado põe na janela de trade: espaços da bolsa (com quanto de cada pilha) e penya */
 export interface TradeOffer { items: { s: number; n: number; /** item que estava no espaço ao oferecer */ id: number }[]; gold: number }
@@ -61,6 +63,8 @@ interface Pending { slots: Set<string>; gold: number; chips: number }
 const key = (c: number, s: number) => `${c}:${s}`;
 /** ferramentas que as regras recebem: marcar slot alterado e mexer no penya */
 interface Ctx { state: InvState; touch(c: number, s: number): void; gold(delta: number): void; chips(delta: number): void }
+/** o que uma regra de fora (upgrade do ferreiro) recebe para mexer no inventário de uma vez */
+export type InvEdit = Ctx;
 
 /** inventário de um personagem online */
 interface Cached { state: InvState; pending: Pending; timer: NodeJS.Timeout | null; writing: Promise<void> }
@@ -77,10 +81,12 @@ export class Inventory {
     const q = (text: string, params?: unknown[]) => (db ? db.query(text, params) : query(text, params));
     const g = await q(`SELECT gold, red_chips FROM characters WHERE id = $1${lock ? ' FOR UPDATE' : ''}`, [characterId]);
     const r = await q(
-      `SELECT container, slot, item_id, count, upgrade, element, element_level, piercing, (extract(epoch from expires_at) * 1000)::float8 AS expires FROM character_items WHERE character_id = $1 ORDER BY container, slot${lock ? ' FOR UPDATE' : ''}`, [characterId]);
-    return { gold: Number(g.rows[0]?.gold ?? 0), chips: Number(g.rows[0]?.red_chips ?? 0), items: r.rows.map((x: { container: number; slot: number; item_id: number; count: number; upgrade: number; element: number; element_level: number; piercing: unknown; expires: number | null }) => {
+      `SELECT container, slot, item_id, count, upgrade, element, element_level, piercing, upgrade_tries, gems, (extract(epoch from expires_at) * 1000)::float8 AS expires FROM character_items WHERE character_id = $1 ORDER BY container, slot${lock ? ' FOR UPDATE' : ''}`, [characterId]);
+    return { gold: Number(g.rows[0]?.gold ?? 0), chips: Number(g.rows[0]?.red_chips ?? 0), items: r.rows.map((x: { container: number; slot: number; item_id: number; count: number; upgrade: number; element: number; element_level: number; piercing: unknown; upgrade_tries: number; gems: unknown; expires: number | null }) => {
       const p = Array.isArray(x.piercing) ? x.piercing.map((v) => Number(v) || 0).slice(0, MAX_PIERCING) : [];
-      return { c: x.container, s: x.slot, id: x.item_id, n: x.count, u: x.upgrade, e: x.element, el: x.element_level, ...(p.length ? { p } : {}), ...(x.expires ? { x: Math.round(x.expires) } : {}) };
+      const g = Array.isArray(x.gems) ? x.gems.map((v) => Number(v) || 0).slice(0, 5) : [];
+      return { c: x.container, s: x.slot, id: x.item_id, n: x.count, u: x.upgrade, e: x.element, el: x.element_level, ...(p.length ? { p } : {}), ...(x.expires ? { x: Math.round(x.expires) } : {}),
+        ...(x.upgrade_tries ? { t: x.upgrade_tries } : {}), ...(g.length ? { g } : {}) };
     }) };
   }
 
@@ -95,11 +101,12 @@ export class Inventory {
     if (!ups.length && !dels.length && !goldDelta && !chipsDelta) return;
     await db.query(
       `WITH ups AS (
-         INSERT INTO character_items (character_id, container, slot, item_id, count, upgrade, element, element_level, piercing, expires_at)
-         SELECT $1, t.c, t.s, t.i, t.n, t.u, t.e, t.el, t.p::jsonb, CASE WHEN t.x IS NULL THEN NULL ELSE to_timestamp(t.x / 1000.0) END
-           FROM unnest($2::int[], $3::int[], $4::int[], $5::int[], $6::int[], $7::int[], $8::int[], $12::text[], $13::float8[]) AS t(c, s, i, n, u, e, el, p, x)
+         INSERT INTO character_items (character_id, container, slot, item_id, count, upgrade, element, element_level, piercing, expires_at, upgrade_tries, gems)
+         SELECT $1, t.c, t.s, t.i, t.n, t.u, t.e, t.el, t.p::jsonb, CASE WHEN t.x IS NULL THEN NULL ELSE to_timestamp(t.x / 1000.0) END, t.t, t.g::jsonb
+           FROM unnest($2::int[], $3::int[], $4::int[], $5::int[], $6::int[], $7::int[], $8::int[], $12::text[], $13::float8[], $15::int[], $16::text[]) AS t(c, s, i, n, u, e, el, p, x, t, g)
          ON CONFLICT (character_id, container, slot) DO UPDATE
-           SET item_id = EXCLUDED.item_id, count = EXCLUDED.count, upgrade = EXCLUDED.upgrade, element = EXCLUDED.element, element_level = EXCLUDED.element_level, piercing = EXCLUDED.piercing, expires_at = EXCLUDED.expires_at
+           SET item_id = EXCLUDED.item_id, count = EXCLUDED.count, upgrade = EXCLUDED.upgrade, element = EXCLUDED.element, element_level = EXCLUDED.element_level, piercing = EXCLUDED.piercing, expires_at = EXCLUDED.expires_at,
+               upgrade_tries = EXCLUDED.upgrade_tries, gems = EXCLUDED.gems
          RETURNING 1),
        dels AS (
          DELETE FROM character_items ci USING unnest($9::int[], $10::int[]) AS d(c, s)
@@ -107,7 +114,8 @@ export class Inventory {
        UPDATE characters SET gold = LEAST(GREATEST(gold + $11, 0), ${GOLD_MAX}), red_chips = GREATEST(red_chips + $14, 0), updated_at = now()
         WHERE id = $1 AND ($11 <> 0 OR $14 <> 0)`,
       [characterId, ups.map((i) => i.c), ups.map((i) => i.s), ups.map((i) => i.id), ups.map((i) => i.n), ups.map((i) => i.u), ups.map((i) => i.e), ups.map((i) => i.el),
-        dels.map((d) => d[0]), dels.map((d) => d[1]), goldDelta, ups.map((i) => JSON.stringify(i.p ?? [])), ups.map((i) => i.x ?? null), chipsDelta]);
+        dels.map((d) => d[0]), dels.map((d) => d[1]), goldDelta, ups.map((i) => JSON.stringify(i.p ?? [])), ups.map((i) => i.x ?? null), chipsDelta,
+        ups.map((i) => i.t ?? 0), ups.map((i) => JSON.stringify(i.g ?? []))]);
   }
 
   /**
@@ -136,6 +144,12 @@ export class Inventory {
       return r;
     });
   }
+
+  /**
+   * Regra de fora (servers/world/upgrade.ts): roda `fn` sobre o estado do mesmo jeito que as regras daqui — na memória se o
+   * personagem está online, numa transação se não —, então tudo o que ela muda (itens, penya) vale junto ou nada vale.
+   */
+  edit<T>(characterId: number, fn: (x: InvEdit) => T): Promise<T> { return this.mutate(characterId, fn); }
 
   private schedule(characterId: number, c: Cached) {
     if (c.timer) return;
@@ -627,9 +641,14 @@ export class Inventory {
       const d = this.catalog.byId.get(i.id);
       if (d) defs[i.id] = this.catalog.viewFull(d);
       // cartas espetadas: a dica do item mostra o nome e o bônus de cada uma
-      for (const card of i.p ?? []) { const cd = card ? this.catalog.byId.get(card) : undefined; if (cd && !defs[card]) defs[card] = this.catalog.viewFull(cd); }
+      for (const card of [...(i.p ?? []), ...(i.g ?? [])]) { const cd = card ? this.catalog.byId.get(card) : undefined; if (cd && !defs[card]) defs[card] = this.catalog.viewFull(cd); }
     }
-    return { t: 'inv', gold: st.gold, chips: st.chips, bag: BAG_SLOTS, items: st.items.map((i) => (i.x ? [i.c, i.s, i.id, i.n, i.u, i.e, i.el, i.p ?? [], i.x] : i.p?.length ? [i.c, i.s, i.id, i.n, i.u, i.e, i.el, i.p] : [i.c, i.s, i.id, i.n, i.u, i.e, i.el])), defs };
+    return { t: 'inv', gold: st.gold, chips: st.chips, bag: BAG_SLOTS, items: st.items.map((i) => {
+      // [c, s, id, n, u, e, el, piercing, tempo, joias da ultimate] — só até o último campo que o item tem
+      const row: unknown[] = [i.c, i.s, i.id, i.n, i.u, i.e, i.el, i.p ?? [], i.x ?? 0, i.g ?? []];
+      const last = i.g?.length ? 10 : i.x ? 9 : i.p?.length ? 8 : 7;
+      return row.slice(0, last) as [number, number, number, number, number, number, number, number[]?, number?, number[]?];
+    }), defs };
   }
 
   /** símbolos II_* equipados que mudam o visual (para montar o modelo nos clientes): cash por cima, partes escondidas fora, enchant junto (shared/look.ts) */
