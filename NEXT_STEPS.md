@@ -1029,3 +1029,10 @@ Comparado com o MikePanqueca (Blade 73) do servidor oficial local (banco CHARACT
   Destinos | imagem (Theme/Default/Teleporter/*.png) + descrição com o nível aconselhado (textClient: TID→IDS→texto, separado
   por tab ou espaços) | Drops possíveis (ícone, nome e a dica do item). Sem o arquivo, volta ao ZckTeleporteur.inc.
   A lista vem do servidor ('teleports'); o índice é o mesmo do 'zckTeleport'.
+
+## 58. Level Up (2026-10-28)
+- Ao subir de nível: a faixa "Level Up!" no alto da tela (g_Caption1 com __AEGON_ADVANCED_ANNOUNCEMENT, imagem 6 =
+  Theme/Default/Announcement/levelup.png, client/caption.ts), o pilar de luz XI_GEN_LEVEL_UP01 (SFX 42) e o movimento
+  MTI_LEVELUP se estiver parado, como o CMover::SetLevel do cliente oficial; aviso no chat. Outros jogadores perto veem o
+  pilar e o movimento ('level' com nível maior que o anterior). Descer de nível (GM) não mostra nada.
+- Falta: a música BGM_IN_LEVELUP.

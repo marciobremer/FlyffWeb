@@ -155,6 +155,15 @@ export class RemotePlayers {
   clear() { for (const id of [...this.list.keys()]) this.remove(id); }
 
   /** GM ficou invisível / visível (só chega a quem é GM/admin): fica translúcido */
+  /** nível de outro jogador mudou; true se subiu (efeito de level up) */
+  setLevel(id: number, level: number) {
+    const r = this.list.get(id);
+    if (!r) return false;
+    const up = level > r.view.level;
+    r.view.level = level;
+    return up;
+  }
+
   setInvis(id: number, on: boolean) {
     const r = this.list.get(id);
     if (!r) return;
@@ -290,6 +299,8 @@ export class NetClient {
   onMobDie: (id: number, killer: number) => void = () => {};
   onPlayerDie: (id: number) => void = () => {};
   onStats: (s: PlayerStats) => void = () => {};
+  /** outro jogador subiu de nível (efeito e movimento nele) */
+  onLevelUp: (id: number) => void = () => {};
   /** como ficariam os atributos com os pontos ainda não aplicados (janela de personagem) */
   onStatPreview: (s: PlayerStats) => void = () => {};
   /** suas skills (pontos, níveis, lista da classe) e skill lançada (espera) */
@@ -510,6 +521,7 @@ export class NetClient {
         this.onStatPreview(m as unknown as PlayerStats);
       } else if (m.t === 'level') {
         if (m.id === this.myId) this.onLevel(Number(m.level));
+        else if (this.remotes.setLevel(Number(m.id), Number(m.level))) this.onLevelUp(Number(m.id));
       } else if (m.t === 'look') {
         if (m.id === this.myId) this.onLook((m.eq ?? []) as string[], Number(m.mt ?? 0));
         else this.remotes.look(m.id as number, (m.eq ?? []) as string[], Number(m.mt ?? 0));

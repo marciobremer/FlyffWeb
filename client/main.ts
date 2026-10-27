@@ -19,6 +19,7 @@ import { SmithWindow, smithOptions, isUpgradeMaterial } from './smith';
 import { ShopWindow } from './shop';
 import { SkillWindow } from './skillwnd';
 import { JobWindow } from './jobwnd';
+import { CaptionBanner } from './caption';
 import { Pets } from './pets';
 import { PetFilterWindow } from './petfilter';
 import { BuffBar } from './buffbar';
@@ -573,6 +574,8 @@ net.onChat = (id, name, text) => {
 };
 // anúncio do painel admin: letreiro no meio da tela e uma cópia no chat (para quem perdeu)
 const announcer = new Announcer(document.body);
+/** faixa de aviso no alto da tela (Level Up!) */
+const caption = new CaptionBanner(document.body);
 net.onAnnounce = (text, loops) => { announcer.show(text, loops); chat.system(`[Aviso] ${text}`); };
 net.onGmOpen = () => gmPanel.show();
 net.onGmItems = (list) => gmPanel.setResults(list);
@@ -733,7 +736,24 @@ inventory.onHide = (mask) => {
 };
 // nível mudado por GM: atualiza o personagem e a janela de status (HP/MP/FP cheios com os máximos novos)
 // nível novo (GM ou exp): os valores certos chegam logo depois em `stats`
-net.onLevel = (level) => { const ch = characters.find((c) => c.slot === selectedSlot); if (ch) ch.level = level; };
+net.onLevel = (level) => {
+  const ch = characters.find((c) => c.slot === selectedSlot), up = !!ch && level > ch.level;
+  if (ch) ch.level = level;
+  if (!up) return;
+  // subiu de nível (CMover::SetLevel/AddExperience no cliente): a faixa "Level Up!", o pilar de luz e o movimento
+  caption.show('Level Up!');
+  levelUpFx(net.myId);
+  chat.system(`Parabéns! Você chegou ao nível ${level}.`);
+};
+/** XI_GEN_LEVEL_UP01 (o pilar de luz) no personagem e MTI_LEVELUP se estiver parado */
+function levelUpFx(id: number) {
+  const p = id === net.myId ? view.player?.pos ?? null : remotes.pos(id);
+  if (!p) return;
+  view.playSfx(42, [p[0], p[1], p[2]]);
+  if (id !== net.myId) remotes.cast(id, 'MTI_LEVELUP');
+  else if (view.player?.animState === 'stand') view.player.cast('MTI_LEVELUP');
+}
+net.onLevelUp = (id) => levelUpFx(id);
 /** troca o equipamento visível do personagem local (recoloca o nome na instância nova) */
 let combatMt = 0, lookNow: string[] = [];
 /** você está invisível (modo invisível de GM ou Dark Illusion): seu boneco fica translúcido */

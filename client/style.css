@@ -718,3 +718,7 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
    seta do sistema nas janelas. O canvas do mundo troca sozinho (espada sobre mob, balão sobre NPC — shared/world.ts) e o
    martelinho do piercing (body.piercing) continua por cima. */
 html, body, body *:not(canvas), canvas.inv-model, canvas.char-model { cursor: url("/res/Data/Cursors/CurDefault1/curBase.cur") 0 0, default !important; }
+
+/* faixa de aviso (Level Up!): Theme/Default/Announcement/levelup.png 600×140 com o texto no meio */
+.caption-banner { position: fixed; z-index: 40; left: 50%; top: 14%; transform: translateX(-50%); width: min(600px, 92vw); aspect-ratio: 600 / 140; display: flex; align-items: center; justify-content: center; padding-top: 1.5%; background: no-repeat center / contain; pointer-events: none; }
+.caption-banner span { font: 700 clamp(16px, 3.4vw, 22px) Tahoma, Verdana, sans-serif; color: #fafaff; text-shadow: 0 0 4px #1a3a7a, 0 0 2px #000, 0 1px 1px #000; letter-spacing: .5px; }
