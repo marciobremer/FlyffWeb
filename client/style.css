@@ -3,7 +3,9 @@
 html, body { margin: 0; height: 100%; overflow: hidden; background: #14161a; color: var(--fg); font: 14px/1.4 system-ui, sans-serif; }
 #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 #help { position: fixed; left: 50%; transform: translateX(-50%); top: 8px; white-space: nowrap; color: #fff; text-shadow: 0 0 3px #000; font-size: 14px; pointer-events: none; }
-#hud { position: fixed; right: 10px; bottom: 8px; color: #fff; text-shadow: 0 0 3px #000; font: 13px ui-monospace, Consolas, monospace; pointer-events: none; }
+#hud { position: fixed; right: 10px; bottom: 8px; z-index: 7; color: #fff; text-shadow: 0 0 3px #000; font: 13px ui-monospace, Consolas, monospace; pointer-events: none; white-space: nowrap; }
+/* tela estreita: o rodapé (fps · hora · ping · online) sobe para não ficar atrás da barra de atalhos */
+@media (max-width: 1400px) { #hud { bottom: 62px; } }
 [hidden] { display: none !important; }
 
 /* ---------- tela de login (peças do tema do cliente; imagens aplicadas por main.ts) ---------- */

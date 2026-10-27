@@ -3,7 +3,7 @@ import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { keyedImage, themeImage, themeTiles } from '../shared/tga';
 import { hairColorOf, hairRgb, type Sex } from '../shared/humans';
 import { CharStage } from './charpreview';
-import { gameHour } from '../shared/gameclock';
+import { fmtGameHour, gameHour } from '../shared/gameclock';
 import { GameHud, provisionalMax } from './hud';
 import { type SkillFx, NetClient, RemotePlayers } from './net';
 import { ActionBar, ChatWindow, InventoryWindow, type BarItem } from './ui';
@@ -923,7 +923,10 @@ view.onStatus = (s) => { if (!view.data) { sayLogin(s); bootStep(s); } };
 let previewing = false;
 view.onFrame = (dt) => {
   // mostra a porta do servidor: cada servidor (ex.: 8080 do painel e 5173 de desenvolvimento) é um mundo separado
-  $('hud').textContent = inGame ? `${view.fps.toFixed(0)} fps · ${net.online} online · servidor :${location.port || (location.protocol === 'https:' ? 443 : 80)}` : `${view.fps.toFixed(0)} fps`;
+  // rodapé: fps, hora do jogo (relógio do servidor, dia e noite), ping, quem está online e a porta do servidor
+  $('hud').textContent = inGame
+    ? `${view.fps.toFixed(0)} fps · ${fmtGameHour(clockFixed ?? gameHour(Date.now() + clockOffset))} · ping ${net.ping === null ? '—' : Math.round(net.ping) + ' ms'} · ${net.online} online · servidor :${location.port || (location.protocol === 'https:' ? 443 : 80)}`
+    : `${view.fps.toFixed(0)} fps`;
   if (previewing) view.player?.preview(dt, 0);
   if (inGame) {
     remotes.frame(dt);

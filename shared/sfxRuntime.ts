@@ -262,6 +262,8 @@ export class SfxInstance {
       tex = node.textures[Math.floor((p.texFrame * (frameForTex - first)) / Math.max(1, p.texLoop)) % p.texFrame] ?? null;
     }
     if (mat.map !== tex) { mat.map = tex; mat.needsUpdate = true; }
+    // sem a textura (ainda baixando) o quadro sairia branco: fica escondido até ela chegar
+    mat.visible = !!tex;
     mat.opacity = Math.max(0, Math.min(1, alpha / 255));
     mat.color.setScalar(1);
   }

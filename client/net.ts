@@ -277,6 +277,9 @@ export class NetClient {
   private join: { token: string; characterId: number; pos: () => [number, number, number] } | null = null;
   myId = 0;
   online = 0;
+  /** ping (ms de ida e volta, média suave); null até a 1ª medida */
+  ping: number | null = null;
+  private pingTimer = 0;
   onStatus: (text: string, error?: boolean) => void = () => {};
   /** mobs do servidor perto do jogador: entraram, mudaram, saíram (ver protocolo em server/realtime.ts) */
   onMobs: (add: [number, number, number, number, number, string, number | null, number?][], upd: [number, number, number, number, string, number?][], del: number[]) => void = () => {};
@@ -370,7 +373,7 @@ export class NetClient {
     const ws = new WebSocket(url);
     this.ws = ws;
     this.onStatus('Conectando ao servidor…');
-    ws.onopen = () => { this.retry = 0; this.last = ''; ws.send(JSON.stringify({ t: 'join', token: this.join!.token, characterId: this.join!.characterId, p: this.join!.pos(), hide: this.hide })); };
+    ws.onopen = () => { this.retry = 0; this.last = ''; this.startPing(); ws.send(JSON.stringify({ t: 'join', token: this.join!.token, characterId: this.join!.characterId, p: this.join!.pos(), hide: this.hide })); };
     ws.onmessage = (ev) => {
       let m: { t: string; [k: string]: unknown };
       try { m = JSON.parse(String(ev.data)); } catch { return; }
@@ -429,6 +432,9 @@ export class NetClient {
         if (id === this.myId) this.onInvis(!!m.on); else this.remotes.setInvis(id, !!m.on);
       } else if (m.t === 'god') {
         this.onGod(!!m.on);
+      } else if (m.t === 'pong') {
+        const rtt = performance.now() - Number(m.c);
+        if (rtt >= 0 && rtt < 60000) this.ping = this.ping === null ? rtt : this.ping * 0.7 + rtt * 0.3;
       } else if (m.t === 'clock') {
         this.onClock(Number(m.now) || Date.now(), typeof m.fixed === 'number' ? m.fixed : null);
       } else if (m.t === 'changeWorld') {
@@ -575,6 +581,15 @@ export class NetClient {
   attack(id: number) { return this.raw({ t: 'atk', id }); }
   /** painel de GM: busca no catálogo de itens (nome/símbolo, categoria) */
   gmItems(q: string, k: string, g = 0) { return this.raw({ t: 'gmItems', q, k, g }); }
+  /** a cada 2 s manda o carimbo do relógio; o pong volta com ele e dá o ping */
+  private startPing() {
+    clearInterval(this.pingTimer);
+    this.ping = null;
+    const tick = () => this.raw({ t: 'ping', c: performance.now() });
+    tick();
+    this.pingTimer = window.setInterval(tick, 2000);
+  }
+
   private raw(msg: unknown) {
     const ws = this.ws;
     if (!ws || ws.readyState !== WebSocket.OPEN || !this.myId) return false;
@@ -604,6 +619,8 @@ export class NetClient {
 
   close() {
     this.closing = true;
+    clearInterval(this.pingTimer);
+    this.ping = null;
     this.join = null;
     this.myId = 0;
     this.online = 0;

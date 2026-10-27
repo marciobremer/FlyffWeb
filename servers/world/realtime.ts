@@ -73,6 +73,7 @@ import type { InvEdit } from '../character/inventory';
  *                                                   conversa) ou pelo nome (/say Nome msg no chat); mesmos limites do chat
  * (servidor → cliente):
  *   { t: 'welcome', id, players: PlayerView[] }     seu id + quem já está no mundo
+ *   { t: 'ping', c } → { t: 'pong', c }          ping do rodapé (o cliente mede a ida e volta)
  *   { t: 'clock', now, fixed }                       relógio do servidor (dia e noite) e a hora fixada pelo GM (null = andando)
  *   { t: 'friends', list: FriendView[] } / { t: 'friendOn', id, on } / { t: 'friendReq', id, name }
  *   { t: 'friendNew', f: FriendView } / { t: 'friendDel', id }   lista de amigos (ao entrar), amigo entrou/saiu, pedido
@@ -1648,6 +1649,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       counters.msgIn++;
       let msg: Record<string, unknown>;
       try { msg = JSON.parse(String(raw)); } catch { return; }
+      // ping do rodapé do cliente: devolve na hora o carimbo dele (mede ida e volta)
+      if (msg.t === 'ping') { if (typeof msg.c === 'number') send(ws, { t: 'pong', c: msg.c }); return; }
       if (msg.t === 'join' && !c.player) { join(c, msg).catch((e) => { console.error('realtime join', e); send(ws, { t: 'error', error: 'Servidor indisponível.' }); ws.close(); }); return; }
       if (msg.t === 'state' && c.player && !c.cb?.dead) {
         const p: unknown[] = Array.isArray(msg.p) ? msg.p : [];

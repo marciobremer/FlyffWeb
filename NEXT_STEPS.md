@@ -947,3 +947,8 @@ Comparado com o MikePanqueca (Blade 73) do servidor oficial local (banco CHARACT
   hora (s_light), névoa e lampiões só de noite (21h–6h) — tudo que já estava portado, antes preso às 12h.
 - GM: `//time 19`, `//time 17:30` fixa a hora para todos; `//time auto` volta a andar. Mundos internos e continentes com
   ambiente próprio continuam com a luz deles.
+- Brilho dos lampiões (`sfx_light*.sfx`, efeitos colocados no mapa): só à noite (21h–6h), junto com as partes "luz" dos
+  modelos. No Titanium oficial ficam sempre acesos (__ALWAYS_MODEL_LIGHT e os SFX do mapa não olham a hora); aqui segue a
+  regra do FlyFF original. Efeito com a textura ainda baixando fica escondido (antes aparecia um quadrado branco).
+- Rodapé: `fps · hora do jogo · ping · online · servidor` — ping por `{t:'ping'}`/`{t:'pong'}` a cada 2 s (média suave);
+  em tela estreita (< 1400 px) o rodapé sobe para cima da barra de atalhos.

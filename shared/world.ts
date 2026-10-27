@@ -456,7 +456,10 @@ export class WorldView {
     this.moverMgr.refresh(this.controls.target.x, -this.controls.target.z);
     if (this.layers.sfx) {
       const cands: { obj: WorldObject; file: string }[] = [];
-      this.tiles.forEach((t) => cands.push(...t.sfxFx));
+      // brilho dos lampiões (sfx_light*.sfx): só à noite, como as partes "luz" dos modelos. O Titanium deixa sempre aceso
+      // (__ALWAYS_MODEL_LIGHT); aqui segue o FlyFF original (SetNight: 21h–6h)
+      const night = this.isNight();
+      this.tiles.forEach((t) => { for (const f of t.sfxFx) if (night || !/^sfx_light/i.test(f.file)) cands.push(f); });
       this.sfxMgr.refresh(cands, this.controls.target.x, -this.controls.target.z);
     } else this.sfxMgr.clear();
     this.refreshEnvironment();
