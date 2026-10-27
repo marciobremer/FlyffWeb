@@ -111,12 +111,27 @@ export class MiniMap extends GameWindow {
     };
     this.coords.className = 'nav-coords';
     this.canvas.addEventListener('wheel', (e) => { e.preventDefault(); this.zoom = Math.max(0, Math.min(ZOOMS.length - 1, this.zoom + (e.deltaY < 0 ? 1 : -1))); this.last = 0; }, { passive: false });
+    // GM/admin: duplo clique no mapa teleporta para o ponto (quem confere a autoridade é o servidor, no //tp)
+    this.canvas.addEventListener('dblclick', (e) => {
+      const v = this.view;
+      if (!v || !this.canTeleport()) return;
+      const r = this.canvas.getBoundingClientRect(), s = ZOOMS[this.zoom];
+      const x = v.x + (e.clientX - r.left - r.width / 2) / s, z = v.z - (e.clientY - r.top - r.height / 2) / s;
+      this.onTeleport(Math.round(x), Math.round(z));
+    });
     this.body.append(this.canvas, zoom(1, 'Aproximar', '+'), zoom(-1, 'Afastar', '−'), this.coords);
   }
+
+  /** GM/admin pode teleportar com duplo clique (main.ts diz quem é) */
+  canTeleport: () => boolean = () => false;
+  onTeleport: (x: number, z: number) => void = () => {};
+  /** último mapa desenhado (para converter o clique em coordenada) */
+  private view: MapView | null = null;
 
   /** desenha (no máximo ~12 vezes por segundo; chamado a cada quadro) */
   draw(v: MapView | null) {
     if (!this.visible || !v) return;
+    this.view = v;
     const now = performance.now();
     if (now - this.last < 80) return;
     this.last = now;

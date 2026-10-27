@@ -512,6 +512,9 @@ const partyListWnd = new PartyListWindow(document.body);
 const miniMap = new MiniMap(document.body);
 const worldMap = new WorldMap(document.body);
 miniMap.onClose = () => navOpen(false);
+// GM/admin: duplo clique no mini mapa teleporta na hora para o ponto (//tp; o servidor confere a autoridade)
+miniMap.canTeleport = () => !!rankOf(account?.authority);
+miniMap.onTeleport = (x, z) => { if (!net.sendChat(`//tp ${x} ${z}`)) chat.system('Sem conexão com o servidor.'); };
 /** o mini mapa começa aberto; fechar (N ou ×) fica lembrado neste navegador */
 function navOpen(set?: boolean): boolean {
   try { if (set !== undefined) localStorage.setItem('flyff.nav.open', set ? '1' : '0'); return localStorage.getItem('flyff.nav.open') !== '0'; } catch { return set ?? true; }

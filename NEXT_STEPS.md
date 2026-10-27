@@ -1036,3 +1036,7 @@ Comparado com o MikePanqueca (Blade 73) do servidor oficial local (banco CHARACT
   MTI_LEVELUP se estiver parado, como o CMover::SetLevel do cliente oficial; aviso no chat. Outros jogadores perto veem o
   pilar e o movimento ('level' com nível maior que o anterior). Descer de nível (GM) não mostra nada.
 - Falta: a música BGM_IN_LEVELUP.
+
+## 59. GM: teleporte pelo mini mapa (2026-10-28)
+- GM/admin: duplo clique no mini mapa (tecla N) teleporta na hora para o ponto clicado (manda //tp x z; o servidor confere a
+  autoridade). Jogador comum: o duplo clique não faz nada.
