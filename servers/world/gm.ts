@@ -33,7 +33,7 @@ export interface GmContext {
   clearMobs?(): string;
   /** mata / revive (ali mesmo, com HP cheio) um personagem online; devolve a resposta */
   kill?(id: number): string;
-  /** Dark Illusion: liga (true), desliga (false) ou alterna (sem valor) a invisibilidade de quem digitou */
+  /** modo invisível: liga (true), desliga (false) ou alterna (sem valor) a invisibilidade de quem digitou */
   invis?(on?: boolean): string;
   /** imortal: liga (true), desliga (false) ou alterna (sem valor) — leva os golpes mas o HP não cai */
   god?(on?: boolean): string;
@@ -63,7 +63,7 @@ const HELP = [
   '//give-penya [personagem] <quantia>',
   '//mob <MI_…|id> [quantidade] [x z]   invoca monstros perto de você ou no ponto x z (não renascem; boss já vem agressivo)',
   '//mob-clear   apaga os monstros invocados deste mapa',
-  '//invis [on|off]   Dark Illusion: fica invisível para os jogadores (GMs/admins ainda veem; mobs largam você)',
+  '//invis [on|off]   modo invisível: os jogadores não veem você (GMs/admins ainda veem; mobs largam você)',
   '//time <hora|auto>   fixa a hora do jogo para todos (ex.: //time 19, //time 6:30) ou volta o dia e noite normal',
   '//god [on|off]   imortal: os mobs batem e o dano aparece, mas o HP não cai (ligado ao entrar, para GM/admin)',
   '//kill [personagem]   mata o personagem · //revive [personagem]   revive ali mesmo com HP cheio',

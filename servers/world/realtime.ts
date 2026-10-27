@@ -22,7 +22,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { decodeText } from '../../shared/formats/rgn';
 import { rates } from '../common/rates';
-import { parseTeleports } from '../../shared/formats/teleport';
+import { parseAegonTeleports, parseTeleports } from '../../shared/formats/teleport';
 import { PartyManager, PARTY_MAX, PARTY_SKILLS, partyExpShares, type Party } from './party';
 import type { MoverProp } from './world';
 import { UpgradeRules, type SmithResult } from './upgrade';
@@ -53,7 +53,8 @@ import type { InvEdit } from '../character/inventory';
  *   { t: 'pierce', card, target }                   piercing: espeta a carta do espaço `card` da bolsa na suit do espaço `target` (também
  *                                                   da bolsa, não equipada) — resposta { t: 'pierced', ok, s } e o inventário novo
  *   { t: 'npcMenu', key } / { t: 'npcBuff', key }     perto do NPC: o que ele oferece (loja, buffs) / receber os buffs (Buff Pang)
- *   { t: 'zckTeleport', k }                         teleporte da janela Teleporter (tecla V): destino `k` do ZckTeleporteur.inc
+ *   { t: 'teleports' } → { t: 'teleports', list }   destinos da janela Teleporter (tecla V): nome, imagem, descrição, drops
+ *   { t: 'zckTeleport', k }                         teleporte da janela Teleporter: destino `k` da lista
  *   { t: 'buffOff', id }                            tira o buff da skill `id` (botão direito no ícone)
  *   { t: 'hide', m }                                partes escondidas do visual (bits de shared/look.ts HIDEABLE; também vai no 'join')
  *   { t: 'friendAdd', id } / { t: 'friendAnswer', id, ok } / { t: 'friendDel', id }   Mensageiro (tecla E): pedir amizade a
@@ -91,7 +92,7 @@ import type { InvEdit } from '../character/inventory';
  *   { t: 'tradeReq', id, name } / { t: 'trade', name, me, them, lock: [eu, ele], ok: [eu, ele] } / { t: 'tradeClose', text }
  *                                                   trade: pedido recebido, janela (ofertas: { gold, items: [{ s, it, d }] }), fechou
  *   { t: 'enter', player: PlayerView }              alguém entrou
- *   { t: 'invis', id, on }                          GM ficou invisível / visível (Dark Illusion; só GMs/admins e ele mesmo recebem)
+ *   { t: 'invis', id, on }                          ficou invisível / visível (modo invisível de GM ou Dark Illusion; só GMs/admins e ele mesmo recebem)
  *   { t: 'god', on }                                seu modo imortal de GM/admin (//god; ligado ao entrar)
  *   { t: 'leave', id }                              alguém saiu
  *   { t: 'states', list: [id, x, y, z, h, s][] }    atualizações agrupadas, 10 por segundo, só de quem mudou
@@ -128,7 +129,9 @@ interface Conn { ws: WebSocket; player: PlayerView | null; accountId: number; di
   /** combate: atributos, HP/MP/FP, exp, morte, ritmo dos golpes */ cb: PlayerCombat | null;
   /** itens do chão que este cliente conhece */ ground: Set<number>;
   /** partes do visual escondidas pelo jogador (máscara de bits, shared/look.ts) */ hide: number;
-  /** GM invisível (Dark Illusion do painel): jogadores comuns não o veem e os mobs o ignoram */ invis?: boolean;
+  /** invisível agora (modo invisível de GM ou Dark Illusion): jogadores comuns não o veem e os mobs o ignoram */ invis?: boolean;
+  /** modo invisível do painel de GM (//invis) */ gmInvis?: boolean;
+  /** Dark Illusion (SI_ACR_SUP_DARKILLUSION) até este instante (ms); 0/undefined = sem */ dark?: number;
   /** GM/admin imortal (//god, ligado ao entrar): os golpes chegam e o dano aparece, mas o HP não cai */ god?: boolean;
   /** pet coletor ativo (item IK3_PET): item, MI_* que aparece, ocupado buscando um item até `busy` (ms) e itens que não couberam */
   pet?: { item: number; mover: number; busy: number; skip: Set<number> };
@@ -211,11 +214,29 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     } catch { /* sem a tabela */ }
     return m;
   })();
-  /** destinos do teleporte (ZckTeleporteur.inc) — mesmo leitor do cliente, então o índice bate */
-  const teleports = (() => {
+  /**
+   * Destinos do teleporte (janela Teleporter, tecla V): o AegonTeleporter.inc do Titanium (imagem, descrição com o nível
+   * aconselhado e o que dropa); sem ele, o ZckTeleporteur.inc. O cliente pede a lista pronta ('teleports') e manda o índice.
+   */
+  interface Teleport { name: string; header: string; image: string; type: 'city' | 'collect' | 'dungeon' | 'zone'; desc: string; world: string; pos: [number, number, number]; items: string[] }
+  const teleports: Teleport[] = (() => {
     if (!inventory) return [];
-    try { const b = fs.readFileSync(path.join(inventory.catalog.resDir, 'ZckTeleporteur.inc')); return parseTeleports(decodeText(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer, 'windows-1252')); } catch { return []; }
+    const dir = inventory.catalog.resDir;
+    const read = (f: string, enc = 'windows-1252') => { const b = fs.readFileSync(path.join(dir, f)); return decodeText(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer, enc); };
+    try {
+      const list = parseAegonTeleports(read('AegonTeleporter.inc'));
+      // TID_TELEPORTER_DESC_n → IDS_TEXTCLIENT_INC_… (textClient.inc) → texto (textClient.txt.txt; "\n" vira quebra de linha)
+      let tids = new Map<string, string>(), ids = new Map<string, string>();
+      // o texto vem separado da chave por tab ou espaços
+      try { tids = new Map([...read('textClient.inc').matchAll(/^\s*(TID_\w+)\s+\S+\s*\{\s*(IDS_\w+)\s*\}/gm)].map((m) => [m[1], m[2]])); ids = new Map([...read('textClient.txt.txt').matchAll(/^(IDS_\w+)[ 	]+(.+?)\s*$/gm)].map((m) => [m[1], m[2]])); } catch { /* sem textos */ }
+      const text = (tid: string) => (ids.get(tids.get(tid) ?? '') ?? '').replace(/\\n/g, '\n').trim();
+      if (list.length) return list.map((t) => ({ name: t.name, header: t.header || t.name, image: t.image ? `Teleporter/${t.image}` : '', type: t.type === 1 ? 'collect' as const : t.type === 2 ? 'dungeon' as const : 'city' as const, desc: text(t.desc), world: t.world, pos: t.pos, items: t.items }));
+    } catch { /* sem o AegonTeleporter.inc */ }
+    try { return parseTeleports(read('ZckTeleporteur.inc')).map((d) => ({ name: d.name, header: d.name, image: d.image, type: d.type, desc: d.desc, world: d.world, pos: d.pos, items: d.items })); } catch { return []; }
   })();
+  /** lista para a janela: nome, imagem, descrição e os itens que dropam ali (ItemView, para a dica do item) */
+  const teleportView = () => teleports.map((d, k) => ({ k, name: d.name, header: d.header, image: d.image, type: d.type, desc: d.desc,
+    items: d.items.map((s) => inventory?.catalog.bySymbol.get(s)).filter((x) => !!x).map((x) => inventory!.catalog.viewFull(x!)) }));
   const rules = opts.combat ?? null;
   /** ferreiro (upgrade, elemento, piercing, ultimate) — também dá ao combate as joias da ultimate e o fator de elemento */
   const smith = inventory ? new UpgradeRules(inventory.catalog) : null;
@@ -387,6 +408,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   function removeBuff(c: Conn, skill: number) {
     const p = c.player, cb = c.cb;
     if (!p || !cb || !cb.buffs.delete(skill)) return;
+    if (skill === DARK_ILLUSION) { c.dark = 0; refreshInvis(c); }
     void inventory?.state(p.id).then((st) => { refreshFighter(c, st); send(c.ws, buffsMsg(c)); send(c.ws, statsMsg(c)); void saveBuffs(p.id, cb).catch(() => {}); });
   }
 
@@ -400,9 +422,9 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   };
 
   /**
-   * Dark Illusion de GM (SI_ACR_SUP_DARKILLUSION): some para quem não é GM/admin (que recebe 'leave'; os GMs recebem
-   * 'invis' e veem translúcido) e os mobs largam o alvo. Desligar faz aparecer de novo ('enter'). O efeito da skill toca
-   * para todos ao sumir e ao aparecer.
+   * Invisível (modo invisível de GM ou a skill Dark Illusion — CHS_INVISIBILITY/TRANSPARENT_MODE do original): some para quem
+   * não é GM/admin (que recebe 'leave'; os GMs recebem 'invis' e veem translúcido) e os mobs largam o alvo. Desligar faz
+   * aparecer de novo ('enter'). O efeito da Dark Illusion toca para todos ao sumir e ao aparecer.
    */
   function setInvis(c: Conn, on: boolean) {
     const p = c.player;
@@ -419,6 +441,22 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     }
     send(c.ws, { t: 'invis', id: p.id, on });
     if (on) W(c).mobs?.forget(p.id); else fx();
+  }
+  const DARK_ILLUSION = 193;
+  /** liga/desliga a invisibilidade conforme o modo de GM e a Dark Illusion (vencida sai) */
+  function refreshInvis(c: Conn) {
+    if (c.dark && c.dark <= Date.now()) c.dark = 0;
+    setInvis(c, !!c.gmInvis || !!c.dark);
+  }
+  /**
+   * A Dark Illusion acaba ao atacar ou lançar outra skill (Ctrl.cpp / MoverActEvent.cpp: RemoveBuff SI_ACR_SUP_DARKILLUSION),
+   * ao vencer o tempo ou ao tirar o buff.
+   */
+  function breakDark(c: Conn) {
+    if (!c.dark) return;
+    c.dark = 0;
+    if (c.cb?.buffs.delete(DARK_ILLUSION)) send(c.ws, buffsMsg(c));
+    refreshInvis(c);
   }
   /** hora do jogo fixada por GM (//time 19), igual para todos; null = o relógio anda (shared/gameclock.ts) */
   let clockFixed: number | null = null;
@@ -480,9 +518,11 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     return false;
   }
 
-  function statsMsg(c: Conn) {
-    const cb = c.cb!, lv = c.player!.level;
-    return { t: 'stats', hp: cb.hp, maxHp: cb.maxHp, mp: cb.mp, maxMp: cb.maxMp, fp: cb.fp, maxFp: cb.maxFp, exp: cb.exp, expMax: rules?.expToNext[lv] ?? 0, level: lv,
+  /** `preview`: atributos de um lutador hipotético (pontos ainda não aplicados, janela de personagem) — só os números */
+  function statsMsg(c: Conn, preview?: Fighter) {
+    const cb0 = c.cb!, lv = c.player!.level;
+    const cb = preview && rules ? { ...cb0, f: preview, maxHp: rules.maxHp(preview), maxMp: rules.maxMp(preview), maxFp: rules.maxFp(preview) } : cb0;
+    return { t: preview ? 'statPreview' : 'stats', hp: cb.hp, maxHp: cb.maxHp, mp: cb.mp, maxMp: cb.maxMp, fp: cb.fp, maxFp: cb.maxFp, exp: cb.exp, expMax: rules?.expToNext[lv] ?? 0, level: lv,
       atkMs: rules?.attackInterval(cb.f, c.player!.mt) ?? 1000, aspd: rules?.attackSpeed(cb.f) ?? 1, atk: rules?.shownAtk(cb.f) ?? [0, 0], atkShow: rules?.shownAtkValue(cb.f) ?? 0, range: rules?.attackRange(cb.f) ?? 2, def: rules?.showDefense(cb.f) ?? 0, crit: rules?.critChance(cb.f) ?? 0, cdmg: rules?.critBonus(cb.f) ?? 0, ...(rules ? rules.panel(cb.f) : {}),
       str: cb.f.base.str, sta: cb.f.base.sta, dex: cb.f.base.dex, int: cb.f.base.int, bonus: { str: cb.f.str - cb.f.base.str, sta: cb.f.sta - cb.f.base.sta, dex: cb.f.dex - cb.f.base.dex, int: cb.f.int - cb.f.base.int },
       acc: rules ? rules.accuracy(cb.f) : 0, dodge: rules ? rules.dodge(cb.f) : 0, spd: rules ? Math.floor(Math.floor(rules.attackSpeed(cb.f) * 100) / 2) : 0, points: cb.points, job: cb.f.job, jobOpts: rules ? rules.jobOptions(cb.f.job, lv) : [],
@@ -1125,6 +1165,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     const p = c.player, cb = c.cb;
     if (!p || !cb || !rules || !mobWorld || cb.dead) return;
     const m = mobWorld.byId.get(mobId);
+    if (m && m.s !== 'dead') breakDark(c); // golpear desfaz a Dark Illusion
     if (!m || m.s === 'dead' || !m.prop) return;
     const now = Date.now();
     if (now < cb.nextAtk - 120) return; // rápido demais (com folga de rede)
@@ -1250,7 +1291,12 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (!changed) return;
     void inventory?.state(c.player!.id).then((st) => { refreshFighter(c, st); send(c.ws, buffsMsg(c)); });
   }
-  const buffTick = setInterval(() => { for (const c of conns) if (c.cb?.buffs.size) expireBuffs(c); }, 1000);
+  const buffTick = setInterval(() => {
+    for (const c of conns) {
+      if (c.dark && c.dark <= Date.now()) breakDark(c);
+      if (c.cb?.buffs.size) expireBuffs(c);
+    }
+  }, 1000);
   http.on('close', () => clearInterval(buffTick));
 
   /**
@@ -1280,6 +1326,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     }
     if (cb.mp < L.mp || cb.fp < L.fp) { reply(c, L.mp > cb.mp ? 'MP insuficiente.' : 'FP insuficiente.'); return; }
     cb.mp -= L.mp; cb.fp -= L.fp; cb.dirty = true;
+    if (skillId !== DARK_ILLUSION) breakDark(c); // outra skill desfaz a Dark Illusion
     const cd = Math.max(L.cooldown || 0, s.kind === 'buff' ? 1000 : 1500);
     cb.skillReady.set(skillId, now + cd);
     send(c.ws, { t: 'skillUsed', id: skillId, cd });
@@ -1316,6 +1363,14 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
             cb[key] = Math.min(max, cb[key] + heal); cb.dirty = true;
           }
         } else if (dur) dst.push([k, v]);
+      }
+      if (skillId === DARK_ILLUSION && dur) {
+        // Dark Illusion: some pelo tempo da skill (CMover::SetDarkCover); o ícone fica na barra de buffs (sem DST, não é guardado)
+        cb.buffs.set(skillId, { lv, until: now + dur, dst: [] });
+        send(c.ws, buffsMsg(c));
+        c.dark = now + dur;
+        refreshInvis(c);
+        return;
       }
       if (dur && dst.length) {
         cb.buffs.set(skillId, { lv, until: now + dur, dst });
@@ -1804,9 +1859,9 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
             online: (name) => { for (const o of conns) if (o.player && o.player.name.toLowerCase() === name.toLowerCase()) return { id: o.player.id, name: o.player.name, level: o.player.level, p: [...o.player.p] }; return null; },
             openPanel: () => send(ws, { t: 'gmOpen' }),
             invis: (on) => {
-              const want = on ?? !c.invis;
-              setInvis(c, want);
-              return want ? 'Dark Illusion: você está invisível para os jogadores (GMs e admins ainda veem você).' : 'Dark Illusion desligada: todos veem você de novo.';
+              c.gmInvis = on ?? !c.gmInvis;
+              refreshInvis(c);
+              return c.gmInvis ? 'Modo invisível: os jogadores não veem você (GMs e admins ainda veem).' : c.invis ? 'Modo invisível desligado (a Dark Illusion ainda está ativa).' : 'Modo invisível desligado: todos veem você de novo.';
             },
             drop: (itemId, n) => {
               const p = c.player!, now = Date.now(), name = inventory?.catalog.byId.get(itemId)?.name ?? 'Item';
@@ -1950,6 +2005,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         npcBuff(c, msg.key.slice(0, 40));
       } else if (msg.t === 'buffOff' && c.player && Number.isInteger(msg.id)) {
         removeBuff(c, msg.id as number);
+      } else if (msg.t === 'teleports') {
+        send(ws, { t: 'teleports', list: teleportView() });
       } else if (msg.t === 'zckTeleport' && c.player && Number.isInteger(msg.k)) {
         zckTeleport(c, msg.k as number);
       } else if (msg.t === 'hide' && c.player && inventory && Number.isInteger(msg.m)) {
@@ -1979,6 +2036,15 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         cb.f.str += s; cb.f.sta += t; cb.f.dex += d; cb.f.int += i;
         recalcMax(c);
         void saveCombat(c.player.id, cb, c.player.level).catch((e) => console.error('realtime: salvar atributos', e));
+      } else if (msg.t === 'statPreview' && c.player && c.cb) {
+        // como ficaria com os pontos ainda não aplicados (a janela pisca o que muda); nada é gravado
+        const add = (['str', 'sta', 'dex', 'int'] as const).map((k) => msg[k]);
+        if (!add.every((v) => Number.isInteger(v) && (v as number) >= 0)) return;
+        const [s, t, d, i] = add as number[];
+        if (s + t + d + i > c.cb.points) return;
+        const f0 = c.cb.f;
+        const f: Fighter = { ...f0, base: { ...f0.base, str: f0.base.str + s, sta: f0.base.sta + t, dex: f0.base.dex + d, int: f0.base.int + i }, str: f0.str + s, sta: f0.sta + t, dex: f0.dex + d, int: f0.int + i };
+        send(ws, statsMsg(c, f));
       } else if (msg.t === 'petFilter' && c.player) {
         c.petFilter = cleanPetFilter(msg.f);
         void query('UPDATE characters SET pet_filter = $2 WHERE id = $1', [c.player.id, JSON.stringify(c.petFilter)]).catch((e) => console.error('realtime: filtro do pet', e));

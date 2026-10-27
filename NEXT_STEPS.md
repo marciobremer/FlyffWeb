@@ -1009,3 +1009,23 @@ Comparado com o MikePanqueca (Blade 73) do servidor oficial local (banco CHARACT
   fica no idle1 repetindo. Ao fechar, volta ao normal (MoverManager.attending, client/main.ts npcFrame).
 - Peach: o chapéu dela (Part_fCloMartaHair, dwBasePartsIgnore = cabelo) era tratado como cabelo e sumia junto. Agora o
   dwBasePartsIgnore esconde só a cabeça/cabelo de base, antes de entrar o equipamento (shared/humans.ts).
+
+## 56. Invisible Mode (GM) e Dark Illusion (Acrobat) (2026-10-28)
+- Painel de GM: "Dark Illusion" virou "Invisible Mode" (//invis). As mensagens também.
+- Skill Dark Illusion (SI_ACR_SUP_DARKILLUSION, id 193): some pelo tempo da skill (4–14 s conforme o nível, CMover::SetDarkCover)
+  com o mesmo efeito do modo de GM — jogadores comuns não veem, GMs e o próprio veem translúcido, os mobs largam o alvo. Acaba
+  ao golpear, ao lançar outra skill, ao vencer ou ao tirar o buff (Ctrl.cpp / MoverActEvent.cpp). Ícone na barra de buffs.
+  Invisível = modo de GM ligado OU Dark Illusion ativa (Conn.gmInvis / Conn.dark, refreshInvis).
+- Translúcido agora vale para todas as malhas (roupa com vários materiais, arma, montaria), com 55% de opacidade (como o
+  cliente oficial mostra: escuro e ainda bem visível) e sem o nome em cima — antes a roupa continuava opaca. Ao lançar a
+  Dark Illusion aparece "Você usou Dark Illusion." em vermelho na cintura.
+- Falta: dano extra das skills que exigem Dark Illusion (Backstab, Vital Stab, Silent Shot) e o pet sumir junto para quem vê.
+
+## 57. Prévia dos atributos e teleporte do Titanium (2026-10-28)
+- Janela de personagem: ao pôr pontos (caixa ou +/−) o servidor calcula como ficaria ('statPreview', um Fighter de mentira,
+  nada gravado) e a janela mostra os valores novos, piscando em vermelho o que muda (Detalhe, HP/MP/FP máx. e o atributo).
+  Ex.: Mercenary com +28 DEX → Crítico 12%→15%, Vel. atq. 46%→51%.
+- Teleporte (tecla V) agora usa o AegonTeleporter.inc do Titanium (35 destinos, sem os 6 da Heaven Tower): três colunas
+  Destinos | imagem (Theme/Default/Teleporter/*.png) + descrição com o nível aconselhado (textClient: TID→IDS→texto, separado
+  por tab ou espaços) | Drops possíveis (ícone, nome e a dica do item). Sem o arquivo, volta ao ZckTeleporteur.inc.
+  A lista vem do servidor ('teleports'); o índice é o mesmo do 'zckTeleport'.

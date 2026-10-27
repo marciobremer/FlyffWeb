@@ -11,7 +11,7 @@ import { hideItemTip, moveItemTip, showItemTip } from './itemtip';
  * - Itens: busca no catálogo (nome ou símbolo II_*, por categoria) com ícones, e criar o item na bolsa do alvo com
  *   quantidade, enchant (joias +0–20, o resto +0–10), elemento (+0–10) e furos de piercing (suit, 0–4);
  * - Jogador: também devolve os pontos de atributo do alvo (reset de status) e mata / revive o alvo (`//kill`, `//revive`);
- *   Dark Illusion (`//invis`) deixa você invisível para os jogadores (GMs/admins veem translúcido) e os mobs largam você.
+ *   Invisible Mode (`//invis`) deixa você invisível para os jogadores (GMs/admins veem translúcido) e os mobs largam você.
  *   Imortal (`//god`, ligado ao entrar): os mobs batem e o dano aparece, mas o HP não cai.
  * - Monstros: lista dos monstros do jogo (nome, MI_*, nível; boss em vermelho) com busca — clicar escolhe e "Invocar"
  *   cria a quantidade pedida perto de você (`//mob`); os invocados não renascem.
@@ -70,14 +70,14 @@ export class GmPanel extends GameWindow {
   private mobPicked: { id: number; name: string; symbol: string; level: number; boss: boolean } | null = null;
   private mobPick = el('div', { className: 'gm-pick' });
   private mobQty = num(1, 30, 1);
-  /** Dark Illusion: liga/desliga a invisibilidade de GM (//invis) */
-  private invisBtn = btn('Dark Illusion', () => this.send('//invis'));
+  /** Invisible Mode: liga/desliga a invisibilidade de GM (//invis) */
+  private invisBtn = btn('Invisible Mode', () => this.send('//invis'));
   /** imortal: os mobs batem e o dano aparece, mas o HP não cai (//god; ligado ao entrar) */
   private godBtn = btn('Imortal', () => this.send('//god'));
 
-  /** estado da Dark Illusion (o servidor avisa ao ligar/desligar) */
+  /** estado do modo invisível (o servidor avisa ao ligar/desligar) */
   setInvis(on: boolean) {
-    this.invisBtn.textContent = on ? 'Dark Illusion: ligada' : 'Dark Illusion';
+    this.invisBtn.textContent = on ? 'Invisible Mode: ligado' : 'Invisible Mode';
     this.invisBtn.classList.toggle('on', on);
   }
 

@@ -113,6 +113,7 @@ const inventory = new InventoryWindow(document.body);
 /** Teleporter (tecla V, como o APP_ZCK_TELEPORTEUR do cliente) */
 const teleportWnd = new TeleportWindow(document.body);
 teleportWnd.onTeleport = (k) => { if (!net.zckTeleport(k)) chat.system('Sem conexão com o servidor.'); };
+teleportWnd.onLoad = () => net.teleports();
 /** janela de movimentos (tecla O): movimento no personagem (os outros veem pelo servidor) e emoticon acima da cabeça */
 const motionWnd = new MotionWindow(document.body);
 hud.onMotion = () => motionWnd.toggle();
@@ -149,6 +150,7 @@ shopWnd.onSell = (k, s, n) => { if (!net.shopSell(k, s, n)) chat.system('Sem con
 let npcGoing: { inst: MoverInstance; key: string; next: number; best?: number; since?: number } | null = null;
 let shopNpc: [number, number] | null = null;
 charWnd.onApply = (add) => { if (!net.statUp(add)) chat.system('Sem conexão com o servidor.'); };
+charWnd.onPreview = (add) => { net.statPreview(add); };
 /** painel de GM (//gm no chat; o servidor só abre para contas GM/admin) */
 const gmPanel = new GmPanel(document.body);
 gmPanel.run = (cmd) => net.sendChat(cmd);
@@ -193,6 +195,9 @@ net.onSkillUsed = (id, cd) => {
   actionBar.cooldown(id, cd, 'skill');
   const s = skillWnd.get(id);
   if (s?.kind === 'buff' && s.mo) view.player?.cast(s.mo); // o servidor aceitou: toca o movimento de lançar o buff
+  // Dark Illusion: o aviso vermelho na altura da cintura, como o "You use Dark Illusion." do original
+  const p = view.player?.pos;
+  if (s?.sym === 'SI_ACR_SUP_DARKILLUSION' && p) combat.popup([p[0], p[1] + 0.9, p[2]], 'Você usou Dark Illusion.', 'notice');
 };
 /** atalho de skill: lança no mob selecionado (anda até o alcance) */
 actionBar.onUseSkill = (id) => {
@@ -466,6 +471,7 @@ net.onGetUp = () => {
 };
 /** velocidade de corrida do personagem (u/s), vinda do servidor; aplicada também ao nascer */
 let moveSpeed = 6;
+net.onStatPreview = (s) => charWnd.setPreview(s);
 net.onStats = (s) => {
   const ch = characters.find((c) => c.slot === selectedSlot);
   if (!ch) return;
@@ -730,7 +736,7 @@ inventory.onHide = (mask) => {
 net.onLevel = (level) => { const ch = characters.find((c) => c.slot === selectedSlot); if (ch) ch.level = level; };
 /** troca o equipamento visível do personagem local (recoloca o nome na instância nova) */
 let combatMt = 0, lookNow: string[] = [];
-/** você está com a Dark Illusion de GM ligada (invisível para os jogadores): seu boneco fica translúcido */
+/** você está invisível (modo invisível de GM ou Dark Illusion): seu boneco fica translúcido */
 let myInvis = false;
 net.onInvis = (on) => { myInvis = on; view.player?.inst?.setGhost(on); gmPanel.setInvis(on); };
 net.onGod = (on) => gmPanel.setGod(on);
@@ -738,6 +744,7 @@ net.onGod = (on) => gmPanel.setGod(on);
 // ---------- dia e noite (shared/gameclock.ts: dia 6h–19h em 21,6 min e noite em 7,2 min reais, igual para todos) ----------
 /** diferença entre o relógio do servidor e o deste computador; hora fixada pelo GM (//time) */
 let clockOffset = 0, clockFixed: number | null = null;
+net.onTeleports = (list) => teleportWnd.set(list);
 net.onPet = (a, m) => pets.set(a, m);
 net.onPetGo = (a, x, z, ms) => pets.go(a, x, z, ms);
 net.onPetFilter = (f, n) => petFilterWnd.set(f, n);

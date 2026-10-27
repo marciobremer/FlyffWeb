@@ -290,6 +290,8 @@ export class NetClient {
   onMobDie: (id: number, killer: number) => void = () => {};
   onPlayerDie: (id: number) => void = () => {};
   onStats: (s: PlayerStats) => void = () => {};
+  /** como ficariam os atributos com os pontos ainda não aplicados (janela de personagem) */
+  onStatPreview: (s: PlayerStats) => void = () => {};
   /** suas skills (pontos, níveis, lista da classe) e skill lançada (espera) */
   onSkills: (points: number, levels: Record<string, number>, list: import('./skillwnd').SkillView[]) => void = () => {};
   onSkillUsed: (id: number, cd: number) => void = () => {};
@@ -304,7 +306,7 @@ export class NetClient {
   onTradeReq: (id: number, name: string) => void = () => {};
   onTrade: (v: TradeView) => void = () => {};
   onTradeClose: (text: string) => void = () => {};
-  /** sua Dark Illusion de GM ligou/desligou */
+  /** você ficou invisível / visível (modo invisível de GM ou Dark Illusion) */
   onInvis: (on: boolean) => void = () => {};
   /** seu modo imortal de GM/admin (//god) */
   onGod: (on: boolean) => void = () => {};
@@ -314,6 +316,8 @@ export class NetClient {
   /** filtro do pet (ao entrar e depois de gravar) com nome e ícone dos itens das listas; resultado da busca de itens */
   onPetFilter: (f: import('../shared/petfilter').PetFilter, names: Record<number, [string, string]>) => void = () => {};
   onPetFind: (list: [number, string, string][]) => void = () => {};
+  /** destinos da janela Teleporter (pedidos com teleports()) */
+  onTeleports: (list: import('./teleport').TeleportView[]) => void = () => {};
   /** relógio do servidor (dia e noite) e a hora fixada pelo GM (null = andando) */
   onClock: (now: number, fixed: number | null) => void = () => {};
   /** o servidor mandou trocar de mundo (ticket de Azria, teleporte para outro mapa) */
@@ -451,6 +455,8 @@ export class NetClient {
         this.onPetGo(Number(m.a), Number(m.x), Number(m.z), Number(m.ms) || 0);
       } else if (m.t === 'petFilter') {
         this.onPetFilter(m.f as import('../shared/petfilter').PetFilter, (m.n ?? {}) as Record<number, [string, string]>);
+      } else if (m.t === 'teleports') {
+        this.onTeleports((m.list ?? []) as import('./teleport').TeleportView[]);
       } else if (m.t === 'petFind') {
         this.onPetFind((m.list ?? []) as [number, string, string][]);
       } else if (m.t === 'clock') {
@@ -500,6 +506,8 @@ export class NetClient {
         this.onGround((m.a ?? []) as GroundRow[], (m.d ?? []) as number[]);
       } else if (m.t === 'stats') {
         this.onStats(m as unknown as PlayerStats);
+      } else if (m.t === 'statPreview') {
+        this.onStatPreview(m as unknown as PlayerStats);
       } else if (m.t === 'level') {
         if (m.id === this.myId) this.onLevel(Number(m.level));
       } else if (m.t === 'look') {
@@ -593,6 +601,8 @@ export class NetClient {
   /** distribui pontos de atributo */
   jobChange(job: number) { return this.raw({ t: 'jobChange', job }); }
   statUp(add: { str: number; sta: number; dex: number; int: number }) { return this.raw({ t: 'statUp', ...add }); }
+  /** pede a prévia dos atributos com esses pontos (nada é gravado) */
+  statPreview(add: { str: number; sta: number; dex: number; int: number }) { return this.raw({ t: 'statPreview', ...add }); }
   /** pega o item `id` do chão */
   pick(id: number) { return this.raw({ t: 'pick', id }); }
   /** golpe no mob `id` (o servidor confere alcance e ritmo) */
@@ -600,6 +610,8 @@ export class NetClient {
   /** grava o filtro do pet; busca itens (nome/símbolo) para as listas do filtro */
   petFilter(f: import('../shared/petfilter').PetFilter) { return this.raw({ t: 'petFilter', f }); }
   petFind(q: string) { return this.raw({ t: 'petFind', q }); }
+  /** pede a lista de destinos do teleporte */
+  teleports() { return this.raw({ t: 'teleports' }); }
   /** painel de GM: busca no catálogo de itens (nome/símbolo, categoria) */
   gmItems(q: string, k: string, g = 0) { return this.raw({ t: 'gmItems', q, k, g }); }
   /** a cada 2 s manda o carimbo do relógio; o pong volta com ele e dá o ping */

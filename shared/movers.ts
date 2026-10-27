@@ -459,17 +459,19 @@ export class MoverInstance {
    * material (o do template é compartilhado por todos); desligar volta ao material original.
    */
   setGhost(on: boolean) {
+    // todas as malhas (corpo, roupa com vários materiais, arma, montaria…) meio transparentes, como o cliente oficial mostra o
+    // invisível (escuro e ainda bem visível); o nome some enquanto isso
+    const ghost = (m: Material) => { const g = m.clone(); g.transparent = true; g.opacity = Math.min(m.opacity, 0.55); g.depthWrite = false; return g; };
+    if (this.label) this.label.element.style.visibility = on ? 'hidden' : '';
     this.group.traverse((o) => {
       const mesh = o as Mesh;
-      if (!mesh.isMesh || !(mesh.material instanceof MeshLambertMaterial)) return;
-      const base = mesh.userData.ghostBase as MeshLambertMaterial | undefined;
+      if (!mesh.isMesh) return;
+      const base = mesh.userData.ghostBase as Material | Material[] | undefined;
       if (on && !base) {
-        const m = mesh.material.clone();
-        m.transparent = true; m.opacity = 0.35; m.depthWrite = false;
         mesh.userData.ghostBase = mesh.material;
-        mesh.material = m;
+        mesh.material = Array.isArray(mesh.material) ? mesh.material.map(ghost) : ghost(mesh.material);
       } else if (!on && base) {
-        mesh.material.dispose();
+        for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) m.dispose();
         mesh.material = base;
         delete mesh.userData.ghostBase;
       }

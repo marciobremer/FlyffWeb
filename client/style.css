@@ -349,7 +349,11 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 .cw-row b { color: #b04a1c; font: 700 12px Tahoma, sans-serif; }
 .cw-val { font: 700 12px Tahoma, sans-serif; color: #222; }
 .cw-val.bonus { color: #1f6fb0; }
-.cw-val.pending { color: #2a7a2a; }
+.cw-val.pending { color: #d01818; animation: cwBlink .8s ease-in-out infinite alternate; }
+/* pontos ainda não aplicados: o que vai mudar no Detalhe (e HP/MP/FP) pisca em vermelho com o valor novo */
+.cw-up { color: #d01818 !important; font-weight: 700; animation: cwBlink .8s ease-in-out infinite alternate; }
+@keyframes cwBlink { from { opacity: 1; } to { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .cw-up, .cw-val.pending { animation: none; } }
 .cw-pm { position: relative; width: 16px; height: 16px; padding: 0; border: 1px solid #c9b3a6; border-radius: 3px; background: #f4ecff; color: #b04a1c; font: 700 12px/1 Tahoma, sans-serif; cursor: pointer; }
 .cw-pm span { pointer-events: none; }
 .cw-pm.img { border: 0; background-color: transparent; background-repeat: no-repeat; background-size: 400% 100%; background-position: 33.333% 0; color: transparent; }
@@ -390,6 +394,7 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 .dmg.heal { color: #5aff7a; font-size: 18px; }
 .dmg.healmp { color: #7ab8ff; font-size: 16px; }
 .dmg.healfp { color: #9cff9c; font-size: 16px; }
+.dmg.notice { color: #e01818; font: 700 12px Tahoma, Verdana, sans-serif; text-shadow: 0 0 2px #000; }
 
 /* loja do NPC (game/shop.ts) */
 .gwnd.drop .gwnd-body { box-shadow: 0 0 0 2px #e8a33a inset; }
@@ -487,18 +492,28 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 
 /* Teleporter (tecla V): lista à esquerda, imagem e descrição do destino à direita */
 .gwnd-body.tp { flex-direction: row; gap: 8px; }
-.tp-left { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+/* teleporte (tecla V), como o do Titanium: destinos | imagem e descrição | drops possíveis */
+.tp-col { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.tp-head { margin: 0; padding: 3px 6px; border-radius: 10px; background: linear-gradient(#8aa3c4, #5f7da6); color: #fff; font: 700 12px Tahoma, Verdana, sans-serif; text-align: center; }
+.tp-left { flex: 1; }
+.tp-mid { flex: none; width: 250px; align-items: center; }
+.tp-mid .tp-head { align-self: stretch; }
+.tp-right { flex: 1; }
 .tp-filter { height: 22px; padding: 0 4px; border: 1px solid #c9b3a6; border-radius: 4px; background: #fff; color: #222; font: inherit; }
-.tp-list { flex: 1; min-height: 0; overflow: hidden auto; background: #fff; border: 1px solid #d8c4b8; border-radius: 6px; padding: 2px; }
+.tp-list, .tp-drops { flex: 1; min-height: 0; overflow: hidden auto; background: #fff; border: 1px solid #d8c4b8; border-radius: 6px; padding: 2px; }
 .tp-row { display: block; width: 100%; padding: 3px 6px; border: 0; border-radius: 3px; background: transparent; font: inherit; text-align: left; cursor: pointer; color: #222; }
 .tp-row:hover { background: #eef1fb; }
 .tp-row.on { background: #7d95d8; color: #fff; }
-.tp-right { flex: none; width: 240px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.tp-img { width: 238px; height: 228px; border-radius: 4px; background: #e8ddd6; object-fit: cover; }
-.tp-name { font-weight: 700; font-size: 14px; color: #6b3b1a; }
-.tp-desc { margin: 0; min-height: 1.3em; text-align: center; color: #555; }
-.tp-go { width: 120px; }
+.tp-img { width: 246px; height: 236px; border: 2px solid #c9a24a; border-radius: 4px; background: #e8ddd6; object-fit: cover; }
+.tp-desc { align-self: stretch; margin: 0; min-height: 3.6em; padding: 4px 6px; border: 1px solid #d8c4b8; border-radius: 6px; background: #fff; color: #333; white-space: pre-line; }
+.tp-go { width: 140px; }
 .tp-go:disabled { opacity: .5; cursor: default; }
+.tp-drops { margin: 0; list-style: none; }
+.tp-drops li { display: flex; align-items: center; gap: 8px; padding: 2px 4px; border-bottom: 1px solid #f0e6df; }
+.tp-drops li:hover { background: #fff3d6; }
+.tp-drops li img { width: 32px; height: 32px; image-rendering: pixelated; flex: none; }
+.tp-drops li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-drops .tp-none { color: #8a7a70; border: 0; }
 /* conta salva que entra direto (tem token de lembrar) */
 .flist li.auto::after { content: ' ✔'; color: #3a9a3a; font-weight: 700; }
 

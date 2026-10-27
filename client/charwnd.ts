@@ -66,6 +66,12 @@ function table(cls: string, labels: string[]) {
 export class CharacterWindow extends GameWindow {
   /** manda os pontos distribuídos ao servidor */
   onApply: (add: Record<Stat, number>) => void = () => {};
+  /** pede ao servidor como ficariam os atributos com os pontos pendentes (setPreview responde) */
+  onPreview: (add: Record<Stat, number>) => void = () => {};
+  /** atributos com os pontos pendentes (do servidor); null = sem pendente */
+  private preview: PlayerStats | null = null;
+  private previewKey = '';
+  private previewTimer = 0;
 
   private s: PlayerStats | null = null;
   private name = '';
@@ -189,7 +195,25 @@ export class CharacterWindow extends GameWindow {
   setStats(s: PlayerStats) {
     this.s = s;
     if (this.pendingTotal() > s.points) this.pending = { str: 0, sta: 0, dex: 0, int: 0 };
+    this.previewKey = ''; // atributos mudaram: a prévia é refeita
     this.render();
+  }
+
+  /** prévia do servidor (só vale se ainda é a do pendente atual) */
+  setPreview(s: PlayerStats) {
+    if (!this.pendingTotal()) return;
+    this.preview = s;
+    this.render();
+  }
+
+  /** pede a prévia quando o pendente muda (um pedido por vez, depois de 120 ms parado) */
+  private askPreview() {
+    const key = `${this.pending.str},${this.pending.sta},${this.pending.dex},${this.pending.int}`;
+    if (key === this.previewKey) return;
+    this.previewKey = key;
+    clearTimeout(this.previewTimer);
+    if (!this.pendingTotal()) { this.preview = null; return; }
+    this.previewTimer = window.setTimeout(() => this.onPreview({ ...this.pending }), 120);
   }
 
   private render() {
@@ -211,7 +235,7 @@ export class CharacterWindow extends GameWindow {
     channelV.textContent = CHANNEL_NAME;
 
     // Detalhe: ataque = média do mínimo e máximo, como o RenderATK do original
-    const d = s ? [
+    const detailOf = (s: PlayerStats) => [
       String(s.atkShow ?? Math.floor((s.atk[0] + s.atk[1]) / 2)), pct(s.crit),
       String(s.def), pct(s.spd),
       // Speed e Hit Rate como o oficial (GetSpeedRun / GetHitRate): o DST_SPEED e o DST_ADJ_HITRATE somados
@@ -219,9 +243,13 @@ export class CharacterWindow extends GameWindow {
       pct(s.cdmg), pct(s.mBlock),
       pct(s.dct), pct(s.rBlock),
       pct(s.pvm), pct(s.pvp),
-    ] : [];
-    this.detail.values.forEach((v, i) => { v.textContent = d[i] ?? '—'; });
-    this.detail.values[0].title = s ? `${s.atk[0]} ~ ${s.atk[1]}` : '';
+    ];
+    // pontos ainda não aplicados: mostra como vai ficar e pisca em vermelho o que muda
+    this.askPreview();
+    const pv = this.pendingTotal() ? this.preview : null;
+    const d = s ? detailOf(s) : [], dn = pv ? detailOf(pv) : d;
+    this.detail.values.forEach((v, i) => { v.textContent = dn[i] ?? '—'; v.classList.toggle('cw-up', !!pv && dn[i] !== d[i]); });
+    this.detail.values[0].title = s ? `${(pv ?? s).atk[0]} ~ ${(pv ?? s).atk[1]}` : '';
 
     const free = this.free();
     for (const [k, r] of this.rows) {
@@ -248,8 +276,10 @@ export class CharacterWindow extends GameWindow {
 
     // Fama/Master
     const expPct = s && s.expMax > 0 ? ((s.exp / s.expMax) * 100).toFixed(2) : '0.00';
-    const fame = [s ? '0' : '—', mark?.label ?? (s ? 'Normal' : '—'), `${expPct}%`, s ? `${s.hp} / ${s.maxHp}` : '—', s ? `${s.mp} / ${s.maxMp}` : '—', s ? `${s.fp} / ${s.maxFp}` : '—'];
-    this.fame.values.forEach((v, i) => { v.textContent = fame[i]; });
+    const mx = pv ?? s;
+    const fame = [s ? '0' : '—', mark?.label ?? (s ? 'Normal' : '—'), `${expPct}%`, s ? `${s.hp} / ${mx!.maxHp}` : '—', s ? `${s.mp} / ${mx!.maxMp}` : '—', s ? `${s.fp} / ${mx!.maxFp}` : '—'];
+    const up = [false, false, false, !!pv && pv.maxHp !== s!.maxHp, !!pv && pv.maxMp !== s!.maxMp, !!pv && pv.maxFp !== s!.maxFp];
+    this.fame.values.forEach((v, i) => { v.textContent = fame[i]; v.classList.toggle('cw-up', up[i]); });
     // bônus somados de equipamento, joias, cartas espetadas, sets e buffs (já aplicados nos valores da 1ª aba)
     this.bonus.innerHTML = '';
     for (const [k, v] of s?.fx ?? []) {

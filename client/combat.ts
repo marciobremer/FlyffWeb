@@ -92,7 +92,7 @@ export class Combat {
   }
 
   /** número de dano subindo de um ponto (FlyFF x, y, z) */
-  popup(pos: [number, number, number], text: string, kind: 'mob' | 'me' | 'crit' | 'miss' | 'other' | 'heal' | 'healmp' | 'healfp') {
+  popup(pos: [number, number, number], text: string, kind: 'mob' | 'me' | 'crit' | 'miss' | 'other' | 'heal' | 'healmp' | 'healfp' | 'notice') {
     const el = document.createElement('div');
     el.className = `dmg ${kind}`;
     el.textContent = text;
