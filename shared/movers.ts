@@ -385,6 +385,8 @@ export class MoverInstance {
   /** movimento atual e se um movimento de tocar-uma-vez terminou */
   get current() { return this.motionSymbol; }
   get finished() { return this.ended; }
+  /** o movimento atual repete (ANILOOP) */
+  get looping() { return this.loop; }
 
   /** reposiciona na altura `y` (mobs de spawn assentados no terreno quando o tile termina de carregar) */
   setY(y: number) { this.place([this.pos[0], y, this.pos[2]], this.rotY); }
@@ -758,10 +760,46 @@ export class MoverManager {
   }
 
   /** `camera` (posição em espaço de mundo do Three) controla quais nomes aparecem */
+  /** NPC com o menu/loja aberto: para de trabalhar e fica num movimento calmo, sem sortear (client/main.ts) */
+  attending: MoverInstance | null = null;
+  /** quando cada NPC tenta o próximo movimento sorteado (ms) */
+  private npcNext = new WeakMap<MoverInstance, number>();
+
+  /**
+   * Movimentos sorteados dos NPCs (ActionMoverState.cpp: ao fim do MTI_STAND, às vezes MTI_IDLE1/IDLE2 uma vez e volta).
+   * Aqui um a cada 6–16 s, entre os idles com arquivo próprio (os Bobo martelam no stand e param para se esticar no idle1).
+   */
+  private npcIdle(inst: MoverInstance, now: number) {
+    const ms = inst.tpl.entry.motions ?? [], stand = ms.find((m) => m.symbol === 'MTI_STAND')?.file;
+    const human = inst.tpl.entry.name === 'male' || inst.tpl.entry.name === 'female';
+    if (inst === this.attending) {
+      // atendendo: humano fica no stand; quem trabalha no stand (Bobo) fica no idle1 repetindo
+      const idle = ms.find((m) => m.symbol === 'MTI_IDLE1' && m.file !== stand);
+      const calm = !human && idle ? 'MTI_IDLE1' : 'MTI_STAND';
+      if (inst.current !== calm || inst.finished) inst.play(calm, true);
+      this.npcNext.set(inst, now + 4000 + Math.random() * 6000);
+      return;
+    }
+    const idles = ms.filter((m) => (m.symbol === 'MTI_IDLE1' || m.symbol === 'MTI_IDLE2') && m.file && m.file !== stand).map((m) => m.symbol);
+    if (!idles.length) return;
+    const cur = inst.current;
+    if (cur === 'MTI_IDLE1' || cur === 'MTI_IDLE2') {
+      // um idle tocando uma vez: ao acabar volta ao stand (um idle repetindo é o da loja que acabou de fechar)
+      if (inst.finished || inst.looping) { inst.play('MTI_STAND'); this.npcNext.set(inst, now + 6000 + Math.random() * 10000); }
+      return;
+    }
+    if (cur !== 'MTI_STAND') return; // sentado, emote… fica como está
+    const next = this.npcNext.get(inst);
+    if (next === undefined) { this.npcNext.set(inst, now + 3000 + Math.random() * 13000); return; }
+    if (now >= next) inst.play(idles[Math.floor(Math.random() * idles.length)], false);
+  }
+
   update(dt: number, camera?: Vector3) {
     for (const [inst, w] of this.wander) this.patrol(inst, w, dt);
     if (this.external.size) this.updateExternal(dt);
+    const now = performance.now();
     for (const inst of this.active.values()) {
+      if (inst.owner === 'movers') this.npcIdle(inst, now);
       inst.update(dt);
       if (inst.label && camera) inst.label.visible = inst.group.parent !== null && camera.distanceTo(lpos.setFromMatrixPosition(inst.label.matrixWorld)) < this.labelDistance;
     }

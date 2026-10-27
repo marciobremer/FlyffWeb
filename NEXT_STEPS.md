@@ -1001,3 +1001,11 @@ Comparado com o MikePanqueca (Blade 73) do servidor oficial local (banco CHARACT
 - O leitor do .o3d agora guarda perSlerp, os quadros por peça, todos os nós (inclusive os sem malha) e os ossos embutidos.
 - As instâncias paradas desses modelos ficam invisíveis, só para o clique; as cópias animadas é que aparecem.
 - Correção: a geometria parada (models.ts) agora transforma uma cópia dos vértices — antes mudava o array do .o3d em cache.
+
+## 55. NPCs: movimentos sorteados, atender e cabelo da Peach (2026-10-28)
+- NPCs tocam de vez em quando (6–16 s) um MTI_IDLE1/IDLE2 com arquivo próprio e voltam ao MTI_STAND (ActionMoverState.cpp
+  faz isso ao fim do stand). Os Bobo (Boboku, Boboko, BoBoChan — MI_MAFL_BOBOKU) martelam no stand e se esticam no idle1.
+- Com o menu do NPC, a loja ou o ferreiro aberto, o NPC "atende": humano fica no MTI_STAND; quem trabalha no stand (Bobo)
+  fica no idle1 repetindo. Ao fechar, volta ao normal (MoverManager.attending, client/main.ts npcFrame).
+- Peach: o chapéu dela (Part_fCloMartaHair, dwBasePartsIgnore = cabelo) era tratado como cabelo e sumia junto. Agora o
+  dwBasePartsIgnore esconde só a cabeça/cabelo de base, antes de entrar o equipamento (shared/humans.ts).

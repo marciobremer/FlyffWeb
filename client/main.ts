@@ -271,6 +271,8 @@ function npcFrame(now: number) {
     }
     else { p.stop(); p.face(nx, nz); menuNpc = npcGoing; net.npcMenu(npcGoing.key); shopNpc = [nx, nz]; npcGoing = null; }
   }
+  // NPC com o menu, a loja ou o ferreiro aberto para de trabalhar (stand calmo) até fechar
+  view.moverMgr.attending = menuNpc && (npcMenu.visible || shopWnd.visible || smithWnd.visible) ? menuNpc.inst : null;
   // fecha o menu ao se afastar além do alcance de conversa do servidor (12 m)
   if (npcMenu.visible && shopNpc && Math.hypot(shopNpc[0] - p.pos[0], shopNpc[1] - p.pos[2]) > 12) npcMenu.hide();
   if (shopWnd.visible && shopNpc && Math.hypot(shopNpc[0] - p.pos[0], shopNpc[1] - p.pos[2]) > 14) { shopWnd.hide(); shopNpc = null; }

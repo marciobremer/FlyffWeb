@@ -81,6 +81,10 @@ export function humanPartNames(sex: Sex, hair: number, head: number, equipParts:
     ['upper', [`${s}Upper`]], ['lower', [`${s}Lower`]], ['hand', [`${s}Hand`]], ['foot', [`${s}Foot`]],
     ['head', [`${s}Head${two(head || 1)}`]], ['hair', [`${s}Hair${two(hair || 1)}`]],
   ]);
+  // MoverRender.cpp: SetEffect(dwBasePartsIgnore, XE_HIDE) esconde as peças *base*; esconder a cabeça (PARTS_HEAD) esconde o
+  // cabelo junto. Vale antes do equipamento: um item que é o próprio cabelo (ex.: Part_fCloMartaHair, chapéu da Peach) fica.
+  if (hide.head) { slots.delete('head'); slots.delete('hair'); }
+  if (hide.hair) slots.delete('hair');
   for (const p of equipParts) {
     const slot = slotOf(p);
     if (slot === 'cap' || slot === 'mask' || slot === 'cloak' || slot === 'other') slots.set(slot, [...(slots.get(slot) ?? []), p]);
@@ -88,9 +92,6 @@ export function humanPartNames(sex: Sex, hair: number, head: number, equipParts:
   }
   // a suit (roupa) cobre o corpo inteiro: o Part_<sexo>Lower só existe sem roupa equipada
   if (equipParts.some((p) => slotOf(p) === 'upper') && !equipParts.some((p) => slotOf(p) === 'lower')) slots.delete('lower');
-  // MoverRender.cpp: SetEffect(dwBasePartsIgnore, XE_HIDE); esconder a cabeça (PARTS_HEAD) esconde o cabelo junto
-  if (hide.head) { slots.delete('head'); slots.delete('hair'); }
-  if (hide.hair) slots.delete('hair');
   return [...slots.values()].flat();
 }
 
