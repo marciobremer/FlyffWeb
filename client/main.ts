@@ -726,7 +726,7 @@ let myInvis = false;
 net.onInvis = (on) => { myInvis = on; view.player?.inst?.setGhost(on); gmPanel.setInvis(on); };
 net.onGod = (on) => gmPanel.setGod(on);
 
-// ---------- dia e noite (shared/gameclock.ts: 1 dia do jogo = 28,8 min reais, igual para todos) ----------
+// ---------- dia e noite (shared/gameclock.ts: dia 6h–19h em 21,6 min e noite em 7,2 min reais, igual para todos) ----------
 /** diferença entre o relógio do servidor e o deste computador; hora fixada pelo GM (//time) */
 let clockOffset = 0, clockFixed: number | null = null;
 net.onClock = (now, fixed) => { clockOffset = now - Date.now(); clockFixed = fixed; tickClock(); };

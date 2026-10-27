@@ -952,3 +952,5 @@ Comparado com o MikePanqueca (Blade 73) do servidor oficial local (banco CHARACT
   regra do FlyFF original. Efeito com a textura ainda baixando fica escondido (antes aparecia um quadrado branco).
 - Rodapé: `fps · hora do jogo · ping · online · servidor` — ping por `{t:'ping'}`/`{t:'pong'}` a cada 2 s (média suave);
   em tela estreita (< 1400 px) o rodapé sobe para cima da barra de atalhos.
+- Ritmo do dia e noite: o ciclo continua 28,8 min reais, mas o dia (6h–19h) ocupa 3/4 dele (21,6 min, ~1 min 40 s por hora do
+  jogo) e a noite (19h–6h) 1/4 (7,2 min, ~39 s por hora) — shared/gameclock.ts (DAWN, DUSK, DAY_SHARE).

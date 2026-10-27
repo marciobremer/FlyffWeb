@@ -1710,7 +1710,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
             time: (hour) => {
               clockFixed = hour;
               for (const o of conns) if (o.player) send(o.ws, { t: 'clock', now: Date.now(), fixed: clockFixed });
-              return hour === null ? 'Relógio do jogo andando de novo (1 dia = 28,8 min).' : `Hora do jogo fixada em ${String(Math.floor(hour) % 24).padStart(2, '0')}:${String(Math.round((hour % 1) * 60)).padStart(2, '0')} para todos (//time auto volta ao normal).`;
+              return hour === null ? 'Relógio do jogo andando de novo (dia 6h–19h em 21,6 min, noite em 7,2 min).' : `Hora do jogo fixada em ${String(Math.floor(hour) % 24).padStart(2, '0')}:${String(Math.round((hour % 1) * 60)).padStart(2, '0')} para todos (//time auto volta ao normal).`;
             },
             god: (on) => {
               c.god = on ?? !c.god;
