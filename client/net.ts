@@ -3,7 +3,7 @@ import { PLAYER_LABEL_LIFT } from '../shared/rank';
 import { Matrix4, Mesh, type Object3D } from 'three';
 import type { WorldView } from '../shared/world';
 import { MoverInstance, preloadMotions } from '../shared/movers';
-import { loadHumanTemplate } from '../shared/humans';
+import { hairRgb, loadHumanTemplate } from '../shared/humans';
 import { applyEnchantGlow } from '../shared/enchantGlow';
 import { attachRide, flyMotion, rideOf } from '../shared/ride';
 import { objectMatrix } from '../shared/math';
@@ -16,7 +16,7 @@ import type { GroundRow } from './ground';
  * O próprio jogador manda posição/rumo/estado no máximo 10×/s e só quando muda; os remotos chegam 10×/s e são suavizados
  * a cada quadro (interpolação exponencial da posição e do rumo), com as mesmas animações do jogador local.
  */
-export interface PlayerView { /** nome da guild */ guild?: string; id: number; name: string; sex: number; hair: number; head: number; level: number; p: [number, number, number]; h: number; s: string; /** símbolos II_* equipados */ eq?: string[]; /** postura de combate 1–15 (0 = normal) */ mt?: number; /** 'admin' ou 'gm' (cor do nome) */ rank?: string; /** GM invisível (só GMs recebem): translúcido */ iv?: 1 }
+export interface PlayerView { /** nome da guild */ guild?: string; id: number; name: string; sex: number; hair: number; head: number; /** cor do cabelo (0xAARRGGBB; 0 = padrão da malha) */ hc?: number; level: number; p: [number, number, number]; h: number; s: string; /** símbolos II_* equipados */ eq?: string[]; /** postura de combate 1–15 (0 = normal) */ mt?: number; /** 'admin' ou 'gm' (cor do nome) */ rank?: string; /** GM invisível (só GMs recebem): translúcido */ iv?: 1 }
 
 /** seus atributos (server/realtime.ts statsMsg) */
 export interface PlayerStats {
@@ -27,7 +27,7 @@ export interface PlayerStats {
   /** ataque exibido na janela H (como o RenderATK do original) */
   atkShow?: number;
   /** bloqueio corpo a corpo / à distância, redução de conjuração e dano extra em monstro / jogador (%) */
-  mBlock?: number; rBlock?: number; dct?: number; pvm?: number; pvp?: number; str: number; sta: number; dex: number; int: number; points: number; job: number;
+  mBlock?: number; rBlock?: number; dct?: number; pvm?: number; pvp?: number; /** DST_SPEED, DST_ADJ_HITRATE e DST_PARRY crus (janela __STATISTICS) */ mvPct?: number; hit?: number; dodgeRate?: number; str: number; sta: number; dex: number; int: number; points: number; job: number;
   /** bônus de atributo vindo dos equipamentos, precisão extra, esquiva e velocidade de ataque (%) */
   bonus: { str: number; sta: number; dex: number; int: number }; acc: number; dodge: number; spd: number;
   /** classes que dá para escolher agora (nível 15 / 60) */
@@ -53,16 +53,18 @@ export interface ItemView {
   /** classe exigida (JOB_*, -1/0 = qualquer) e 1/2 mãos */
   job?: number; hand?: number;
   /** conjunto: nome, total de peças e bônus [peças, DST, valor][] (vale com aquela quantidade ou mais equipada) */
-  set?: { name: string; pieces: number; avail: [number, number, number][] };
+  set?: { name: string; pieces: number; avail: [number, number, number][]; /** peças: [item, nome] */ items?: [number, string][] };
   /** joia: bônus por enchant (accessory.inc) — enchant → [DST, valor][] */
   acc?: Record<number, [number, number][]>;
   /** carta de piercing da suit (IK3_SOCKETCARD): duplo clique abre o martelinho */
   card?: 1;
   /** arma geral/unique/ultimate (0/1/2), elemento da carta de elemento (1–5) e em que arma ela converte (ferreiro) */
   ref?: number; elem?: number; to?: string;
+  /** caixa (propPackItem.inc): o que vem dentro [nome, quantidade]; descrição do item (szComment) */
+  box?: [string, number][]; desc?: string;
 }
 /** inventário inteiro (server/inventory.ts Inventory.view): itens [container, slot, itemId, quantidade] */
-export interface InvMessage { gold: number; /** Red Chip (contador fora da bolsa) */ chips?: number; bag: number; items: [number, number, number, number, number?, number?, number?, number[]?, number?, number[]?][]; defs: Record<number, ItemView> }
+export interface InvMessage { gold: number; /** Red Chip (contador fora da bolsa) */ chips?: number; bag: number; items: [number, number, number, number, number?, number?, number?, number[]?, number?, number[]?, number?, number?][]; defs: Record<number, ItemView>; /** fail stack do ferreiro (dica) */ stack?: Record<string, Record<number, number>>; /** raridades da arma: [nome, cor 0xAARRGGBB, × ataque, × bônus] */ rar?: [string, number, number, number][] }
 
 
 interface Remote { view: PlayerView; inst: MoverInstance | null; target: [number, number, number]; cur: [number, number, number]; h: number; curH: number; s: string; gone: boolean; /** último golpe tocado (MTI_ATK1/2 alternando) */ hit?: number }
@@ -106,6 +108,7 @@ export class RemotePlayers {
     const inst = new MoverInstance(tpl, source, objectMatrix(source, new Matrix4()));
     inst.owner = 'players';
     inst.blendTime = 0.1;
+    inst.setHairColor(hairRgb(r.view.hc ?? 0, sex, r.view.hair || 1));
     applyEnchantGlow(inst, r.view.eq ?? [], sex, d, false);
     inst.setLabel(r.view.name, r.view.rank, PLAYER_LABEL_LIFT);
     inst.setGuildTag(r.view.guild);
@@ -301,6 +304,8 @@ export class NetClient {
   onInvis: (on: boolean) => void = () => {};
   /** seu modo imortal de GM/admin (//god) */
   onGod: (on: boolean) => void = () => {};
+  /** relógio do servidor (dia e noite) e a hora fixada pelo GM (null = andando) */
+  onClock: (now: number, fixed: number | null) => void = () => {};
   /** o servidor mandou trocar de mundo (ticket de Azria, teleporte para outro mapa) */
   onChangeWorld: (w: string, p: [number, number, number]) => void = () => {};
   /** guild: sua guild (null = sem guild), convite recebido, o nome da sua guild mudou */
@@ -424,6 +429,8 @@ export class NetClient {
         if (id === this.myId) this.onInvis(!!m.on); else this.remotes.setInvis(id, !!m.on);
       } else if (m.t === 'god') {
         this.onGod(!!m.on);
+      } else if (m.t === 'clock') {
+        this.onClock(Number(m.now) || Date.now(), typeof m.fixed === 'number' ? m.fixed : null);
       } else if (m.t === 'changeWorld') {
         this.onChangeWorld(String(m.w), m.p as [number, number, number]);
       } else if (m.t === 'guildView') {

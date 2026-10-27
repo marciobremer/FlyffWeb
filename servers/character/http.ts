@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { query } from '../common/db/index';
 import { bearer, readJson, send } from '../common/http';
 import { sessionFrom } from '../auth/sessions';
+import { verifyLegacyPassword, verifyPassword } from '../auth/password';
 import type { Inventory, InvItem } from './inventory';
 import type { LookPiece } from '../../shared/look';
 
@@ -52,7 +53,7 @@ export async function charactersOf(accountId: number): Promise<CharacterInfo[]> 
 }
 
 /** limites da criação: malhas Part_<sexo>Hair01–10 e Part_<sexo>Head01–24 existentes no cliente */
-export const CREATE_LIMITS = { hair: 10, head: 24, nameMin: 2, nameMax: 16 };
+export const CREATE_LIMITS = { hair: 5, head: 5, nameMin: 2, nameMax: 16 };
 const NAME_RE = /^[A-Za-z0-9]+$/;
 
 async function createCharacter(req: IncomingMessage, res: ServerResponse) {
@@ -63,6 +64,8 @@ async function createCharacter(req: IncomingMessage, res: ServerResponse) {
   const name = typeof body.name === 'string' ? body.name.trim() : '';
   const sex = body.sex === 1 ? 1 : 0;
   const hair = Number(body.hair), head = Number(body.head);
+  // cor do cabelo (m_dwHairColor, 0xFFRRGGBB como int com sinal); 0 = a cor padrão da malha
+  const hairColor = Number.isInteger(body.hairColor) ? (Number(body.hairColor) | 0xff000000) | 0 : 0;
   if (name.length < CREATE_LIMITS.nameMin || name.length > CREATE_LIMITS.nameMax || !NAME_RE.test(name)) {
     return send(res, 400, { error: `Nome: ${CREATE_LIMITS.nameMin} a ${CREATE_LIMITS.nameMax} letras ou números, sem espaços.` });
   }
@@ -73,14 +76,37 @@ async function createCharacter(req: IncomingMessage, res: ServerResponse) {
   const slot = [0, 1, 2].find((x) => !used.has(x));
   if (slot === undefined) return send(res, 409, { error: 'Você já tem 3 personagens.' });
   try {
-    await query('INSERT INTO characters (account_id, slot, name, sex, hair_mesh, head_mesh) VALUES ($1, $2, $3, $4, $5, $6)', [s.accountId, slot, name, sex, hair, head]);
+    await query('INSERT INTO characters (account_id, slot, name, sex, hair_mesh, hair_color, head_mesh) VALUES ($1, $2, $3, $4, $5, $6, $7)', [s.accountId, slot, name, sex, hair, hairColor, head]);
   } catch (e) {
     const pgErr = e as { code?: string; constraint?: string };
     if (pgErr.code === '23505') return send(res, 409, { error: pgErr.constraint === 'characters_name_lower' ? 'Esse nome já está em uso.' : 'Tente de novo.' });
     throw e;
   }
+  const created = (await charactersOf(s.accountId)).find((c) => c.slot === slot);
+  if (created && inventory) await inventory.giveStarter(created.id, sex);
   const characters = await charactersOf(s.accountId);
   send(res, 201, { character: characters.find((c) => c.slot === slot), characters });
+}
+
+/**
+ * DELETE /gapi/characters/<id> { password }: apaga (marca `deleted`) um personagem da conta, como o CWndDeleteChar do original,
+ * que pede a senha da conta. Mestre de guild não pode ser apagado (passe a guild antes).
+ */
+async function deleteCharacter(req: IncomingMessage, res: ServerResponse, id: number) {
+  const s = sessionFrom(bearer(req));
+  if (!s) return send(res, 401, { error: 'Sessão expirada. Entre novamente.' });
+  let body: Record<string, unknown>;
+  try { body = await readJson(req); } catch { return send(res, 400, { error: 'Requisição inválida.' }); }
+  const password = typeof body.password === 'string' ? body.password : '';
+  if (!password || password.length > 128) return send(res, 400, { error: 'Digite a senha da conta.' });
+  const acc = (await query<{ password_hash: string | null; legacy_password: string | null }>('SELECT password_hash, legacy_password FROM accounts WHERE id = $1', [s.accountId])).rows[0];
+  const ok = acc?.password_hash ? verifyPassword(password, acc.password_hash) : acc?.legacy_password ? verifyLegacyPassword(password, acc.legacy_password) : false;
+  if (!ok) return send(res, 401, { error: 'Senha incorreta.' });
+  const master = await query('SELECT 1 FROM guilds WHERE master_id = $1', [id]).catch(() => ({ rowCount: 0 }));
+  if (master.rowCount) return send(res, 409, { error: 'Esse personagem é mestre de guild. Passe a guild ou desfaça-a antes.' });
+  const r = await query('UPDATE characters SET deleted = true WHERE id = $1 AND account_id = $2 AND NOT deleted', [id, s.accountId]);
+  if (!r.rowCount) return send(res, 404, { error: 'Personagem não encontrado.' });
+  send(res, 200, { characters: await charactersOf(s.accountId) });
 }
 
 /** rotas do Character Server; devolve false se a rota não é dele */
@@ -99,6 +125,8 @@ function partsIgnoreList() {
 
 export async function characterRoute(req: IncomingMessage, res: ServerResponse, path: string): Promise<boolean> {
   if (path === '/gapi/characters' && req.method === 'POST') { await createCharacter(req, res); return true; }
+  const del = /^\/gapi\/characters\/(\d+)$/.exec(path);
+  if (del && req.method === 'DELETE') { await deleteCharacter(req, res, Number(del[1])); return true; }
   if (path === '/gapi/parts-ignore' && req.method === 'GET') { res.setHeader('cache-control', 'no-cache'); send(res, 200, partsIgnoreList()); return true; }
   return false;
 }

@@ -38,7 +38,7 @@ export class SiteProcess {
     this.status = 'iniciando';
     this.log(`Iniciando o site na porta ${this.port}…`);
     const child = spawn(process.execPath, [path.join('node_modules', 'next', 'dist', 'bin', 'next'), 'start', '-p', String(this.port), '-H', '127.0.0.1'], {
-      cwd: this.dir, env: { ...process.env, NODE_ENV: 'production', FORCE_COLOR: '0' }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
+      cwd: this.dir, env: { ...process.env, NODE_ENV: 'production', FORCE_COLOR: '0', PGAPPNAME: 'flyffweb-site' }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
     });
     this.child = child;
     this.pid = child.pid ?? null;

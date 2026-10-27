@@ -66,20 +66,65 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #14161a; col
 .frow { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .frow3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 2px; }
 
-/* ---------- seleção/criação de personagem: janela à esquerda, personagem em 3D ao centro ---------- */
-.sidescreen { position: fixed; inset: 0; z-index: 4; pointer-events: none; }
-.fwnd.side { position: absolute; left: max(16px, 4vw); top: 50%; transform: translateY(-50%); margin: 0; width: min(330px, calc(100vw - 32px)); pointer-events: auto; }
+/* ---------- seleção (CWndSelectChar 604×388) e criação (CWndCreateChar 544×380) de personagem, no centro da tela ----------
+   coordenadas do resdata.inc (área cliente = abaixo da barra de título); --cs encolhe a janela inteira em telas estreitas */
+.charscreen { position: fixed; inset: 0; z-index: 4; pointer-events: none; font: 13px/1.2 Tahoma, Verdana, system-ui, sans-serif; color: #222; }
+.cwnd { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(var(--cs, 1)); pointer-events: auto; filter: drop-shadow(0 2px 8px rgb(0 0 0 / .45)); }
+.cwnd-title { position: absolute; left: 0; right: 0; top: 0; height: 21px; line-height: 21px; text-align: center; color: #d22; font-weight: 700; font-size: 14px; }
+/* seleção: WndSelectChar.tga já traz moldura, título, os 3 quadros e as caixas dos nomes */
+.cwnd.sel { width: 604px; height: 388px; background: #f6f2ee no-repeat 0 0; border-radius: 4px; }
+.cards { position: absolute; inset: 0; }
+.card { position: absolute; top: 45px; width: 156px; height: 248px; padding: 0; border: 0; border-radius: 6px; background: transparent; cursor: pointer; overflow: hidden; }
+.card.empty { cursor: default; }
+.card canvas.char-model { display: block; width: 100%; height: 100%; }
+/* escolhido: verde translúcido (ARGB 20,80,250,80) com o brilho piscando, como o original */
+.card[aria-selected="true"]::after { content: ''; position: absolute; inset: 0; border-radius: 6px; background: rgb(80 250 80 / .08); box-shadow: inset 0 0 0 2px rgb(80 200 80 / .5); animation: cardflash 1.2s ease-in-out infinite; pointer-events: none; }
+@keyframes cardflash { 50% { background: rgb(80 250 80 / .2); } }
+.card:focus-visible { outline: 2px solid #3173c6; outline-offset: -2px; }
+.cname { position: absolute; top: 302px; width: 160px; height: 23px; line-height: 23px; text-align: center; font-weight: 700; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cname.on { color: #3173c6; }
+.cname.empty { font-weight: 400; color: #888; }
+.cname small { font-weight: 400; color: #888; margin-left: 4px; }
+.cbtns { position: absolute; left: 125px; top: 341px; display: flex; gap: 17px; }
+.cbtns .fbtn { width: 73px; height: 20px; }
+/* botão de texto (Button72x20.tga: 4 quadros 72×20 — 0 destaque, 1 normal, 2 pressionado, 3 desabilitado) */
+.fbtn.txt { color: #2a3866; font-size: 12px; font-weight: 700; text-shadow: 0 1px 0 rgb(255 255 255 / .6); }
+.fbtn.txt[style*="background-image"] span { position: static; width: auto; height: auto; overflow: visible; clip: auto; }
+.fbtn.txt:disabled { color: #999; }
+/* criação: moldura de janela (WndTile03–11) */
+.cwnd.cre { width: 544px; height: 380px; border-style: solid; border-width: 16px; border-image-slice: 16 fill; border-image-repeat: stretch repeat; background: #f4ecff; box-sizing: border-box; }
+.cwnd.cre[style*="border-image-source"] { background: none; }
+.cwnd.cre .cwnd-title { top: -14px; left: -10px; right: -10px; }
+.cre-in { position: absolute; left: -10px; top: 7px; width: 528px; height: 345px; }
+.cre-in > * { position: absolute; }
+.clabel { left: 16px; color: #2a5fb0; font-weight: 700; line-height: 20px; }
+.cname-l { top: 22px; left: 55px; width: 174px; text-align: center; }
+.cname-e { left: 55px; top: 46px; width: 174px; height: 23px; }
+.sexbtn { width: 73px; height: 21px; }
+.sexbtn[aria-pressed="true"] { background-position: 0 0; color: #b02020; }
+.fbtn.arrow2 { width: 72px; height: 20px; background-position: 0 0; }
+.fbtn.arrow2:hover { background-position: 33.333% 0; }
+.cval { left: 191px; width: 9px; line-height: 20px; text-align: center; font-size: 11px; color: #555; }
+/* cor do cabelo: WndColor.tga (133×59, barras vermelha/verde/azul) com o botão amarelo (yellowbuttten.tga 11×11) */
+.colorbars { left: 118px; top: 147px; width: 133px; height: 59px; background: no-repeat 0 0; }
+.colorbars input { position: absolute; left: 0; width: 133px; height: 19px; margin: 0; background: transparent; appearance: none; -webkit-appearance: none; cursor: pointer; }
+.colorbars input:nth-child(1) { top: 0; } .colorbars input:nth-child(2) { top: 20px; } .colorbars input:nth-child(3) { top: 40px; }
+.colorbars input::-webkit-slider-runnable-track { height: 19px; background: transparent; }
+.colorbars input::-moz-range-track { height: 19px; background: transparent; }
+.colorbars input::-webkit-slider-thumb { -webkit-appearance: none; width: 11px; height: 11px; margin-top: 4px; border: 0; border-radius: 50%; background: var(--knob, #fc3) center / 100% 100%; box-shadow: 0 0 1px #000; }
+.colorbars input::-moz-range-thumb { width: 11px; height: 11px; border: 0; border-radius: 50%; background: var(--knob, #fc3) center / 100% 100%; }
+.colorbars input:focus-visible { outline: 1px dotted #333; }
+.cmsg { left: 16px; top: 258px; width: 250px; margin: 0; color: #d00; font-size: 12px; }
+.cre-model { left: 280px; top: 0; width: 248px; height: 312px; }
+.cre-model canvas.char-model { display: block; width: 100%; height: 100%; cursor: grab; }
+.cre-model canvas.char-model:active { cursor: grabbing; }
+.cre-in .fbtn.txt[type] { width: 73px; height: 20px; }
+/* apagar: caixa pedindo a senha da conta (CWndDeleteChar) */
+.fwnd.cdel { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); margin: 0; width: min(300px, calc(100vw - 32px)); pointer-events: auto; z-index: 2; }
 .fwnd-body.one { grid-template-columns: 1fr; gap: 7px; }
-.slots { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
-.slots li { padding: 7px 9px; border: 1px solid #b9a9d9; border-radius: 4px; background: #fff; cursor: pointer; }
-.slots li small { color: #666; margin-left: 4px; }
-.slots li.empty { color: #777; font-style: italic; }
-.slots li[aria-selected="true"] { background: #7d95d8; border-color: #4d64a0; color: #fff; }
-.slots li[aria-selected="true"] small { color: #e8ecff; }
-.picker { display: flex; align-items: center; gap: 6px; }
-.picker .plabel { width: 62px; flex: none; font-weight: 700; color: #3c4f86; }
-.picker output { flex: 1; text-align: center; background: #fff; border: 1px solid #c9bde6; border-radius: 3px; padding: 2px 0; }
-@media (max-width: 700px) { .fwnd.side { top: auto; bottom: 16px; transform: none; } }
+.cdel-q { margin: 0; text-align: center; font-weight: 700; }
+.cdel .fbtn.txt { height: 20px; }
+.cscreen-msg { position: absolute; left: 0; right: 0; top: calc(50% + 200px * var(--cs, 1)); }
 
 /* ---------- interface do jogo: botão menu, menu (WndTaskMenu.tga 192×496) e janela de status (WndStatus1.tga 192×112) ---------- */
 /* menu e botão ficam acima de qualquer janela (.gwnd sobe a partir de 20 a cada clique); só o tooltip de item (100000) passa por cima */
@@ -89,10 +134,13 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #14161a; col
 #menuBtn:not([style*="background-image"]) span { position: static; width: auto; height: auto; clip: auto; }
 #menuBtn:hover, #menuBtn.on { background-position: 0 0; }
 #menuBtn:active { background-position: 66.667% 0; }
-#taskMenu { position: fixed; left: 4px; bottom: 24px; z-index: 99990; width: 192px; height: 496px; max-height: calc(100vh - 28px); background: #f3f3f0 no-repeat 0 0; font: 13px/1 Tahoma, Verdana, system-ui, sans-serif; color: #222; filter: drop-shadow(0 2px 6px rgb(0 0 0 / .4)); }
-#taskMenu > ul { position: absolute; left: 14px; right: 14px; top: 56px; bottom: 14px; margin: 0; padding: 2px 0; list-style: none; }
-#taskMenu li { position: relative; display: flex; align-items: center; gap: 5px; height: 19px; padding: 0 4px; cursor: pointer; white-space: nowrap; }
-#taskMenu li img { width: 17px; height: 17px; flex: none; }
+/* WndTaskMenu.tga em 3 faixas (border-image): cabeçalho com o logo (70 px) e rodapé (24 px) inteiros, o meio liso estica
+   para caber todos os itens; em tela baixa os itens encolhem (até 14 px) em vez de sair do menu */
+#taskMenu { position: fixed; left: 4px; bottom: 24px; z-index: 99990; width: 192px; box-sizing: border-box; border-style: solid; border-width: 70px 14px 24px; border-image-slice: 70 14 24 fill; border-image-repeat: stretch; border-color: #f3f3f0; background: #f3f3f0; font: 13px/1 Tahoma, Verdana, system-ui, sans-serif; color: #222; filter: drop-shadow(0 2px 6px rgb(0 0 0 / .4)); --mi: clamp(14px, calc((100vh - 150px) / 25), 19px); }
+#taskMenu[style*="border-image-source"] { background: none; }
+#taskMenu > ul { margin: -14px 0 -10px; padding: 2px 0; list-style: none; }
+#taskMenu li { position: relative; display: flex; align-items: center; gap: 5px; height: var(--mi); padding: 0 4px; cursor: pointer; white-space: nowrap; }
+#taskMenu li img { width: min(17px, var(--mi)); height: min(17px, var(--mi)); flex: none; }
 #taskMenu li span { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 #taskMenu li kbd { font: inherit; color: #555; }
 #taskMenu li:hover { background: #7d95d8; color: #fff; }
@@ -390,18 +438,23 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 
 /* dica do item (client/itemtip.ts) */
 .item-tip-layer { position: fixed; z-index: 100000; display: flex; gap: 6px; align-items: flex-start; pointer-events: none; }
-.item-tip { min-width: 150px; max-width: 260px; padding: 6px 8px; background: rgba(0, 0, 0, .88); border: 1px solid #b9a35a; border-radius: 3px; color: #e8e8e8; font: 12px/1.35 system-ui, sans-serif; box-shadow: 0 2px 8px rgba(0, 0, 0, .6); }
-.item-tip .tip-head { color: #fff; font-weight: 700; border-bottom: 1px solid #555; margin-bottom: 3px; }
-.item-tip .tip-name { color: #7fe0e8; font-weight: 700; margin-bottom: 2px; }
-.item-tip .up { color: #8ff07a; }
-.item-tip .fx { color: #8ff07a; }
-.item-tip .rare { color: #7fe0e8; }
-.item-tip .set { color: #f0c860; }
-.item-tip .set.fx { color: #d8e8a0; }
-.item-tip .price { color: #f0d060; }
-.item-tip .e1 { color: #ff7a5a; } .item-tip .e2 { color: #6aa8ff; } .item-tip .e3 { color: #ffe35a; } .item-tip .e4 { color: #7af0c0; } .item-tip .e5 { color: #c8a070; }
-.item-tip .pierce { color: #c9a8ff; letter-spacing: .02em; }
-.item-tip .hint { color: #b9c2d6; font-style: italic; }
+/* dica do item como a do cliente original (CWndMgr::MakeToolTipText): fundo claro, borda laranja arredondada, texto preto;
+   tentativas/proibido em vermelho, peças do conjunto equipadas em azul (0,0,204), efeitos do conjunto em laranja (255,157,0) */
+.item-tip { min-width: 170px; max-width: 320px; padding: 6px 9px 7px; background: rgb(255 253 249 / .96); border: 2px solid #e2895a; border-radius: 6px; color: #000; font: 12px/1.5 Tahoma, Verdana, system-ui, sans-serif; box-shadow: 0 0 0 1px #fff inset, 0 2px 8px rgb(0 0 0 / .45); }
+.item-tip .tip-head { color: #555; font-weight: 700; border-bottom: 1px solid #e8c8b0; margin-bottom: 3px; }
+.item-tip .tip-name { color: #000; font-weight: 700; }
+.item-tip .tip-name.grade-unique { color: #0a7d0a !important; text-shadow: none; }
+.item-tip .tip-name.grade-ultimate { color: #8a2be2 !important; text-shadow: none; }
+.item-tip .tip-name.grade-baruna { color: #d86a00 !important; text-shadow: none; }
+.item-tip .bad { color: #e00000; }
+.item-tip .set-on { color: #0000cc; padding-left: 12px; }
+.item-tip .set-off { color: #8a8a8a; padding-left: 12px; }
+.item-tip .set-fx { color: #ff9d00; }
+.item-tip .awake { color: #0000ff; }
+.item-tip .box-head { color: #1a4fb0; font-weight: 700; }
+.item-tip .e1 { color: #d83a1a; } .item-tip .e2 { color: #1a64d8; } .item-tip .e3 { color: #b08a00; } .item-tip .e4 { color: #109060; } .item-tip .e5 { color: #8a5a20; }
+.item-tip .pierce { color: #7a3ad0; letter-spacing: .02em; }
+.item-tip .hint { color: #555; font-style: italic; }
 
 /* janela de mudança de classe (client/jobwnd.ts) */
 .jw { padding: 10px; font: 12px/1.4 Tahoma, system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; gap: 8px; }
@@ -568,7 +621,6 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 .grade-unique { color: #2fd54a !important; }
 .grade-ultimate { color: #b46cff !important; }
 .grade-baruna { color: #ff9a2e !important; }
-.item-tip .grade-unique, .item-tip .grade-ultimate, .item-tip .grade-baruna { text-shadow: 0 0 6px currentColor; }
 .gm-results li span.grade-unique, .gm-results li span.grade-ultimate, .gm-results li span.grade-baruna { font-weight: 700; }
 
 /* trade (client/trade.ts): oferta do outro em cima, a sua embaixo */
@@ -621,3 +673,8 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 /* a mesma pergunta da lixeira na janela do ferreiro */
 .gwnd-body.smith { position: relative; }
 .smith .inv-ask { bottom: 46px; }
+
+/* cursor do cliente (Data/Cursors/CurDefault1/curBase.cur) em toda a interface, como no jogo original: nada de mãozinha nem
+   seta do sistema nas janelas. O canvas do mundo troca sozinho (espada sobre mob, balão sobre NPC — shared/world.ts) e o
+   martelinho do piercing (body.piercing) continua por cima. */
+html, body, body *:not(canvas), canvas.inv-model, canvas.char-model { cursor: url("/res/Data/Cursors/CurDefault1/curBase.cur") 0 0, default !important; }

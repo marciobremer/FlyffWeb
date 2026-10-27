@@ -2,7 +2,7 @@ import { Matrix4, Vector3, type Camera, type Group } from 'three';
 import type { WorldData } from './data';
 import type { ModelLibrary } from './models';
 import { MoverInstance, preloadMotions } from './movers';
-import { loadHumanTemplate, type Sex } from './humans';
+import { hairRgb, loadHumanTemplate, type Sex } from './humans';
 import { motionOf, motionsFor } from './motions';
 import { objectMatrix, TICKS_PER_SEC } from './math';
 import { OT, type WorldObject } from './formats/types';
@@ -169,11 +169,11 @@ export class Player {
 
   /** `look`: malhas de cabelo/cabeça (`Part_<sexo>Hair0N`/`Head0N`, como `m_dwHairMesh`/`m_dwHeadMesh` do banco) */
   /** aparência atual (malhas e símbolos II_* equipados) — usada por `restyle` */
-  private look: { hair?: number; head?: number; equip?: string[] } = {};
+  private look: { hair?: number; head?: number; equip?: string[]; hairColor?: number } = {};
   /** visual atual (para montar de novo ao trocar de mundo) */
   get currentLook() { return { ...this.look, equip: [...(this.look.equip ?? [])] }; }
 
-  async spawn(sex: Sex, x: number, y: number, z: number, look: { hair?: number; head?: number; equip?: string[] } = {}) {
+  async spawn(sex: Sex, x: number, y: number, z: number, look: { hair?: number; head?: number; equip?: string[]; hairColor?: number } = {}) {
     // só o último pedido vale: dois spawns cruzados (ex.: Entrar clicado com a prévia ainda carregando) deixavam o 1º boneco
     // órfão na cena, parado e sem nome
     const seq = ++this.spawnSeq;
@@ -194,6 +194,7 @@ export class Player {
     this.source = { type: OT.MOVER, modelId: miId!, rot: [0, this.heading, 0], pos: this.pos, scale: [1, 1, 1], motion: 0, ai: 0, ai2: 0, name: 'Jogador' };
     this.inst = new MoverInstance(tpl, this.source, new Matrix4());
     this.inst.blendTime = 0.08; // resposta rápida ao comando (mobs/NPCs mantêm 0,15 s)
+    this.inst.setHairColor(hairRgb(look.hairColor ?? 0, sex, look.hair ?? 1));
     applyEnchantGlow(this.inst, look.equip ?? [], sex, this.data, !this.world.attachSetSfx);
     this.group.add(this.inst.group);
     this.world.attachSetSfx?.(this.inst, look.equip ?? []);
@@ -220,6 +221,7 @@ export class Player {
     this.inst.dispose();
     this.inst = new MoverInstance(tpl, this.source, new Matrix4());
     this.inst.blendTime = 0.08;
+    this.inst.setHairColor(hairRgb(this.look.hairColor ?? 0, this.sex, this.look.hair ?? 1));
     applyEnchantGlow(this.inst, equip, this.sex, this.data, !this.world.attachSetSfx);
     this.group.add(this.inst.group);
     this.world.attachSetSfx?.(this.inst, equip);

@@ -1,10 +1,13 @@
 import { WorldView } from '../shared/world';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { keyedImage, themeImage, themeTiles } from '../shared/tga';
-import type { Sex } from '../shared/humans';
+import { hairColorOf, hairRgb, type Sex } from '../shared/humans';
+import { CharStage } from './charpreview';
+import { gameHour } from '../shared/gameclock';
 import { GameHud, provisionalMax } from './hud';
 import { type SkillFx, NetClient, RemotePlayers } from './net';
 import { ActionBar, ChatWindow, InventoryWindow, type BarItem } from './ui';
+import { setFailStack, setRarities, setTipPlayer } from './itemtip';
 import { Announcer } from './announce';
 import { VersionWatcher } from './version';
 import { GmPanel } from './gmpanel';
@@ -84,11 +87,11 @@ async function openWorld(world: string, x: number, z: number) {
 }
 /** ponto de entrada padrão (Flaris) e palco da prévia do personagem, em coordenadas FlyFF */
 const FLARIS = { x: 6976, z: 3327 };
-/** malhas existentes no cliente: Part_<sexo>Hair01–10, Part_<sexo>Head01–24 (iguais aos limites do servidor) */
-const LIMITS = { hair: 10, head: 24 };
+/** criação (CWndCreateChar): cabelo e rosto 1…MAX_BASE_HAIR / MAX_DEFAULT_HEAD (defineNeuz.h, iguais ao servidor) */
+const LIMITS = { hair: 5, head: 5 };
 
 interface CharacterInfo {
-  id: number; slot: number; name: string; sex: number; hairMesh: number; headMesh: number; level: number; worldId: number; pos: [number, number, number]; hp: number; mp: number; fp: number; exp: number;
+  id: number; slot: number; name: string; sex: number; hairMesh: number; hairColor?: number; headMesh: number; level: number; worldId: number; pos: [number, number, number]; hp: number; mp: number; fp: number; exp: number;
   /** equipado (com enchant) e postura da arma: a prévia da seleção fica igual ao personagem no jogo */
   equip?: LookPiece[]; mt?: number;
 }
@@ -460,6 +463,7 @@ net.onStats = (s) => {
   const ch = characters.find((c) => c.slot === selectedSlot);
   if (!ch) return;
   ch.level = s.level;
+  setTipPlayer({ sex: ch.sex, job: s.job, level: s.level }); // dica do item: vermelho no que ele não pode usar
   combat.interval = s.atkMs || 1000;
   if (view.player) view.player.attackRate = s.aspd || 1;
   if (s.mv) moveSpeed = s.mv;
@@ -688,6 +692,8 @@ function rideToggle(id: number): boolean {
 }
 net.onInvError = (error) => chat.system(error);
 net.onInv = (m) => {
+  if (m.rar) setRarities(m.rar);
+  if (m.stack) setFailStack(m.stack);
   inventory.setState(m.gold, m.bag, m.items, m.defs, m.chips ?? 0);
   smithWnd.refresh();
   // prancha/vassoura equipada (PARTS_RIDE = 13): velocidade e giro dela no voo
@@ -719,6 +725,21 @@ let combatMt = 0, lookNow: string[] = [];
 let myInvis = false;
 net.onInvis = (on) => { myInvis = on; view.player?.inst?.setGhost(on); gmPanel.setInvis(on); };
 net.onGod = (on) => gmPanel.setGod(on);
+
+// ---------- dia e noite (shared/gameclock.ts: 1 dia do jogo = 28,8 min reais, igual para todos) ----------
+/** diferença entre o relógio do servidor e o deste computador; hora fixada pelo GM (//time) */
+let clockOffset = 0, clockFixed: number | null = null;
+net.onClock = (now, fixed) => { clockOffset = now - Date.now(); clockFixed = fixed; tickClock(); };
+/** a cada minuto do jogo (1,2 s) muda a hora do mundo: céu (dia/entardecer/noite), nuvens, sol/lua, luz, névoa e lampiões */
+function tickClock() {
+  if (!view.data) return;
+  const h = clockFixed ?? gameHour(Date.now() + clockOffset);
+  const rounded = Math.floor(h * 60) / 60;
+  if (rounded === view.settings.hour) return;
+  view.settings.hour = rounded;
+  view.refreshEnvironment();
+}
+setInterval(tickClock, 1000);
 async function restyle(eq: string[]) {
   lookNow = eq;
   const inst = await view.player?.restyle(eq);
@@ -1053,7 +1074,6 @@ async function doLogin(cred: { username: string; password?: string; remember?: s
     await worldReady;
     $('loginScreen').classList.add('leaving');
     setTimeout(() => { $('loginScreen').hidden = true; }, 450);
-    view.controls.autoRotate = false;
     $('charScreen').hidden = false;
     if (characters.length) showSelect(); else showCreate(false);
     return true;
@@ -1064,35 +1084,19 @@ async function doLogin(cred: { username: string; password?: string; remember?: s
   } finally { loginBtn.disabled = false; }
 }
 
-// ---------- prévia 3D ----------
-/** Mostra a aparência no palco (Flaris), de frente para a câmera, com a câmera próxima. */
-let previewSeq = 0;
-async function showPreview(look: { sex: number; hair: number; head: number; equip?: string[]; mt?: number }) {
-  const seq = ++previewSeq;
-  if (curWorld !== WORLD) { await openWorld(WORLD, FLARIS.x, FLARIS.z); mapLoading.hide(); } // voltou de Azria: a seleção é em Flaris
-  previewing = true;
-  // câmera travada na seleção/criação: sem girar nem dar zoom (o enquadramento é feito aqui)
-  view.controls.enabled = false;
-  view.controls.autoRotate = false;
-  view.labelRenderer.domElement.hidden = true; // nomes de NPC não cobrem o personagem na prévia
-  view.playerControl = false;
-  // já monta com o que ele tem equipado no jogo (sem as partes escondidas nas caixinhas do inventário) e a postura da arma;
-  // a prancha/vassoura fica de fora: na seleção ele aparece em pé no chão mesmo se saiu voando
-  const equip = (look.equip ?? []).filter((s) => !/^II_RID_/.test(lookSymbol(s)));
-  await view.spawnPlayer(FLARIS.x, FLARIS.z, 100, look.sex === 1 ? 'female' : 'male', { hair: look.hair, head: look.head, equip });
-  if (seq !== previewSeq || !view.player) return;
-  await view.player.setCombat(look.mt ?? 0);
-  if (seq !== previewSeq || !view.player) return;
-  const p = view.player.pos;
-  // de frente (heading 0 olha para −Z FlyFF = +Z no Three), corpo inteiro enquadrado de perto; deslocado para a direita
-  // para não ficar atrás da janela. Altura do enquadramento pelo tamanho real do modelo.
-  view.player.heading = 0;
-  const h = (view.player.inst?.tpl.height ?? 1.6) + (view.player.inst?.tpl.lift ?? 0);
-  const shift = innerWidth > 700 ? -0.42 : 0;
-  view.controls.target.set(p[0] + shift, p[1] + h * 0.5, -p[2]);
-  view.camera.position.set(p[0] + shift, p[1] + h * 0.56, -p[2] + h * 1.25);
-  view.controls.update();
-}
+// ---------- personagens em 3D nas janelas ----------
+/** quadros da seleção e boneco da criação: um renderizador só para todos (client/charpreview.ts); o mundo continua girando atrás */
+const stage = new CharStage(view);
+const cardViews = [0, 1, 2].map((i) => stage.view(`Personagem da vaga ${i + 1}`));
+const createView = stage.view('Novo personagem (arraste para girar)');
+$('createModel').appendChild(createView.canvas);
+/** encolhe as janelas (604×388 / 544×380) para caber em telas pequenas */
+function fitCharScreen() { $('charScreen').style.setProperty('--cs', String(Math.max(0.45, Math.min(1, (innerWidth - 16) / 610, (innerHeight - 70) / 400)))); }
+addEventListener('resize', fitCharScreen);
+void themeImage('WndSelectChar.tga').then((u) => { if (u) $('charSelect').style.backgroundImage = `url(${u})`; });
+void themeImage('WndColor.tga').then((u) => { if (u) $('hairColor').style.backgroundImage = `url(${u})`; });
+void themeImage('yellowbuttten.tga').then((u) => { if (u) $('hairColor').style.setProperty('--knob', `url(${u})`); });
+void themeTiles([3, 4, 5, 6, 7, 8, 9, 10, 11].map((i) => `WndTile${String(i).padStart(2, '0')}.tga`), 3, 3).then((t) => { if (t) $('charCreate').style.borderImageSource = `url(${t.url})`; });
 
 // ---------- seleção ----------
 /** partes escondidas nas caixinhas do inventário (guardadas por personagem neste navegador) */
@@ -1100,40 +1104,92 @@ function hideMaskOf(charId: number) { try { return Number(localStorage.getItem(`
 let selectedSlot: number | null = null;
 function showSelect() {
   $('charCreate').hidden = true;
+  $('charDelete').hidden = true;
   $('charSelect').hidden = false;
-  $('accountName').textContent = account?.username ?? 'Conta';
   if (selectedSlot === null || !characters.some((c) => c.slot === selectedSlot)) selectedSlot = characters[0]?.slot ?? null;
   renderSlots();
   saySelect(characters.length ? 'Escolha o personagem e clique em Entrar.' : '');
   $<HTMLButtonElement>('newCharBtn').disabled = characters.length >= 3;
   $<HTMLButtonElement>('enterBtn').disabled = selectedSlot === null;
-  const ch = characters.find((c) => c.slot === selectedSlot);
-  if (ch) void showPreview({ sex: ch.sex, hair: ch.hairMesh, head: ch.headMesh, equip: lookList(ch.equip ?? [], hideMaskOf(ch.id)), mt: ch.mt });
+  $<HTMLButtonElement>('deleteCharBtn').disabled = selectedSlot === null;
+  fitCharScreen();
+  stage.start();
+  view.labelRenderer.domElement.hidden = true; // nomes de NPC não passam por cima das janelas
 }
+/**
+ * Os 3 quadros (WIDC_CUSTOM1–3 em x 46/218/390) e os nomes embaixo (WIDC_ST_CHARNAME01–03): o escolhido anima e fica com o
+ * nome em azul, os outros parados e em cinza; vaga vazia mostra "- Vazio -".
+ */
 function renderSlots() {
-  $('slotList').replaceChildren(...[0, 1, 2].map((slot) => {
+  $('slotList').replaceChildren(...[0, 1, 2].flatMap((slot) => {
     const ch = characters.find((c) => c.slot === slot);
-    const li = document.createElement('li');
-    li.setAttribute('role', 'option');
-    li.setAttribute('aria-selected', String(!!ch && slot === selectedSlot));
+    const on = !!ch && slot === selectedSlot;
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.left = `${48 + 172 * slot}px`;
+    const name = document.createElement('div');
+    name.className = 'cname';
+    name.style.left = `${46 + 172 * slot}px`;
+    const v = cardViews[slot];
     if (ch) {
-      li.textContent = ch.name;
+      card.setAttribute('role', 'option');
+      card.setAttribute('aria-selected', String(on));
+      card.setAttribute('aria-label', `${ch.name}, nível ${ch.level}`);
+      card.tabIndex = 0;
+      card.appendChild(v.canvas);
+      v.setPose(on ? 'stand' : 'sit');
+      void v.set({ sex: ch.sex, hair: ch.hairMesh, head: ch.headMesh, hairColor: ch.hairColor ?? 0, equip: lookList(ch.equip ?? [], hideMaskOf(ch.id)), mt: ch.mt });
+      name.textContent = ch.name;
       const small = document.createElement('small');
       small.textContent = `Nv ${ch.level}`;
-      li.appendChild(small);
-      li.addEventListener('click', () => { if (selectedSlot !== slot) { selectedSlot = slot; showSelect(); } });
-      li.addEventListener('dblclick', () => void enter());
+      name.appendChild(small);
+      name.classList.toggle('on', on);
+      const pick = () => { if (selectedSlot !== slot) { selectedSlot = slot; showSelect(); } };
+      card.addEventListener('click', pick);
+      card.addEventListener('dblclick', () => void enter());
+      card.addEventListener('keydown', (e) => { if (e.key === 'Enter') void enter(); else if (e.key === ' ') { e.preventDefault(); pick(); } });
     } else {
-      li.className = 'empty';
-      li.textContent = 'Vaga livre — criar personagem';
-      li.addEventListener('click', () => showCreate(true));
+      card.classList.add('empty');
+      name.classList.add('empty');
+      name.textContent = '- Vazio -';
+      void v.set(null);
     }
-    return li;
+    return [card, name];
   }));
+  (document.querySelector<HTMLElement>('.card[aria-selected="true"]'))?.focus({ preventScroll: true });
 }
 $('newCharBtn').addEventListener('click', () => showCreate(true));
 $('enterBtn').addEventListener('click', () => void enter());
 $('logoutBtn').addEventListener('click', () => void backToLogin());
+
+// ---------- apagar (CWndDeleteChar: pede a senha da conta) ----------
+$('deleteCharBtn').addEventListener('click', () => {
+  const ch = characters.find((c) => c.slot === selectedSlot);
+  if (!ch) return;
+  $('deleteQ').textContent = `Apagar ${ch.name} (Nv ${ch.level})? Não tem como desfazer.`;
+  $<HTMLInputElement>('deletePass').value = '';
+  $('charDelete').hidden = false;
+  $('deletePass').focus();
+});
+$('deleteCancel').addEventListener('click', () => { $('charDelete').hidden = true; });
+$('charDelete').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const ch = characters.find((c) => c.slot === selectedSlot);
+  const password = $<HTMLInputElement>('deletePass').value;
+  if (!ch || !password) return;
+  const btn = $<HTMLButtonElement>('deleteOk');
+  btn.disabled = true;
+  try {
+    const r = await api<{ characters: CharacterInfo[] }>(`/gapi/characters/${ch.id}`, { method: 'DELETE', body: JSON.stringify({ password }) });
+    characters = r.characters;
+    selectedSlot = null;
+    showSelect();
+    saySelect(`${ch.name} foi apagado.`);
+  } catch (e) {
+    saySelect((e as Error).message, true);
+    $<HTMLInputElement>('deletePass').select();
+  } finally { btn.disabled = false; $<HTMLInputElement>('deletePass').value = ''; }
+});
 
 /** Encerra a sessão no servidor e volta à tela de login (botão Voltar da seleção e "Desconectar" do menu do jogo). */
 async function backToLogin() {
@@ -1142,6 +1198,7 @@ async function backToLogin() {
   net.close();
   try { await api('/gapi/logout', { method: 'POST' }); } catch { /* sessão já expirada */ }
   token = ''; account = null; characters = []; selectedSlot = null; previewing = false;
+  stage.stop();
   view.controls.enabled = true;
   try { sessionStorage.removeItem('flyff.token'); } catch { /* sem armazenamento */ }
   view.playerControl = false;
@@ -1162,47 +1219,68 @@ async function backToLogin() {
   pass.focus();
 }
 
-// ---------- criação ----------
-const draft = { sex: 0, hair: 1, head: 1 };
-function renderPickers() {
-  for (const el of document.querySelectorAll<HTMLElement>('.picker')) {
-    const k = el.dataset.key as keyof typeof draft;
-    el.querySelector('output')!.textContent = k === 'sex' ? (draft.sex ? 'Feminino' : 'Masculino') : String(draft[k]);
-  }
+// ---------- criação (CWndCreateChar) ----------
+/** roupa de Vagrant mostrada no boneco da criação (jobItem.inc, JOB_VAGRANT) */
+const CREATE_LOOK: Record<number, string[]> = {
+  0: ['II_ARM_M_VAG_SUIT01', 'II_ARM_M_VAG_GAUNTLET01', 'II_ARM_M_VAG_BOOTS01'],
+  1: ['II_ARM_F_VAG_SUIT01', 'II_ARM_F_VAG_GAUNTLET01', 'II_ARM_F_VAG_BOOTS01'],
+};
+/** cabelo e rosto 1…5, cor do cabelo RGB 0–255 (__NEW_COLOR_CHANGE: começa na cor padrão do cabelo sorteado) */
+const draft = { sex: 0, hair: 1, head: 1, color: [144, 99, 101] };
+const draftColor = () => hairColorOf(draft.color[0] / 255, draft.color[1] / 255, draft.color[2] / 255);
+const colorInputs = [...document.querySelectorAll<HTMLInputElement>('#hairColor input')];
+function renderCreate() {
+  $('hairVal').textContent = String(draft.hair);
+  $('headVal').textContent = String(draft.head);
+  $('maleBtn').setAttribute('aria-pressed', String(draft.sex === 0));
+  $('femaleBtn').setAttribute('aria-pressed', String(draft.sex === 1));
+  colorInputs.forEach((el, i) => { el.value = String(draft.color[i]); });
 }
 let previewTimer = 0;
-document.querySelectorAll<HTMLElement>('.picker').forEach((el) => {
-  const k = el.dataset.key as keyof typeof draft;
-  el.querySelectorAll<HTMLButtonElement>('button[data-step]').forEach((b) => b.addEventListener('click', () => {
-    const step = Number(b.dataset.step);
-    if (k === 'sex') draft.sex = draft.sex ? 0 : 1;
-    else { const max = LIMITS[k]; draft[k] = ((draft[k] - 1 + step + max) % max) + 1; }
-    renderPickers();
-    clearTimeout(previewTimer);
-    previewTimer = window.setTimeout(() => void showPreview(draft), 120); // cliques rápidos: só a última aparência
-  }));
-});
+function previewDraft(now = false) {
+  clearTimeout(previewTimer);
+  const go = () => void createView.set({ sex: draft.sex, hair: draft.hair, head: draft.head, hairColor: draftColor(), equip: CREATE_LOOK[draft.sex] });
+  if (now) go(); else previewTimer = window.setTimeout(go, 100); // cliques rápidos: só a última aparência
+}
+document.querySelectorAll<HTMLButtonElement>('#charCreate button[data-key]').forEach((b) => b.addEventListener('click', () => {
+  const k = b.dataset.key as 'hair' | 'head', max = LIMITS[k];
+  draft[k] = ((draft[k] - 1 + Number(b.dataset.step) + max) % max) + 1;
+  renderCreate();
+  previewDraft();
+}));
+for (const [id, sex] of [['maleBtn', 0], ['femaleBtn', 1]] as const) {
+  $(id).addEventListener('click', () => { if (draft.sex === sex) return; draft.sex = sex; renderCreate(); previewDraft(); });
+}
+colorInputs.forEach((el, i) => el.addEventListener('input', () => { draft.color[i] = Number(el.value); createView.setHairColor(draftColor()); }));
 function showCreate(canGoBack: boolean) {
   $('charSelect').hidden = true;
+  $('charDelete').hidden = true;
   $('charCreate').hidden = false;
   $<HTMLButtonElement>('createBackBtn').disabled = !canGoBack && !characters.length;
-  Object.assign(draft, { sex: 0, hair: 1, head: 1 });
+  // como o original: cabelo e rosto sorteados, cor = a padrão desse cabelo
+  const hair = 1 + Math.floor(Math.random() * LIMITS.hair), head = 1 + Math.floor(Math.random() * LIMITS.head);
+  Object.assign(draft, { sex: 0, hair, head, color: hairRgb(0, 'male', hair).map((v) => Math.round(v * 255)) });
   $<HTMLInputElement>('newName').value = '';
-  renderPickers();
+  renderCreate();
+  saySelect('');
   sayCreate(characters.length ? '' : 'Sua conta ainda não tem personagem. Crie o primeiro!');
-  void showPreview(draft);
+  createView.resetRotation();
+  previewDraft(true);
+  fitCharScreen();
+  stage.start();
+  view.labelRenderer.domElement.hidden = true;
   $('newName').focus();
 }
 $('createBackBtn').addEventListener('click', () => { if (characters.length) showSelect(); });
 $('charCreate').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const name = $<HTMLInputElement>('newName').value.trim();
-  if (!/^[A-Za-z0-9]{2,16}$/.test(name)) { sayCreate('Nome: 2 a 16 letras ou números, sem espaços.', true); return; }
+  if (!/^[A-Za-z0-9]{2,16}$/.test(name)) { sayCreate('Nome: 2 a 16 letras ou números, sem espaços.', true); $('newName').focus(); return; }
   const btn = $<HTMLButtonElement>('createBtn');
   btn.disabled = true;
   sayCreate('Criando…');
   try {
-    const r = await api<{ character: CharacterInfo; characters: CharacterInfo[] }>('/gapi/characters', { method: 'POST', body: JSON.stringify({ name, ...draft }) });
+    const r = await api<{ character: CharacterInfo; characters: CharacterInfo[] }>('/gapi/characters', { method: 'POST', body: JSON.stringify({ name, sex: draft.sex, hair: draft.hair, head: draft.head, hairColor: draftColor() }) });
     characters = r.characters;
     selectedSlot = r.character.slot;
     showSelect();
@@ -1219,7 +1297,9 @@ async function enter() {
   $<HTMLButtonElement>('enterBtn').disabled = true;
   saySelect(`Entrando como ${ch.name}…`);
   previewing = false;
+  stage.stop();
   view.controls.enabled = true; // no jogo a câmera volta a girar/dar zoom
+  view.controls.autoRotate = false;
   // posição salva só vale no mundo 1 (WdMadrigal) e dentro do mapa; a altura vem do chão
   const savedWorld = WORLD_BY_ID[ch.worldId] ?? WORLD;
   if (savedWorld !== curWorld) await openWorld(savedWorld, ch.pos[0], ch.pos[2]);
@@ -1232,7 +1312,7 @@ async function enter() {
   // o inventário chegar do servidor; o restyle do `welcome` não refaz o modelo se o visual for o mesmo
   const hide = hideMaskOf(ch.id);
   const equip = lookList(ch.equip ?? [], hide);
-  await view.spawnPlayer(x, z, inMap ? ch.pos[1] : 100, sex, { hair: ch.hairMesh, head: ch.headMesh, equip });
+  await view.spawnPlayer(x, z, inMap ? ch.pos[1] : 100, sex, { hair: ch.hairMesh, head: ch.headMesh, hairColor: ch.hairColor ?? 0, equip });
   if (view.player) view.player.runSpeed = moveSpeed;
   if (curWorld !== WORLD) mapLoading.hide();
   combatMt = ch.mt ?? 0;

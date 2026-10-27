@@ -119,6 +119,21 @@ export function handAttachment(data: WorldData, symbol: string): HandAttachment 
   return { file: `Item_${e.name}.o3d`, slot };
 }
 
+/**
+ * Cor padrão do cabelo por malha (nMaleHairColor / nFeMaleHairColor do MoverEquip.cpp), RGB 0–255: vale quando o personagem
+ * não escolheu cor (hair_color 0). A cor multiplica a textura do cabelo (m_fAmbient da malha, MoverRender.cpp).
+ */
+const MALE_HAIR = [[144, 99, 101], [100, 107, 125], [158, 119, 109], [199, 156, 100], [100, 123, 117], [100, 100, 100], [100, 100, 100], [100, 100, 100], [100, 100, 100], [100, 100, 100]];
+const FEMALE_HAIR = [[250, 250, 90], [250, 250, 90], [147, 118, 103], [150, 100, 85], [213, 130, 100], [100, 100, 100], [100, 100, 100], [100, 100, 100], [100, 100, 100], [100, 100, 100]];
+/** cor do cabelo (0–1): `color` é o m_dwHairColor (0xAARRGGBB, como o banco do original); 0 = a cor padrão da malha `hair` (1…) */
+export function hairRgb(color: number, sex: Sex, hair: number): [number, number, number] {
+  if (color) return [((color >>> 16) & 255) / 255, ((color >>> 8) & 255) / 255, (color & 255) / 255];
+  const t = (sex === 'female' ? FEMALE_HAIR : MALE_HAIR)[Math.max(0, Math.min(9, (hair || 1) - 1))];
+  return [t[0] / 255, t[1] / 255, t[2] / 255];
+}
+/** RGB 0–1 → m_dwHairColor (0xFFRRGGBB, com sinal como o DWORD gravado no int do banco) */
+export const hairColorOf = (r: number, g: number, b: number) => ((0xff << 24) | (Math.round(r * 255) << 16) | (Math.round(g * 255) << 8) | Math.round(b * 255)) | 0;
+
 export interface HumanSpec { sex: Sex; hair: number; head: number; equip: string[] }
 
 export const humanKey = (s: HumanSpec) => `human:${s.sex}:${s.hair}:${s.head}:${s.equip.join(',')}`;

@@ -1,6 +1,6 @@
 import { itemIcon, skillIcon, themeDds, themeImage, themeTiles } from '../shared/tga';
 import type { ItemView } from './net';
-import { hideItemTip, moveItemTip, setTipLookup, showItemTip } from './itemtip';
+import { hideItemTip, moveItemTip, setTipContext, setTipLookup, showItemTip } from './itemtip';
 import { InventoryPreview } from './invpreview';
 import { loadAniCursor, type AniCursor } from './anicursor';
 import { hideBit, type LookPiece } from '../shared/look';
@@ -161,7 +161,7 @@ const MODEL_RECT = { x: 58, y: 52, w: 184, h: 176 };
 
 /** u = enchant (+0–10), e = elemento (0 nenhum, 1 fogo, 2 água, 3 elétrico, 4 vento, 5 terra), el = nível do elemento */
 export interface InvItem { c: number; s: number; id: number; n: number; u: number; e: number; el: number; /** piercing: carta por espaço aberto (0 = vazio) */ p?: number[]; /** item de tempo ativado (ticket): vale até (ms) */ x?: number;
-  /** arma ultimate: joias engastadas por espaço aberto (0 = vazio) */ g?: number[] }
+  /** arma ultimate: joias engastadas por espaço aberto (0 = vazio) */ g?: number[]; /** raridade da arma (0 = Common) */ r?: number; /** falhas seguidas de upgrade no nível atual */ t?: number }
 export const ELEMENT_NAMES = ['', 'Fogo', 'Água', 'Elétrico', 'Vento', 'Terra'];
 export interface InvDef extends ItemView {}
 
@@ -263,6 +263,12 @@ export class InventoryWindow extends GameWindow {
   constructor(parent: HTMLElement) {
     super(parent, { id: 'invWnd', title: 'Inventário', store: 'flyff.wnd.inventory3d', initial: { x: -12, y: 110, w: 312, h: 580 }, min: { w: 310, h: 470 } });
     setTipLookup((id) => this.defs.get(id));
+    // dica: o que está equipado (peças do conjunto em azul) e o menor enchant das 4 armaduras (bônus do set +N)
+    setTipContext(() => {
+      const eq = [...this.items.values()].filter((i) => i.c === EQUIPPED);
+      const armor = [2, 4, 5, 6].map((s) => eq.find((i) => i.s === s));
+      return { equipped: eq.map((i) => i.id), setUp: armor.every((a) => a) ? Math.min(...armor.map((a) => a!.u)) : 0 };
+    });
     const b = this.body;
     b.classList.add('inv');
 
@@ -343,12 +349,12 @@ export class InventoryWindow extends GameWindow {
   }
 
   /** estado vindo do servidor */
-  setState(gold: number, open: number, items: [number, number, number, number, number?, number?, number?, number[]?, number?, number[]?][], defs: Record<number, InvDef>, chips = 0) {
+  setState(gold: number, open: number, items: [number, number, number, number, number?, number?, number?, number[]?, number?, number[]?, number?, number?][], defs: Record<number, InvDef>, chips = 0) {
     this.penya.value = gold.toLocaleString('pt-BR');
     this.chips.value = chips.toLocaleString('pt-BR');
     for (const d of Object.values(defs)) this.defs.set(d.id, d);
     this.items.clear();
-    for (const [c, s, id, n, u = 0, e = 0, el = 0, p, x, g] of items) this.items.set(keyOf(c, s), { c, s, id, n, u, e, el, ...(p?.length ? { p } : {}), ...(x ? { x } : {}), ...(g?.length ? { g } : {}) });
+    for (const [c, s, id, n, u = 0, e = 0, el = 0, p, x, g, r, t] of items) this.items.set(keyOf(c, s), { c, s, id, n, u, e, el, ...(p?.length ? { p } : {}), ...(x ? { x } : {}), ...(g?.length ? { g } : {}), ...(r ? { r } : {}), ...(t ? { t } : {}) });
     // a carta/o material escolhido sumiu (gasto, movido, trocado): sai do modo martelo
     if (this.pierceCard !== null && !this.pierceWaiting) { const it = this.items.get(keyOf(BAG, this.pierceCard)); if (!it || (!this.hammerUpgrade && !this.defs.get(it.id)?.card)) this.cancelPierce(); }
     // itens de tempo: repinta de minuto em minuto (o visto some e o item fica cinza quando acaba)

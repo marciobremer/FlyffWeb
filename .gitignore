@@ -46,3 +46,6 @@ Thumbs.db
 
 # graphify
 graphify-out/cache/
+
+# conexão do banco salva pelo painel admin (Database → Conexão)
+data/database.json

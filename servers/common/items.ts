@@ -54,6 +54,8 @@ export interface ItemDef {
    * própria da conversão (n/1.000.000), -1 = a do Ultimate_UltimateWeapon.txt
    */
   referStat1: number; referStat2: number; referTarget1: number; referTarget2: number;
+  /** descrição (szComment: texto entre aspas ou IDS_* do propItem.txt.txt) */
+  desc?: string;
 }
 
 /**
@@ -85,6 +87,8 @@ export interface SetDef { id: number; name: string; elems: { item: number; part:
  * Colunas do Spec_Item.txt das versões novas (FLSpecManager::LoadSpecItem), que vem sem a linha de nomes — só descrições em
  * coreano. Mesma ordem do arquivo; MAX_ITEM_PARAM = 6.
  */
+/** token do CScript: string entre aspas ("" escapa aspas) ou sequência sem espaço */
+const TOKEN = /"(?:[^"]|"")*"|\S+/g;
 const SPEC_COLUMNS = [
   'ver', 'dwID', 'szName', 'dwNum', 'dwPackMax', 'dwItemKind1', 'dwItemKind2', 'dwItemKind3', 'dwItemJob', 'bPermanence', 'dwUseable', 'dwItemSex',
   'dwCost', 'dwEndurance', 'nAbrasion', 'nMaxRepair', 'dwHanded', 'dwFlag', 'dwParts', 'dwPartsub', 'bPartFile', 'dwExclusive', 'dwBasePartsIgnore',
@@ -132,6 +136,11 @@ export class ItemCatalog {
    * não têm DST no Spec_Item: o bônus vem só daqui (ex.: Volcano = HP máx. +7%, Lighting = ataque +7%).
    */
   readonly piercing = new Map<number, [number, number][]>();
+  /**
+   * Raridade da arma (__WEAPON_RARITY, WeaponRarity.inc): por nível, nome, cor (0xAARRGGBB), multiplicador do ataque
+   * (GetHitMinMax e o golpe) e dos DST do item (SetDestParamEquip). Nível 0 = Common (×1).
+   */
+  readonly rarity: { name: string; color: number; atk: number; stats: number }[] = [];
 
   /** `useNames`: aplica a tabela de nomes por símbolo (servers/common/names.ts); false = só os textos do Resource */
   constructor(readonly resDir: string, private useNames = true) {}
@@ -164,7 +173,7 @@ export class ItemCatalog {
       a1: col('nAdjParamVal1'), a2: col('nAdjParamVal2'), a3: col('nAdjParamVal3'), a4: col('nAdjParamVal4'), a5: col('nAdjParamVal5'), a6: col('nAdjParamVal6'),
       ready: col('dwSkillReady'), range: col('dwAttackRange'), job: col('dwItemJob'), hand: col('dwHanded'), hit: col('nAdjHitRate'), parry: col('dwParry'), sa1: col('dwSndAttack1'), sa2: col('dwSndAttack2'),
       ignore: col('dwBasePartsIgnore'), grade: col('dwItemGrade'), elem: col('eItemType'),
-      rs1: col('dwReferStat1'), rs2: col('dwReferStat2'), rt1: col('dwReferTarget1'), rt2: col('dwReferTarget2'), fs: col('fFlightSpeed'), flr: col('fFlightLRAngle'), ftb: col('fFlightTBAngle'),
+      cm: col('szComment'), rs1: col('dwReferStat1'), rs2: col('dwReferStat2'), rt1: col('dwReferTarget1'), rt2: col('dwReferTarget2'), fs: col('fFlightSpeed'), flr: col('fFlightLRAngle'), ftb: col('fFlightTBAngle'),
     };
     const float = (v: string | undefined) => { const n = Number((v ?? '').trim()); return Number.isFinite(n) ? n : 0; };
     if (C.id < 0 || C.icon < 0) { console.warn('Itens: cabeçalho do arquivo de itens não reconhecido'); return this; }
@@ -177,13 +186,16 @@ export class ItemCatalog {
     };
     for (const line of lines.slice(hi + 1)) {
       if (line.startsWith('//')) continue;
-      const c = line.split('\t');
+      // o CScript do original separa por qualquer espaço (aspas com "" de escape); ~1/3 das linhas do Spec_Item misturam
+      // espaços e tabs ("II_X   "Nome"", "1  1"), então o split por tab desalinha as colunas — usa os tokens quando batem
+      const toks = line.match(TOKEN);
+      const c = toks && toks.length === head.length ? toks : line.split('\t');
       if (c.length <= C.icon) continue;
       const symbol = c[C.id].trim();
       const id = defines.get(symbol);
       if (id === undefined) continue;
       const def: ItemDef = {
-        id, symbol, name: names.get(c[C.name]?.trim()) || symbol, icon: c[C.icon].replace(/"/g, '').trim(),
+        id, symbol, name: names.get(c[C.name]?.trim()) || (c[C.name]?.startsWith('"') ? c[C.name].replace(/"/g, '').trim() : '') || symbol, icon: c[C.icon].replace(/"/g, '').trim(),
         packMax: Math.max(1, num(c[C.pack], 1)), parts: num(c[C.parts], -1), sex: num(c[C.sex], -1), level: (C.limit >= 0 && num(c[C.limit], 0) > 0 && num(c[C.limit], 0) < 1000 ? num(c[C.limit], 0) : num(c[C.lv], 0)),
         kind1: num(c[C.k1], 0), kind2: num(c[C.k2], 0), kind3: num(c[C.k3], 0), cost: num(c[C.cost], 0),
         abilityMin: num(c[C.amin], 0), abilityMax: num(c[C.amax], 0), weaponType: num(c[C.wt], 0), attackSpeed: float(c[C.aspd]), rare: num(c[C.rare], 0), shopAble: C.shop < 0 ? 1 : num(c[C.shop], -1),
@@ -200,8 +212,10 @@ export class ItemCatalog {
         referStat1: C.rs1 < 0 ? -1 : num(c[C.rs1], -1), referStat2: C.rs2 < 0 ? -1 : num(c[C.rs2], -1),
         referTarget1: C.rt1 < 0 ? -1 : num(c[C.rt1], -1), referTarget2: C.rt2 < 0 ? -1 : num(c[C.rt2], -1),
       };
+      if (C.cm >= 0) { const cm = (c[C.cm] ?? '').trim(); const t = cm.startsWith('"') ? cm.replace(/"/g, '').trim() : names.get(cm) ?? ''; if (t && t !== '=') def.desc = t; }
       if (def.element < 0 || def.element > 5) def.element = 0;
-      if (def.referStat1 > 2) def.referStat1 = -1;
+      // 0 arma geral, 1 unique, 2 ultimate, 3 armadura de set (ARMOR_SET: fail stack próprio do UpgradeSuccess.inc)
+      if (def.referStat1 > 3) def.referStat1 = -1;
       for (const k of ['referStat2', 'referTarget1', 'referTarget2'] as const) if (def[k] >= 0x7fffffff || def[k] < 0) def[k] = -1;
       if (def.parts === 13) { // PARTS_RIDE: prancha, vassoura, bike, asas…
         def.fly = [float(c[C.fs]), float(c[C.flr]), float(c[C.ftb])];
@@ -216,6 +230,8 @@ export class ItemCatalog {
     }
     this.loadSets();
     this.loadAccessory();
+    this.loadRarity();
+    this.loadPacks();
     this.suitCardKind = defines.get('IK3_SOCKETCARD') ?? -1;
     const table = this.useNames ? nameTable() : null;
     if (table) {
@@ -225,6 +241,45 @@ export class ItemCatalog {
     return this;
   }
 
+  /** blocos `Add_Weapon_Rarity { nRarityLevel = n; szName = "…"; dwColor = 0x…; fAttackRate = 1.04f; fStatsRate = 1.10f; }` */
+  private loadRarity() {
+    const text = this.read('WeaponRarity.inc');
+    if (!text) return;
+    for (const m of text.matchAll(/Add_Weapon_Rarity\s*\{([^}]*)\}/g)) {
+      const v = (k: string) => m[1].match(new RegExp(`${k}\\s*=\\s*([^;]+);`))?.[1].trim() ?? '';
+      const lv = Number(v('nRarityLevel'));
+      if (!Number.isInteger(lv) || lv < 0 || lv > 50) continue;
+      this.rarity[lv] = { name: v('szName').replace(/"/g, ''), color: Number(v('dwColor')) || 0, atk: parseFloat(v('fAttackRate')) || 1, stats: parseFloat(v('fStatsRate')) || 1 };
+    }
+  }
+  /**
+   * Caixas (CPackItem, propPackItem.inc): `PackItem II_CAIXA <minutos> { II_ITEM enchant quantidade … }`. Abrir dá todos os
+   * itens de uma vez (só com espaço livre para todos), cada um valendo `span` minutos (0 = para sempre).
+   */
+  readonly packs = new Map<number, { span: number; items: { id: number; u: number; n: number }[] }>();
+  private loadPacks() {
+    const text = this.read('propPackItem.inc');
+    if (!text) return;
+    const tok: string[] = text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ').match(/[{}]|[^\s{}]+/g) ?? [];
+    const D = (s: string) => (/^-?\d+$/.test(s) ? Number(s) : this.defines.get(s));
+    for (let i = 0; i < tok.length; i++) {
+      if (tok[i] !== 'PackItem') continue;
+      const box = D(tok[i + 1]), span = Number(tok[i + 2]) || 0;
+      if (tok[i + 3] !== '{') continue;
+      const items: { id: number; u: number; n: number }[] = [];
+      let k = i + 4;
+      for (; k + 2 < tok.length && tok[k] !== '}'; k += 3) {
+        const id = D(tok[k]);
+        if (id !== undefined && this.byId.has(id)) items.push({ id, u: Number(tok[k + 1]) || 0, n: Math.max(1, Number(tok[k + 2]) || 1) });
+      }
+      if (box !== undefined && items.length) this.packs.set(box, { span, items });
+      i = k;
+    }
+  }
+
+  /** multiplicadores da raridade `r` (sem raridade ou nível desconhecido: ×1) */
+  rarityOf(r: number | undefined) { const x = r ? this.rarity[r] : undefined; return { atk: x?.atk ?? 1, stats: x?.stats ?? 1 }; }
+
   /** SetItem <id> <IDS_…> { Elem { II_* PARTS_* … } Avail { DST_* valor peças … } } do propItemEtc.inc */
   private loadSets() {
     const text = this.read('propItemEtc.inc');
@@ -232,6 +287,9 @@ export class ItemCatalog {
     const names = new Map<string, string>();
     const nt = this.read('propItemEtc.txt.txt');
     if (nt) for (const line of nt.split(/\r?\n/)) { const i = line.indexOf('\t'); if (i > 0 && !line.slice(i + 1).trim().startsWith('IDS_')) names.set(line.slice(0, i).trim(), line.slice(i + 1).trim()); }
+    // nome sem texto no propItemEtc.txt.txt: o comentário da linha (`SetItem 486 IDS_… // Beginner Accessory Set`)
+    const comments = new Map<string, string>();
+    for (const m of text.matchAll(/SetItem\s+\d+\s+(\S+)[ \t]*\/\/[ \t]*([^\r\n]+)/g)) comments.set(m[1], m[2].trim());
     const tok = text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ').match(/[{}]|[^\s{}]+/g) ?? [];
     const D = (s: string) => (/^-?\d+$/.test(s) ? Number(s) : this.defines.get(s));
     /** pula um bloco { … } (com aninhados) a partir do índice do '{' e devolve o índice depois do '}' */
@@ -250,7 +308,7 @@ export class ItemCatalog {
       i += 3;
       if (tok[i] !== '{') continue;
       const end = skip(i);
-      const set: SetDef = { id, name: names.get(ids) || ids, elems: [], avail: [] };
+      const set: SetDef = { id, name: names.get(ids) || comments.get(ids) || ids, elems: [], avail: [] };
       for (let j = i + 1; j < end - 1; j++) {
         if ((tok[j] !== 'Elem' && tok[j] !== 'Avail') || tok[j + 1] !== '{') continue;
         const kind = tok[j], close = skip(j + 1) - 1;
@@ -350,9 +408,14 @@ export class ItemCatalog {
     const s = this.setByItem.get(d.id), acc = this.accessory.get(d.id), pierce = this.piercing.get(d.id);
     const to = d.referStat1 === 0 || d.referStat1 === 1 ? this.byId.get(d.referTarget1)?.name : undefined;
     // carta: a dica mostra o bônus que ela dá espetada
-    return { ...ItemCatalog.view(d), ...(pierce ? { fx: pierce } : {}), ...(s ?{ set: { name: s.name, pieces: s.elems.length, avail: s.avail.map((a) => [a.n, a.dst, a.adj] as [number, number, number]) } } : {}),
+    return { ...ItemCatalog.view(d), ...(pierce ? { fx: pierce } : {}), ...(s ? { set: { name: s.name, pieces: s.elems.length, avail: s.avail.map((a) => [a.n, a.dst, a.adj] as [number, number, number]),
+      // peças do conjunto (a dica lista cada uma, azul se equipada)
+      items: s.elems.map((e) => [e.item, this.byId.get(e.item)?.name ?? ''] as [number, string]) } } : {}),
       ...(acc ? { acc: Object.fromEntries(acc) } : {}), ...(this.isSuitCard(d) ? { card: 1 } : {}),
       // arma que converte (Bobochan): em qual ela vira
-      ...(to ? { to } : {}) };
+      ...(to ? { to } : {}),
+      // caixa: o que vem dentro ([nome, quantidade]) e a descrição
+      ...(this.packs.has(d.id) ? { box: this.packs.get(d.id)!.items.map((x) => [this.byId.get(x.id)?.name ?? '?', x.n] as [string, number]) } : {}),
+      ...(d.desc ? { desc: d.desc } : {}) };
   }
 }

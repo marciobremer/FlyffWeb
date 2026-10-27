@@ -855,3 +855,95 @@ Comparado com `original/Source/Source/_Common/MoverAttack.cpp`, `MoverParam.cpp`
 ## 44. Barra de buffs (2026-10-26)
 - Ícones 30×30 (2 px maiores; os da party continuam 28). Clique esquerdo num ícone, sem arrastar (< 4 px), alterna a barra
   entre horizontal e vertical (lembrado em `flyff.wnd.buffs.vertical`); arrastar continua movendo, botão direito tira o buff.
+
+## 45. Status iguais ao servidor oficial local (2026-10-26)
+Comparado com o MikePanqueca (Blade 73) do servidor oficial local (banco CHARACTER_01_DBF, só leitura):
+- **Spec_Item**: o CScript separa por qualquer espaço, não por tab; ~1/3 das linhas misturam (`II_X   "Nome"`, `1  1`) e
+  saíam com as colunas trocadas ou sumiam (ex.: fashion Beginner). O catálogo lê por token quando a contagem bate — 15.543 itens.
+- **Item expirado** (`x` vencido) não conta nada nos status (CItemElem::expired: sem DST, defesa, set nem piercing).
+- **Raridade da arma** (`__WEAPON_RARITY`, WeaponRarity.inc): coluna `rarity` (migração 020), campo `r` do item. Ataque
+  × fAttackRate no GetHitMinMax e de novo no golpe (AttackArbiter); DST do item × fStatsRate; contas em float de 32 bits
+  (10 × 1.3f = 12). Dica mostra "Epic Flam Sword" na cor da raridade. GM: `//give-item II_… rar3` ou `epic`.
+- **Enchant do conjunto** (expTable `Setitem`, GetSetItem): traje/luva/bota/capacete equipados, pelo menor enchant →
+  precisão, bloqueio, HP %, magia extra e atributos (+3: precisão +5, bloqueio +3, magia +3).
+- Janela H como a `__STATISTICS`: Velocidade = DST_SPEED cru (5 = 5%), Precisão = DST_ADJ_HITRATE, esquiva = DST_PARRY.
+- Bate: STR/STA/DEX/INT 155/20/34/20, crítico 8%, vel. atq. 52%, velocidade 5%, dano crít. 5%, precisão 27%, bloqueios 3%.
+- **Pendente**: o oficial estava com o Upcut Stone (SM_ATTACK_UP: ataque da janela × 1,2 → 1083 × 1,2 = 1299) — falta o
+  item; DEF dá 147 contra 155 do oficial (diferença de 8 ainda sem causa achada); sorteio de raridade no drop e NPC de
+  subir raridade.
+
+## 46. Seleção e criação de personagem como o oficial (2026-10-27)
+- **Seleção** (CWndSelectChar, `WndSelectChar.tga` 604×388, no centro da tela): 3 quadros com o personagem em 3D
+  (client/charpreview.ts: um renderizador WebGL só, copiado para cada quadro); o escolhido anima, fica verde e com o nome em
+  azul. Botões Voltar / Criar / Apagar / Entrar (Button72x20.tga). O mundo continua girando atrás, sem nomes de NPC.
+- **Apagar**: caixa pedindo a senha da conta → `DELETE /gapi/characters/<id>` (marca `deleted`; mestre de guild não pode).
+- **Criação** (CWndCreateChar 544×380): nome, Masculino/Feminino, cabelo 1–5, **cor do cabelo** (barras RGB do
+  `WndColor.tga`, __NEW_COLOR_CHANGE), rosto 1–5, boneco girando com o arrasto; cabelo e rosto começam sorteados.
+- **Cor do cabelo** no jogo todo: `hair_color` (m_dwHairColor) multiplica a malha do cabelo (MoverInstance.setHairColor);
+  0 = cor padrão por malha (nMaleHairColor/nFeMaleHairColor). Vai para os outros jogadores (`hc`). NPCs ainda sem.
+- **Kit inicial do Titanium** (lido do personagem novo no banco oficial): Parmil/Leaf +3 (4 peças), espada de madeira e
+  Beginner Fashion equipados, caixa II_SYS_SYS_SCR_MBGINRBOX na bolsa, 0 penya. Entregue já na criação (a seleção mostra vestido).
+- Vagrant nv 1 bate com o oficial: ATK 44, crítico 7%, vel. atq. 42%, velocidade/dano crít./precisão 5%, bloqueios 3%,
+  atributos 20, MP 76, FP 42.
+- **Pendente**: abrir a caixa iniciante (propPackItem.inc: Upcut Stone, poções, capa EXPDEF, pet, montaria…, itens com
+  validade de 10080 min); PIN do banco na criação (não temos banco com PIN).
+
+## 47. Enchant da armadura igual ao oficial e dica do item no estilo do cliente (2026-10-27)
+- **Bug do original reproduzido** (shared/expup.ts): o `expUpitem` tem 21 linhas, mas `m_aExpUpItem` é `[6][11]` (sem
+  __NEW_ITEM_VARUNA); a leitura transborda e cada coluna fica com as linhas 11–20 da anterior. Capacete +N usa a linha 11+N da
+  arma; traje/luva/bota/escudo, a da armadura anterior (traje/bota +3 = 28 %, não 6 %). Só o +10 fica certo. Com isso a DEF bate:
+  Vagrant nv 1 = 101, MikePanqueca = 155; Leaf Boots +3 = 35 ~ 37, Parmil Suit +3 = 66 ~ 69.
+- `dwReferStat1` = ARMOR_SET (3) não é mais descartado: o fail stack do set de armadura vale no ferreiro e na dica.
+- **Dica do item** (client/itemtip.ts) na ordem e cores do MakeToolTipText: nome (cor do grau), "Tentativas até o upgrade"
+  (vermelho), sexo, Defesa/Ataque, velocidade, elemento, bônus do item, bônus do set +N (precisão/bloqueio/magia, só na peça
+  equipada), classe, nível (>1), conjunto "Nome (n/total)" com as peças equipadas em azul e os efeitos ativos em laranja,
+  piercing, "Pode ser despertado" em azul. Fundo claro com borda laranja; sem preço/raridade (como no inventário oficial).
+
+## 48. Caixas (PackItem) e personagens sentados na seleção (2026-10-27)
+- **Caixas** (CPackItem, `propPackItem.inc`, 1565 caixas): o conteúdo é do arquivo do servidor, não do item — editar o
+  `propPackItem.inc` muda o que vem dentro (`PackItem II_CAIXA <minutos> { II_ITEM enchant quantidade … }`). Duplo clique abre
+  (CUser::DoUsePackItem): precisa de um espaço livre por item, cada item vem com enchant/quantidade e vale `minutos`
+  (a Beginner Box: 10080 = 7 dias; item vencido não conta nos status e não pode ser usado). A dica mostra a descrição
+  (szComment) e "Contém: - Nome (Nx)".
+- **Seleção**: quem não está escolhido senta (MTI_SIT → MTI_SITSTAND); o escolhido levanta (MTI_GETUP → MTI_STAND), como o
+  CWndSelectChar.
+- Pendente: usar o que vem na caixa (Upcut Stone ×1,2 de ataque, Refresher Hold, Activition, Beginner Amplification, caixas de
+  acessório/pet, pergaminho premium) — hoje só entram na bolsa.
+- Caixa: quantidade acima do empilhamento vira um espaço por unidade (Beginner Accessory Box = colar, 2 brincos, 2 anéis).
+- Conjunto: cada item equipado conta uma vez (SetDestParamSetItem) — 1 anel não preenche as 2 vagas de anel; a dica marca
+  em azul só as peças que têm item equipado. Conjuntos sem texto no propItemEtc.txt.txt usam o comentário da linha como nome.
+- Cursor: `curBase.cur` (CurDefault1) em toda a interface (sem mãozinha nem seta do sistema); o mundo continua trocando para
+  espada/balão sobre mob/NPC e o martelinho do piercing continua.
+
+## 49. Painel admin → Database: backup, restaurar e zerar (2026-10-27)
+- Nova página **Database** (Operação, abaixo de World). servers/common/db/backup.ts + rotas `/admin/api/db*`.
+- **Backup**: `pg_dump -Fc` → `data/backups/flyffweb-AAAAMMDD-HHMMSS[-nome].dump` (fora do git). Funciona com o jogo
+  rodando. Lista com Baixar / Restaurar / Apagar. pg_dump/pg_restore vêm do PATH ou de `C:\Program Files\PostgreSQL\<versão>\bin`.
+- **Restaurar**: digita o nome do arquivo para confirmar → backup automático "antes-de-restaurar", apaga tudo do usuário do
+  jogo, `pg_restore`, roda as migrações novas.
+- **Zerar**: digita ZERAR → backup automático "antes-de-zerar", apaga tudo do usuário do jogo e recria a estrutura vazia pelas
+  migrações (sem contas: crie de novo em Account).
+- Restaurar/zerar só com o banco livre: o servidor do jogo/site parado e nenhuma outra conexão (o painel usa PGAPPNAME
+  `flyffweb-admin`; o jogo e o site que ele inicia usam `flyffweb-game` / `flyffweb-site`).
+- Testado: backup/baixar/apagar pelo painel; o "apagar tudo + migrações" dentro de uma transação desfeita (80 objetos → 0 →
+  80, contas 3 → 0 → 3). O restore e o zerar de verdade não foram executados no banco real.
+- **Instalar banco do zero** (servers/common/db/install.ts, `POST /admin/api/db/install`): com a senha do superusuário do
+  PostgreSQL (usada só na hora), cria o usuário do jogo se faltar (senha de PGPASSWORD, a informada ou sorteada → gravada no
+  pgpass.conf), cria o banco vazio (UTF8, dono = usuário do jogo), roda as migrações e, se pedido, cria a conta de dono (Z).
+  Se o banco já existe, recusa (para esvaziar: Zerar). A página abre mesmo com o banco fora do ar e mostra o estado
+  (conectado / não existe / senha não encontrada / PostgreSQL fora do ar).
+- Testado: estado "senha não encontrada" e recusa da senha errada do superusuário. A instalação completa não foi executada
+  (precisa da senha do `postgres`).
+- **Layout da página Database** (3 colunas): 1. Conexão (host, porta, banco, usuário do jogo, senha → `data/database.json`
+  sem a senha + pgpass.conf; "Salvar e testar"), 2. Instalar banco zerado (usa a Conexão; superusuário só na hora; conta de
+  dono opcional; se o usuário do jogo já existe, a senha dele é acertada com a da Conexão), 3. Fazer backup e, embaixo, Zerar.
+  A lista de backups fica abaixo. `data/database.json` fica fora do git; variáveis PG* do ambiente valem por cima dele
+  (os campos aparecem travados). Painel aberto antes da atualização: a página avisa para reiniciar o painel.
+
+## 50. Dia e noite (2026-10-27)
+- Relógio do jogo (shared/gameclock.ts) como o CGameTimer com __NEW_NIGHT (TIMESPEED 20): 1 dia = 28,8 min reais, 1 hora do
+  jogo = 72 s, hora de 1 a 24. Sai do relógio do servidor (mensagem `clock` ao entrar), então todos veem a mesma hora.
+- O cliente muda a hora do mundo a cada minuto do jogo: céu (dia / entardecer / noite com fusão), nuvens, sol e lua, luz por
+  hora (s_light), névoa e lampiões só de noite (21h–6h) — tudo que já estava portado, antes preso às 12h.
+- GM: `//time 19`, `//time 17:30` fixa a hora para todos; `//time auto` volta a andar. Mundos internos e continentes com
+  ambiente próprio continuam com a luz deles.

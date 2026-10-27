@@ -34,7 +34,7 @@ function fromThisMachine(req: IncomingMessage) {
  * mesmo processo; cada rota já pertence a um serviço — na fase 2 cada um vira um processo e este arquivo vira um proxy:
  *   Auth       POST /gapi/login · GET /gapi/session · POST /gapi/logout       (servers/auth/http.ts)
  *   Editor     GET/PUT /gapi/world-edits?world=…  (NPCs e Ambiente salvos pelo editor; PUT só do próprio computador)
- *   Character  POST /gapi/characters                                         (servers/character/http.ts)
+ *   Character  POST /gapi/characters · DELETE /gapi/characters/<id>           (servers/character/http.ts)
  * O prefixo é /gapi (e não /api) porque o site (htdocs) tem as rotas /api/login, /api/logout… dele.
  */
 export function apiMiddleware() {

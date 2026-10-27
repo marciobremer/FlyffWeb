@@ -1,4 +1,4 @@
-import { type Object3D, type PerspectiveCamera, BufferAttribute, BufferGeometry, Bone, Group, Material, Matrix4, Mesh, Quaternion, Skeleton as ThreeSkeleton, SkinnedMesh, Sphere, Vector3, MeshLambertMaterial } from 'three';
+import { type Object3D, type PerspectiveCamera, BufferAttribute, BufferGeometry, Bone, Color, Group, Material, Matrix4, Mesh, Quaternion, Skeleton as ThreeSkeleton, SkinnedMesh, Sphere, Vector3, MeshLambertMaterial } from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { parseChr, parseAni, type Motion, type Skeleton } from './formats/chr';
 import { parseO3d, type O3dPart } from './formats/o3d';
@@ -463,6 +463,20 @@ export class MoverInstance {
 
   /** efeitos do conjunto presos nesta instância (WorldView.attachSetSfx); trocar o objeto ou null os desliga */
   setSfxToken: object | null = null;
+
+  /**
+   * Cor do cabelo (m_fHairColorR/G/B → m_fAmbient da malha do cabelo, MoverRender.cpp): multiplica a cor do material das
+   * malhas `Part_<sexo>HairNN` desta instância (materiais clonados — o template é compartilhado). null volta ao original.
+   */
+  setHairColor(rgb: [number, number, number] | null) {
+    for (const { mesh, file } of this.meshFiles) {
+      if (!/^Part_(male|female)Hair\d+\.o3d$/i.test(file)) continue;
+      const base = (mesh.userData.hairBase ??= mesh.material) as Material | Material[];
+      if (!rgb) { mesh.material = base; continue; }
+      const tint = (m: Material) => { const c = m.clone(); (c as Material & { color?: Color }).color?.setRGB(rgb[0], rgb[1], rgb[2]); return c; };
+      mesh.material = Array.isArray(base) ? base.map(tint) : tint(base);
+    }
+  }
 
   dispose() { this.setSfxToken = null; clearTimeout(this.bubbleTimer); this.bubble?.removeFromParent(); this.label?.removeFromParent(); this.group.removeFromParent(); this.effect?.dispose(); this.effect = null; }
 }

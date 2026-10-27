@@ -15,6 +15,7 @@
       <a href="#dashboard" data-view="dashboard">📊 <span>Dashboard</span></a>
       <a href="#account" data-view="account">👥 <span>Account</span></a>
       <a href="#world" data-view="world">🌐 <span>World</span></a>
+      <a href="#database" data-view="database">🗄️ <span>Database</span></a>
       <h6>Conteúdo</h6>
       <a class="off" title="Em breve">📍 <span>Zones</span></a>
       <a class="off" title="Em breve">📦 <span>Items</span></a>
@@ -124,6 +125,79 @@
       </form>
     </section>
 
+    <!-- ================= DATABASE ================= -->
+    <section id="view-database" class="view" hidden>
+      <header class="top">
+        <div><h1>Database</h1><p>Conexão com o PostgreSQL, instalar o banco do zero, backup, restaurar e zerar</p></div>
+        <div class="actions"><button class="btn" id="dbRefresh">↻ Atualizar</button></div>
+      </header>
+      <p id="dbMsg" class="msg" role="status"></p>
+
+      <div class="card" id="dbStatusCard">
+        <div class="shead"><span class="dot" id="dbDot"></span><h4 id="dbStatusText">Verificando o banco…</h4></div>
+      </div>
+
+      <div class="dbcols">
+        <!-- 1. conexão -->
+        <form class="card conn" id="dbConnForm" autocomplete="off">
+          <h5>🔌 1. Conexão com o PostgreSQL</h5>
+          <p class="dim">Banco, usuário e senha que o jogo usa. A senha fica no arquivo de senhas do PostgreSQL (pgpass.conf), não no projeto.</p>
+          <div class="fields">
+            <label>Host <input id="cnHost" required /></label>
+            <label>Porta <input id="cnPort" type="number" min="1" max="65535" required /></label>
+            <label class="wide">Nome do banco <input id="cnDb" required /></label>
+            <label class="wide">Usuário do jogo <input id="cnUser" required /></label>
+            <label class="wide">Senha do usuário do jogo <input id="cnPass" type="password" autocomplete="new-password" placeholder="vazio = manter a salva" /></label>
+          </div>
+          <p class="dim small" id="cnInfo"></p>
+          <div class="row"><button class="btn teal" type="submit" id="cnSave">Salvar e testar conexão</button></div>
+        </form>
+
+        <!-- 2. instalar -->
+        <form class="card install" id="dbInstallForm" autocomplete="off">
+          <h5>🧱 2. Instalar banco zerado</h5>
+          <p>Cria o banco <code id="dbName">flyffweb</code> vazio com toda a estrutura (e o usuário <code id="dbUserName">flyffweb_app</code>, se faltar),
+            usando a Conexão ao lado. Se o banco já existe, nada é feito.</p>
+          <p class="dim">Precisa do superusuário do PostgreSQL (o da instalação, normalmente <b>postgres</b>). A senha dele é usada só agora e não fica guardada.</p>
+          <div class="fields">
+            <label class="wide">Superusuário <input id="insAdmin" value="postgres" autocomplete="off" /></label>
+            <label class="wide">Senha do superusuário <input id="insAdminPass" type="password" autocomplete="off" required /></label>
+            <label>Conta de dono (opcional) <input id="insOwner" placeholder="usuário" autocomplete="off" /></label>
+            <label>Senha da conta <input id="insOwnerPass" type="password" autocomplete="new-password" placeholder="mín. 4 caracteres" /></label>
+          </div>
+          <div class="row"><button class="btn teal" type="submit" id="dbInstallBtn">Instalar banco</button></div>
+          <pre id="insLog" hidden></pre>
+        </form>
+
+        <!-- 3. backup e zerar -->
+        <div class="col">
+          <form class="card" id="dbBackupForm" autocomplete="off">
+            <h5>💾 Fazer backup</h5>
+            <p class="dim">Cópia completa (contas, personagens, itens, guilds, site) em <code>data/backups/</code>. Pode fazer com o jogo rodando.</p>
+            <input id="dbLabel" maxlength="40" placeholder="Nome opcional (ex.: antes-do-evento)" aria-label="Nome do backup (opcional)" />
+            <div class="row"><button class="btn teal" type="submit" id="dbBackupBtn">Fazer backup agora</button></div>
+            <p class="dim small" id="dbTools"></p>
+          </form>
+
+          <form class="card danger" id="dbResetForm" autocomplete="off">
+            <h5>⚠️ Zerar o banco</h5>
+            <p>Apaga <b>tudo</b> e deixa o banco vazio, só com a estrutura. Antes, um backup automático é feito (<code>…-antes-de-zerar.dump</code>).</p>
+            <p class="dim small" id="dbInUse"></p>
+            <input id="dbResetConfirm" placeholder="Digite ZERAR para confirmar" aria-label="Digite ZERAR para confirmar" />
+            <div class="row"><button class="btn stop" type="submit" id="dbResetBtn">Zerar banco</button></div>
+          </form>
+        </div>
+      </div>
+
+      <div class="card">
+        <h5>📦 Backups</h5>
+        <table class="grid">
+          <thead><tr><th>Arquivo</th><th>Data</th><th>Tamanho</th><th>Ações</th></tr></thead>
+          <tbody id="dbRows"><tr><td colspan="4" class="empty">Carregando…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
     <!-- ================= ACCOUNT ================= -->
     <section id="view-account" class="view" hidden>
       <header class="top">
@@ -179,6 +253,15 @@
       <label>Duração <select id="banDays"><option value="1">1 dia</option><option value="7">7 dias</option><option value="30">30 dias</option><option value="0">Permanente</option></select></label>
       <p class="dim">Se estiver online, a conta é desconectada na hora.</p>
       <div class="dactions"><button class="btn" value="cancel">Cancelar</button><button class="btn stop" value="ok">Banir</button></div>
+    </form>
+  </dialog>
+  <dialog id="dlgRestore">
+    <form method="dialog">
+      <h4>Restaurar <span class="who"></span></h4>
+      <p>O banco atual é substituído por este backup. Antes, um backup automático do estado atual é feito.</p>
+      <p class="dim">Para confirmar, digite o nome do arquivo:</p>
+      <input id="restoreConfirm" aria-label="Nome do backup para confirmar" autocomplete="off" />
+      <div class="dactions"><button class="btn" value="cancel">Cancelar</button><button class="btn stop" value="ok">Restaurar</button></div>
     </form>
   </dialog>
   <dialog id="dlgPass">

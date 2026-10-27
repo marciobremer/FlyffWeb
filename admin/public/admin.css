@@ -114,3 +114,29 @@ dialog input { width: 100%; }
   .cards, .cards.two, .searchbar, .rates .row { grid-template-columns: 1fr; }
   dl { grid-template-columns: auto auto; }
 }
+
+/* ---------- Database: conexão | instalar | backup + zerar, e a lista embaixo ---------- */
+.dbcols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; margin-bottom: 16px; }
+.dbcols > .card, .dbcols .col > .card { margin-bottom: 0; }
+.dbcols .col { display: flex; flex-direction: column; gap: 16px; }
+#view-database .card p { margin: 0 0 10px; }
+#view-database .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; margin: 4px 0 12px; }
+#view-database .fields label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--dim); min-width: 0; }
+#view-database .fields label.wide { grid-column: 1 / -1; }
+#view-database .fields input, #view-database .card > input { width: 100%; box-sizing: border-box; }
+#view-database .card > input { margin-bottom: 10px; }
+#view-database .row { display: flex; gap: 10px; flex-wrap: wrap; }
+#view-database code { font-size: 12.5px; color: #b8c6dc; }
+.card.danger { border-color: #5a2026; }
+.card.danger h5 { color: #ff9a9d; }
+.card.conn.attention, .card.install.attention { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber) inset; }
+#insLog { margin: 10px 0 0; background: #070b14; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font: 12.5px/1.5 ui-monospace, Consolas, monospace; color: #b8c6dc; white-space: pre-wrap; }
+#dbStatusCard .shead h4 { margin: 0; font-size: 15px; }
+#dbInUse.bad { color: #ff9a9d; }
+#dlgRestore p { max-width: 420px; }
+#dlgRestore input { width: 100%; box-sizing: border-box; }
+.dbname { font: 13px ui-monospace, Consolas, monospace; word-break: break-all; }
+.dbacts { display: flex; gap: 6px; flex-wrap: wrap; }
+@media (max-width: 1300px) { .dbcols { grid-template-columns: 1fr 1fr; } .dbcols .col { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; } }
+@media (max-width: 800px) { .dbcols, .dbcols .col { grid-template-columns: 1fr; } }
+#view-database .small { font-size: 12px; }

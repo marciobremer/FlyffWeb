@@ -9,7 +9,8 @@ import { pool, transaction } from './index';
  */
 const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'migrations');
 
-async function main() {
+/** aplica as migrações pendentes; devolve quantas (o painel admin usa depois de zerar/restaurar o banco) */
+export async function runMigrations(log: (t: string) => void = console.log): Promise<number> {
   await pool.query('CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())');
   const done = new Set((await pool.query<{ name: string }>('SELECT name FROM schema_migrations')).rows.map((r) => r.name));
   const files = fs.readdirSync(dir).filter((f) => /^\d+_.*\.sql$/.test(f)).sort();
@@ -21,10 +22,14 @@ async function main() {
       await c.query(sql);
       await c.query('INSERT INTO schema_migrations (name) VALUES ($1)', [f]);
     });
-    console.log('aplicada:', f);
+    log('aplicada: ' + f);
     n++;
   }
-  console.log(n ? `${n} migração(ões) aplicada(s).` : 'Banco já está atualizado.');
+  log(n ? `${n} migração(ões) aplicada(s).` : 'Banco já está atualizado.');
+  return n;
 }
 
-main().catch((e) => { console.error('Falha na migração:', e.message); process.exitCode = 1; }).finally(() => pool.end());
+// `npm run db:migrate` (rodando este arquivo direto)
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  runMigrations().catch((e) => { console.error('Falha na migração:', e.message); process.exitCode = 1; }).finally(() => pool.end());
+}

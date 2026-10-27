@@ -13,6 +13,9 @@ if errorlevel 1 (
   exit /b 1
 )
 
+rem nome do servidor grande, em azul (tools/banner.mjs), para achar esta janela entre as outras
+node tools\banner.mjs
+
 if not exist "node_modules" (
   echo Instalando dependencias, so na primeira vez...
   call npm install

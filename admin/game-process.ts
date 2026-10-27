@@ -56,7 +56,7 @@ export class GameProcess {
     this.log('painel', `Iniciando o servidor do jogo na porta ${this.port}…`);
     const child = spawn(process.execPath, ['--import', 'tsx', 'servers/main.ts'], {
       cwd: this.root,
-      env: { ...process.env, PORT: String(this.port), ADMIN_TOKEN: this.token, FORCE_COLOR: '0' },
+      env: { ...process.env, PORT: String(this.port), ADMIN_TOKEN: this.token, FORCE_COLOR: '0', PGAPPNAME: 'flyffweb-game' },
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });

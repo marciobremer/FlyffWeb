@@ -1,0 +1,3 @@
+-- Raridade da arma (__WEAPON_RARITY do Titanium, WeaponRarity.inc): 0 Common, 1 Precious, 2 Rare, 3 Epic, 4 Legendary…
+-- multiplica o ataque (fAttackRate) e os bônus DST do item (fStatsRate)
+ALTER TABLE character_items ADD COLUMN rarity smallint NOT NULL DEFAULT 0 CHECK (rarity >= 0);

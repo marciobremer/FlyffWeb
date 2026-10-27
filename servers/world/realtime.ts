@@ -73,6 +73,7 @@ import type { InvEdit } from '../character/inventory';
  *                                                   conversa) ou pelo nome (/say Nome msg no chat); mesmos limites do chat
  * (servidor → cliente):
  *   { t: 'welcome', id, players: PlayerView[] }     seu id + quem já está no mundo
+ *   { t: 'clock', now, fixed }                       relógio do servidor (dia e noite) e a hora fixada pelo GM (null = andando)
  *   { t: 'friends', list: FriendView[] } / { t: 'friendOn', id, on } / { t: 'friendReq', id, name }
  *   { t: 'friendNew', f: FriendView } / { t: 'friendDel', id }   lista de amigos (ao entrar), amigo entrou/saiu, pedido
  *                                                   recebido, amizade feita, desfeita
@@ -113,7 +114,7 @@ import type { InvEdit } from '../character/inventory';
  *                                                   s stand/walk/run/dead; hp em milésimos do máximo
  * O servidor confere a sessão e o dono do personagem, descarta valores absurdos e salva a posição ao sair.
  */
-export interface PlayerView { /** mundo onde está (WdMadrigal, WdKebaras…) */ w: string; /** nome da guild (aparece acima do nome) */ guild?: string; id: number; name: string; sex: number; hair: number; head: number; level: number; p: [number, number, number]; h: number; s: string; /** símbolos II_* equipados */ eq: string[]; /** postura de combate 1–15 (0 = sem arma) */ mt: number; /** classe (JOB_*) */ job: number; /** conta de admin ou GM (cor do nome) */ rank?: Rank; /** GM invisível (Dark Illusion) — só GMs/admins recebem */ iv?: 1 }
+export interface PlayerView { /** mundo onde está (WdMadrigal, WdKebaras…) */ w: string; /** nome da guild (aparece acima do nome) */ guild?: string; id: number; name: string; sex: number; hair: number; head: number; /** cor do cabelo (m_dwHairColor; 0 = padrão) */ hc?: number; level: number; p: [number, number, number]; h: number; s: string; /** símbolos II_* equipados */ eq: string[]; /** postura de combate 1–15 (0 = sem arma) */ mt: number; /** classe (JOB_*) */ job: number; /** conta de admin ou GM (cor do nome) */ rank?: Rank; /** GM invisível (Dark Illusion) — só GMs/admins recebem */ iv?: 1 }
 
 /** trade entre dois jogadores: o que cada um pôs, quem deu OK (trava a oferta) e quem confirmou a troca */
 interface Trade { a: Conn; b: Conn; offer: Map<Conn, TradeOffer>; lock: Set<Conn>; ok: Set<Conn>; busy: boolean }
@@ -210,6 +211,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   /** ferreiro (upgrade, elemento, piercing, ultimate) — também dá ao combate as joias da ultimate e o fator de elemento */
   const smith = inventory ? new UpgradeRules(inventory.catalog) : null;
   if (rules && smith) rules.upgrade = smith;
+  if (inventory && smith) inventory.failStack = Object.fromEntries([...smith.failStack].map(([k, m]) => [String(k), Object.fromEntries(m)]));
   /** operação de ferreiro → menus do NPC (character.inc) que a liberam */
   const SMITH_MENUS: Record<string, string[]> = {
     safe: ['MMI_SMELT_SAFETY_GENERAL', 'MMI_SMELT_SAFETY_ACCESSORY', 'MMI_SMELT_SAFETY_ELEMENT', 'MMI_SMELT_SAFETY_PIERCING'],
@@ -409,15 +411,20 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     send(c.ws, { t: 'invis', id: p.id, on });
     if (on) W(c).mobs?.forget(p.id); else fx();
   }
+  /** hora do jogo fixada por GM (//time 19), igual para todos; null = o relógio anda (shared/gameclock.ts) */
+  let clockFixed: number | null = null;
   const mobHp = (m: Mob) => Math.round((m.hp / m.maxHp) * 1000);
 
   /** atributos de luta a partir do personagem e do que está equipado (arma da mão direita, defesa das armaduras) */
   function fighterFrom(ch: { level: number; job: number; str: number; sta: number; dex: number; int: number }, st: InvState | null, buffs: [number, number][] = []): Fighter {
     const equipped: Equipped[] = [];
+    const now = Date.now();
     for (const i of st?.items ?? []) {
       if (i.c !== 1 || !inventory) continue;
+      // item de tempo vencido não dá nada (CItemElem::expired: sem DST, defesa, set nem piercing)
+      if (i.x && i.x <= now) continue;
       const d = inventory.catalog.byId.get(i.id);
-      if (d) equipped.push({ d, u: i.u, s: i.s, p: i.p, e: i.e, el: i.el, g: i.g });
+      if (d) equipped.push({ d, u: i.u, s: i.s, p: i.p, e: i.e, el: i.el, g: i.g, r: i.r });
     }
     return rules!.buildFighter(ch, equipped, buffs);
   }
@@ -551,7 +558,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         gold: o.gold,
         items: o.items.map((e) => {
           const it = st.items.find((i) => i.c === 0 && i.s === e.s), d = it && inventory.catalog.byId.get(it.id);
-          return it && d ? { s: e.s, it: { id: it.id, n: e.n, u: it.u, e: it.e, el: it.el, ...(it.p ? { p: it.p } : {}), ...(it.x ? { x: it.x } : {}) }, d: inventory.catalog.viewFull(d) } : null;
+          return it && d ? { s: e.s, it: { id: it.id, n: e.n, u: it.u, e: it.e, el: it.el, ...(it.p ? { p: it.p } : {}), ...(it.x ? { x: it.x } : {}), ...(it.r ? { r: it.r } : {}) }, d: inventory.catalog.viewFull(d) } : null;
         }).filter(Boolean),
       };
     };
@@ -1333,6 +1340,15 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       const d = it && inventory.catalog.byId.get(it.id);
       if (!d) return;
       if (d.kind3 === 122 && await useTicket(c, slot, d.symbol)) return; // IK3_TICKET: viagem para outro mapa (Azria)
+      if (it.x && it.x <= Date.now()) { send(c.ws, { t: 'invError', error: `${d.name} expirou.` }); return; }
+      // caixa (propPackItem.inc): tudo o que vem dentro vai para a bolsa
+      if (inventory.catalog.packs.has(d.id)) {
+        const r = await inventory.openPack(p.id, slot);
+        if ('error' in r) { send(c.ws, { t: 'invError', error: r.error }); return; }
+        send(c.ws, inventory.view(r.state));
+        for (const n of r.names) reply(c, `Você recebeu ${n}.`);
+        return;
+      }
       if (!USE_KINDS.has(d.kind2)) { send(c.ws, { t: 'invError', error: `${d.name} ainda não pode ser usado.` }); return; }
       const now = Date.now();
       if ((cb.readyAt.get(d.kind2) ?? 0) > now) return; // ainda esperando (teclas repetidas)
@@ -1529,9 +1545,9 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     const tok = typeof msg.token === 'string' ? msg.token : null;
     const s = opts.resolveSession ? (tok ? await opts.resolveSession(tok) : null) : sessionFrom(tok);
     if (!s) { send(c.ws, { t: 'error', error: 'Sessão expirada. Entre novamente.' }); c.ws.close(); return; }
-    const r = await query<{ id: string; name: string; sex: number; hair_mesh: number; head_mesh: number; level: number; job: number; pos_x: number; pos_y: number; pos_z: number; angle: number;
+    const r = await query<{ id: string; name: string; sex: number; hair_mesh: number; hair_color: number; head_mesh: number; level: number; job: number; pos_x: number; pos_y: number; pos_z: number; angle: number;
       str: number; sta: number; dex: number; int: number; hp: number; mp: number; fp: number; exp: string; stat_points: number; shortcuts: unknown; skills: Record<string, number>; skill_points: number; world_id: number }>(
-      'SELECT id, name, sex, hair_mesh, head_mesh, level, job, pos_x, pos_y, pos_z, angle, world_id, str, sta, dex, "int", hp, mp, fp, exp, stat_points, shortcuts, skills, skill_points FROM characters WHERE id = $1 AND account_id = $2 AND NOT deleted',
+      'SELECT id, name, sex, hair_mesh, hair_color, head_mesh, level, job, pos_x, pos_y, pos_z, angle, world_id, str, sta, dex, "int", hp, mp, fp, exp, stat_points, shortcuts, skills, skill_points FROM characters WHERE id = $1 AND account_id = $2 AND NOT deleted',
       [Number(msg.characterId), s.accountId]);
     const ch = r.rows[0];
     if (!ch) { send(c.ws, { t: 'error', error: 'Personagem não encontrado nesta conta.' }); c.ws.close(); return; }
@@ -1551,7 +1567,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     const wr = [...worlds.values()].find((x) => x.id === ch.world_id) ?? null;
     const wname = wr?.name ?? MAIN;
     const pStart = wr ? (inWorld(p0) ? p0 : [ch.pos_x, ch.pos_y, ch.pos_z]) : [...REVIVE_AT];
-    c.player = { w: wname, ...(guildRow ? { guild: guildRow.name } : {}), id, name: ch.name, sex: ch.sex, hair: ch.hair_mesh, head: ch.head_mesh, level: ch.level, p: pStart as [number, number, number], h: ch.angle, s: 'stand', eq: inv ? inventory!.looks(inv, c.hide) : [], job: ch.job, mt: stanceOf(c, inv ? inventory!.combatMotion(inv, ch.job) : 0), rank };
+    c.player = { w: wname, ...(guildRow ? { guild: guildRow.name } : {}), id, name: ch.name, sex: ch.sex, hair: ch.hair_mesh, ...(ch.hair_color ? { hc: ch.hair_color } : {}), head: ch.head_mesh, level: ch.level, p: pStart as [number, number, number], h: ch.angle, s: 'stand', eq: inv ? inventory!.looks(inv, c.hide) : [], job: ch.job, mt: stanceOf(c, inv ? inventory!.combatMotion(inv, ch.job) : 0), rank };
     if (rules) {
       const okJob = jobForLevel(ch.job, ch.level);
       if (okJob !== ch.job) { // nível abaixo do da classe (mexido fora do jogo): volta para a classe que o nível permite
@@ -1570,6 +1586,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     }
     c.onlineSet = query('UPDATE characters SET online = true WHERE id = $1', [id]).then(() => {}, () => {}); // o site mostra quem está online
     const me = c.player;
+    send(c.ws, { t: 'clock', now: Date.now(), fixed: clockFixed });
     send(c.ws, { t: 'welcome', id, w: me.w, p: me.p, eq: me.eq, mt: me.mt, players: [...conns].filter((o) => o !== c && o.player && o.player.w === me.w && seesActor(c, o.player.id)).map((o) => o.player) });
     // GM/admin entra imortal (pode desligar com //god off ou no painel)
     if (isStaff(c)) { c.god = true; send(c.ws, { t: 'god', on: true }); }
@@ -1686,6 +1703,11 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
               const want = on ?? !c.invis;
               setInvis(c, want);
               return want ? 'Dark Illusion: você está invisível para os jogadores (GMs e admins ainda veem você).' : 'Dark Illusion desligada: todos veem você de novo.';
+            },
+            time: (hour) => {
+              clockFixed = hour;
+              for (const o of conns) if (o.player) send(o.ws, { t: 'clock', now: Date.now(), fixed: clockFixed });
+              return hour === null ? 'Relógio do jogo andando de novo (1 dia = 28,8 min).' : `Hora do jogo fixada em ${String(Math.floor(hour) % 24).padStart(2, '0')}:${String(Math.round((hour % 1) * 60)).padStart(2, '0')} para todos (//time auto volta ao normal).`;
             },
             god: (on) => {
               c.god = on ?? !c.god;

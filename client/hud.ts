@@ -83,7 +83,7 @@ export class GameHud {
     m.id = 'taskMenu';
     m.hidden = true;
     m.setAttribute('role', 'menu');
-    void themeImage('WndTaskMenu.tga').then((u) => { if (u) m.style.backgroundImage = `url(${u})`; });
+    void themeImage('WndTaskMenu.tga').then((u) => { if (u) m.style.borderImageSource = `url(${u})`; });
     const list = document.createElement('ul');
     for (const it of this.items()) {
       const li = document.createElement('li');

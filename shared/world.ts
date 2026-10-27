@@ -516,7 +516,7 @@ export class WorldView {
   }
 
   /** Cria (ou recria) o personagem em (x, z) FlyFF; espera o tile e a colisão dele e põe a câmera atrás. */
-  async spawnPlayer(x: number, z: number, y = 100, sex: Sex = 'male', look: { hair?: number; head?: number; equip?: string[] } = {}) {
+  async spawnPlayer(x: number, z: number, y = 100, sex: Sex = 'male', look: { hair?: number; head?: number; equip?: string[]; hairColor?: number } = {}) {
     const d = this.data;
     if (!d) return;
     const s = MAP_SIZE * d.wld.mpu;

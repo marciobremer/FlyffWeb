@@ -37,6 +37,8 @@ export interface GmContext {
   invis?(on?: boolean): string;
   /** imortal: liga (true), desliga (false) ou alterna (sem valor) — leva os golpes mas o HP não cai */
   god?(on?: boolean): string;
+  /** dia e noite: fixa a hora do jogo para todos (1–24, decimal) ou volta a andar (null) */
+  time?(hour: number | null): string;
   revive?(id: number): string;
   /** leva um personagem online para `p` (x, y, z FlyFF; o cliente acerta a altura pelo chão) */
   teleport(id: number, p: [number, number, number]): boolean;
@@ -53,12 +55,13 @@ const HELP = [
   '//set-level [personagem] <nível>   muda o nível (1–' + MAX_LEVEL + ')',
   '//set-job [personagem] <classe>   muda a classe (ex.: knight, blade, ringmaster, elementor… ou o número JOB_*)',
   '//give-item [personagem] <II_…|id> [quantidade] [+enchant] [elemento+nível] [furosN]   ex.: //give-item II_WEA_SWO_WOODEN +5 fogo+3',
-  '   enchant: joias até +20, o resto até +10 · furos1–4: espaços de piercing (só suit)',
+  '   enchant: joias até +20, o resto até +10 · furos1–4: espaços de piercing (só suit) · rar0–N ou o nome (epic, legendary…): raridade da arma',
   '//reset-stats [personagem]   devolve os pontos de atributo (STR/STA/DEX/INT voltam a 15)',
   '//give-penya [personagem] <quantia>',
   '//mob <MI_…|id> [quantidade] [x z]   invoca monstros perto de você ou no ponto x z (não renascem; boss já vem agressivo)',
   '//mob-clear   apaga os monstros invocados deste mapa',
   '//invis [on|off]   Dark Illusion: fica invisível para os jogadores (GMs/admins ainda veem; mobs largam você)',
+  '//time <hora|auto>   fixa a hora do jogo para todos (ex.: //time 19, //time 6:30) ou volta o dia e noite normal',
   '//god [on|off]   imortal: os mobs batem e o dano aparece, mas o HP não cai (ligado ao entrar, para GM/admin)',
   '//kill [personagem]   mata o personagem · //revive [personagem]   revive ali mesmo com HP cheio',
   '//help   esta lista',
@@ -125,6 +128,18 @@ export async function runGmCommand(ctx: GmContext, text: string): Promise<void> 
     const r = ctx.invis?.(a === 'on' ? true : a === 'off' ? false : undefined);
     if (r) ctx.reply(r);
     log(`invis ${a || 'alterna'}`);
+    return;
+  }
+
+  if (name === 'time' || name === 'hora') {
+    const a = (args[0] ?? '').toLowerCase();
+    if (!a || a === 'auto' || a === 'off') { ctx.reply(ctx.time?.(null) ?? 'Indisponível.'); log('time auto'); return; }
+    const m = /^(\d{1,2})(?::(\d{2}))?$/.exec(a);
+    const h = m ? Number(m[1]) + Number(m[2] ?? 0) / 60 : NaN;
+    if (!(h >= 0 && h < 24.99)) { ctx.reply('Uso: //time <0–24>[:minutos] ou //time auto. Ex.: //time 19 (noite), //time 6 (amanhecer), //time 17:30 (entardecer).'); return; }
+    // o CGameTimer conta 1–24; 0 = 24 (meia-noite)
+    ctx.reply(ctx.time?.(h < 1 ? h + 24 : h) ?? 'Indisponível.');
+    log(`time ${a}`);
     return;
   }
 
@@ -203,12 +218,16 @@ export async function runGmCommand(ctx: GmContext, text: string): Promise<void> 
     const def = isInt(what) ? inv.catalog.byId.get(Number(what)) : inv.catalog.bySymbol.get((what ?? '').toUpperCase());
     if (!def) { ctx.reply(what ? `Item ${what} não existe.` : 'Uso: //give-item [personagem] <II_…|id> [quantidade] [+enchant] [elemento+nível]'); return; }
     // resto: quantidade, +N (enchant) e elemento com nível (fogo+3, agua5…), em qualquer ordem
-    let count = 1, u = 0, e = 0, el = 0, p = 0;
+    let count = 1, u = 0, e = 0, el = 0, p = 0, r = 0;
+    const rarityByName = new Map(inv.catalog.rarity.map((x, i) => [x.name.toLowerCase(), i]));
     for (const a of args) {
       const low = a.toLowerCase();
       const m = /^([a-zà-ú]+)\+?(\d+)?$/.exec(low);
       const pierce = /^(?:furos?|piercing|p)(\d)$/.exec(low);
+      const rar = /^(?:rar|raridade|r)(\d+)$/.exec(low);
       if (/^\+\d+$/.test(a)) u = Number(a.slice(1));
+      else if (rar) r = Number(rar[1]);
+      else if (rarityByName.has(low)) r = rarityByName.get(low)!;
       else if (pierce) p = Number(pierce[1]);
       else if (isInt(a)) count = Math.min(9999, Math.max(1, Number(a)));
       else if (m && ELEMENTS[m[1]]) { e = ELEMENTS[m[1]]; el = Math.min(10, Number(m[2] ?? 1)); }
@@ -216,9 +235,11 @@ export async function runGmCommand(ctx: GmContext, text: string): Promise<void> 
     }
     let left: number;
     if (u > maxUpgrade(def.parts)) { ctx.reply(maxUpgrade(def.parts) ? `${def.name} vai no máximo até +${maxUpgrade(def.parts)}.` : `${def.name} não aceita enchant.`); return; }
+    if (r && def.kind1 !== 1) { ctx.reply('Raridade só vale para arma.'); return; }
+    if (r >= inv.catalog.rarity.length) { ctx.reply(`Raridade vai de 0 a ${inv.catalog.rarity.length - 1}.`); return; }
     if (p > maxPiercing(def.parts)) { ctx.reply(maxPiercing(def.parts) ? `${def.name} abre no máximo ${maxPiercing(def.parts)} furos.` : 'Só a suit abre furos de piercing.'); return; }
-    try { left = await inv.add(t.id, def.id, count, { u, e, el, p }); } catch (err) { ctx.reply((err as Error).message); return; }
-    const extra = `${u ? ` +${u}` : ''}${e ? ` (${ELEMENT_NAMES[e]} +${el})` : ''}${p ? ` [${p} furo${p > 1 ? 's' : ''}]` : ''}`;
+    try { left = await inv.add(t.id, def.id, count, { u, e, el, p, r }); } catch (err) { ctx.reply((err as Error).message); return; }
+    const extra = `${u ? ` +${u}` : ''}${e ? ` (${ELEMENT_NAMES[e]} +${el})` : ''}${p ? ` [${p} furo${p > 1 ? 's' : ''}]` : ''}${r ? ` <${inv.catalog.rarity[r].name}>` : ''}`;
     log(`give-item ${t.name} ${def.symbol}${extra} ×${count - left}`);
     ctx.reply(`${count - left}× ${def.name}${extra} na bolsa de ${t.name}.${left ? ` ${left} não couberam (bolsa cheia).` : ''}`);
     return;

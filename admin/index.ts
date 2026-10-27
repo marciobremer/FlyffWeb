@@ -2,12 +2,17 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { pool } from '../servers/common/db/index';
+import { dbConfig, dbEnvFixed, dbPassword, pool, reconfigureDb } from '../servers/common/db/index';
 import { ADMIN_PORT, ANNOUNCE_MAX, GAME_PORT, ROOT, SITE_DIR, SITE_PORT } from '../servers/common/config';
 import { GameProcess } from './game-process';
 import { SiteProcess } from './site-process';
 import { RATES_FILE, RATE_MAX, RATE_MIN, rates, saveRates } from '../servers/common/rates';
 import { AdminError, banAccount, createAccount, dbStatus, listAccounts, setPassword, unbanAccount, unbanByName } from '../servers/auth/accounts';
+import { dbHealth, installDatabase } from '../servers/common/db/install';
+import { ADMIN_APP, DbOpError, backupPath, createBackup, deleteBackup, listBackups, otherConnections, resetDatabase, restoreBackup, toolsReady } from '../servers/common/db/backup';
+
+// conexões do painel com o nome dele (o jogo e o site que ele inicia usam outro): "banco em uso" não conta o próprio painel
+process.env.PGAPPNAME = ADMIN_APP;
 
 /**
  * Painel admin (local): inicia/para/compila o servidor do jogo e administra contas.
@@ -66,6 +71,14 @@ async function readJson(req: http.IncomingMessage): Promise<Record<string, unkno
 async function onlineAccounts() {
   const s = await game.stats();
   return new Map((s?.data.players ?? []).map((p) => [p.accountId, p.name]));
+}
+
+/** uma operação de banco por vez (backup/restaurar/zerar); erros delas viram mensagem para o painel */
+let dbBusy = '';
+async function dbOp<T>(fn: () => Promise<T>): Promise<T> {
+  if (dbBusy) throw new AdminError(`Aguarde: ${dbBusy} em andamento.`);
+  dbBusy = 'operação no banco';
+  try { return await fn(); } catch (e) { throw e instanceof DbOpError ? new AdminError(e.message) : e; } finally { dbBusy = ''; }
 }
 
 async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
@@ -140,6 +153,63 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
     return send(res, 200, r);
   }
 
+  // ---------------- Database: backup, baixar, apagar, restaurar e zerar ----------------
+  if (p === '/db' && m === 'GET') {
+    // abre mesmo com o banco fora do ar (é quando a parte de instalar faz falta)
+    const health = await dbHealth();
+    const others = health.state === 'ok' ? await otherConnections().catch(() => []) : [];
+    return send(res, 200, { health, connection: { ...dbConfig, hasPassword: !!dbPassword(), fixed: dbEnvFixed }, database: dbConfig.database, user: dbConfig.user, backups: listBackups(), tools: toolsReady(), others, gameRunning: !!game.pid, siteRunning: !!site.pid, busy: dbBusy });
+  }
+  if (p === '/db/backup' && m === 'POST') {
+    const b = await readJson(req);
+    return send(res, 201, await dbOp(() => createBackup(String(b.label ?? ''))));
+  }
+  const bk = /^\/db\/backups\/([\w.-]+\.dump)$/.exec(p);
+  if (bk && m === 'GET') {
+    const file = backupPath(bk[1]);
+    res.statusCode = 200;
+    res.setHeader('content-type', 'application/octet-stream');
+    res.setHeader('content-disposition', `attachment; filename="${bk[1]}"`);
+    res.setHeader('content-length', String(fs.statSync(file).size));
+    fs.createReadStream(file).pipe(res);
+    return;
+  }
+  if (bk && m === 'DELETE') { deleteBackup(bk[1]); return send(res, 200, { ok: true }); }
+  // conexão: host/porta/banco/usuário em data/database.json e a senha do usuário do jogo no pgpass.conf; testa na hora
+  if (p === '/db/connection' && m === 'PUT') {
+    const b = await readJson(req);
+    if (game.pid || site.pid) throw new AdminError('Pare o servidor do jogo antes de trocar a conexão (ele continua na antiga até reiniciar).');
+    const host = String(b.host ?? '').trim(), database = String(b.database ?? '').trim(), user = String(b.user ?? '').trim(), port = Math.round(Number(b.port));
+    if (!host || !/^[\w.-]+$/.test(host)) throw new AdminError('Host inválido.');
+    if (!(port >= 1 && port <= 65535)) throw new AdminError('Porta inválida.');
+    if (!/^[A-Za-z_][\w$]{0,62}$/.test(database)) throw new AdminError('Nome do banco: letras, números e _ (começando por letra).');
+    if (!/^[A-Za-z_][\w$]{0,62}$/.test(user)) throw new AdminError('Usuário: letras, números e _ (começando por letra).');
+    const password = String(b.password ?? '');
+    reconfigureDb({ host, port, database, user }, password || undefined);
+    return send(res, 200, { health: await dbHealth(), connection: { ...dbConfig, hasPassword: !!dbPassword(), fixed: dbEnvFixed } });
+  }
+  if (p === '/db/install' && m === 'POST') {
+    const b = await readJson(req);
+    if (game.pid || site.pid) throw new AdminError('Pare o servidor do jogo (Dashboard → Parar) antes de instalar o banco.');
+    const ownerUser = String(b.ownerUser ?? '').trim();
+    return send(res, 200, await dbOp(() => installDatabase(
+      { adminUser: String(b.adminUser ?? 'postgres'), adminPassword: String(b.adminPassword ?? ''), owner: ownerUser ? { username: ownerUser, password: String(b.ownerPassword ?? '') } : undefined },
+      (u, pw) => createAccount({ username: u, password: pw, authority: 'Z' }),
+    )));
+  }
+  if ((p === '/db/restore' || p === '/db/reset') && m === 'POST') {
+    const b = await readJson(req);
+    if (game.pid || site.pid) throw new AdminError('Pare o servidor do jogo (Dashboard → Parar) antes: ele está usando o banco.');
+    const log = (t: string) => game.log('painel', t);
+    if (p === '/db/reset') {
+      if (b.confirm !== 'ZERAR') throw new AdminError('Digite ZERAR para confirmar.');
+      return send(res, 200, await dbOp(() => resetDatabase(log)));
+    }
+    const name = String(b.name ?? '');
+    if (b.confirm !== name) throw new AdminError('Digite o nome do backup para confirmar.');
+    return send(res, 200, await dbOp(() => restoreBackup(name, log)));
+  }
+
   if (p === '/accounts' && m === 'GET') {
     const [list, online] = await Promise.all([
       listAccounts({ user: url.searchParams.get('user') ?? '', nick: url.searchParams.get('nick') ?? '', page: Number(url.searchParams.get('page') ?? 1), size: Number(url.searchParams.get('size') ?? 25) }),
@@ -195,7 +265,7 @@ const server = http.createServer((req, res) => {
   if (url.pathname.startsWith('/admin/api/')) {
     if (req.headers['x-admin'] !== '1') return send(res, 403, { error: 'Cabeçalho x-admin ausente.' });
     api(req, res, url).catch((e) => {
-      if (e instanceof AdminError) return send(res, 400, { error: e.message });
+      if (e instanceof AdminError || e instanceof DbOpError) return send(res, 400, { error: e.message });
       console.error('admin', url.pathname, e);
       send(res, 500, { error: 'Erro interno: ' + (e as Error).message });
     });

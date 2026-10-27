@@ -8,6 +8,7 @@ import { motionOf } from '../../shared/motions';
 import { fitsPart, type ItemCatalog, type ItemDef } from '../common/items';
 import type { MoverProp } from './world';
 import type { UpgradeRules } from './upgrade';
+import { effectiveExpUp } from '../../shared/expup';
 
 /**
  * Fórmulas de combate portadas do servidor original (Source/_Common/MoverAttack.cpp, MoverParam.cpp,
@@ -49,10 +50,15 @@ export interface Fighter {
   adjHit: number; parry: number;
   /** elemento e nível da arma (ataque) e da suit (defesa) — [0, 0] sem elemento */
   wElem: [number, number]; sElem: [number, number];
+  /** fAttackRate da raridade da arma da mão direita (__WEAPON_RARITY; 1 = Common) */
+  wRare: number;
 }
 
 /** item equipado: definição, enchant, espaço (PARTS_*), cartas espetadas (piercing, 0 = furo vazio), elemento e joias da ultimate */
-export interface Equipped { d: ItemDef; u: number; s: number; p?: number[]; e?: number; el?: number; g?: number[] }
+export interface Equipped { d: ItemDef; u: number; s: number; p?: number[]; e?: number; el?: number; g?: number[]; /** raridade da arma (WeaponRarity.inc) */ r?: number }
+
+/** `float` do C++: int × float vira float (32 bits) antes do (int) — 10 × 1.3f dá 12, não 13 */
+const f32mul = (a: number, b: number) => Math.trunc(Math.fround(a * Math.fround(b)));
 
 export interface HitResult { hit: boolean; dmg: number; crit: boolean }
 
@@ -76,6 +82,9 @@ export class CombatRules {
   readonly D: Record<string, number> = {};
   /** expUpitem (expTable.inc): bônus % por enchant — colunas arma, capacete, traje, luva, bota, escudo */
   private expUp: number[][] = [];
+  /** Setitem do expTable.inc: bônus das 4 peças (traje, luva, bota, capacete) pelo menor enchant entre elas, +1…+10 —
+   *  [precisão, bloqueio, HP máx. %, magia extra, todos os atributos] */
+  private setUp: number[][] = [];
   private ik: { armor: number; armorEtc: number; helmet: number; suit: number; gauntlet: number; boots: number; shield: number };
 
   constructor(resDir: string, readonly items: ItemCatalog) {
@@ -95,12 +104,15 @@ export class CombatRules {
     for (let lv = 0; lv < rows.length; lv++) this.gpAt[lv] = rows[lv][2] || 0;
     this.hand = items.bySymbol.get('II_WEA_HAN_HAND') ?? null;
     for (const n of ['STR', 'STA', 'DEX', 'INT', 'ADJDEF', 'ADJDEF_RATE', 'ATKPOWER_RATE', 'CHR_DMG', 'ATTACKSPEED', 'ATTACKSPEED_RATE', 'ADJ_HITRATE', 'PARRY', 'HP_MAX', 'MP_MAX', 'FP_MAX', 'HP_MAX_RATE', 'MP_MAX_RATE', 'FP_MAX_RATE',
-      'SWD_DMG', 'AXE_DMG', 'KNUCKLE_DMG', 'YOY_DMG', 'BOW_DMG', 'CRITICAL_BONUS', 'MONSTER_DMG', 'ATKPOWER', 'CHR_CHANCECRITICAL', 'STAT_ALLUP', 'SPEED', 'BLOCK_MELEE', 'BLOCK_RANGE', 'SPELL_RATE', 'PVP_DMG']) this.D[n] = items.defines.get('DST_' + n) ?? -999;
+      'SWD_DMG', 'AXE_DMG', 'KNUCKLE_DMG', 'YOY_DMG', 'BOW_DMG', 'CRITICAL_BONUS', 'MONSTER_DMG', 'ATKPOWER', 'CHR_CHANCECRITICAL', 'STAT_ALLUP', 'SPEED', 'BLOCK_MELEE', 'BLOCK_RANGE', 'SPELL_RATE', 'PVP_DMG', 'ADDMAGIC']) this.D[n] = items.defines.get('DST_' + n) ?? -999;
     const dd = (s: string) => items.defines.get(s) ?? -1;
     this.ik = { armor: dd('IK2_ARMOR'), armorEtc: dd('IK2_ARMORETC'), helmet: dd('IK3_HELMET'), suit: dd('IK3_SUIT'), gauntlet: dd('IK3_GAUNTLET'), boots: dd('IK3_BOOTS'), shield: dd('IK3_SHIELD') };
     const up = exp.slice(exp.indexOf('expUpitem'));
     const ub = up.slice(up.indexOf('{') + 1, up.indexOf('}'));
-    this.expUp = ub.split(/\r?\n/).map((l) => l.replace(/\/\/.*$/, '').trim()).filter(Boolean).map((l) => l.split(/\s+/).map(Number));
+    const su = exp.slice(exp.search(/^Setitem\b/m));
+    this.setUp = su.slice(su.indexOf('{') + 1, su.indexOf('}')).split(/\r?\n/).map((l) => l.replace(/\/\/.*$/, '').trim()).filter(Boolean).map((l) => l.split(/\s+/).map(Number));
+    // a tabela como o oficial a usa de fato (transbordo do m_aExpUpItem[6][11], shared/expup.ts)
+    this.expUp = effectiveExpUp(ub.split(/\r?\n/).map((l) => l.replace(/\/\/.*$/, '').trim()).filter(Boolean).map((l) => l.split(/\s+/).map(Number)));
     const d = (s: string) => items.defines.get(s) ?? -1;
     this.ar = [d('AR_SHORT'), d('AR_LONG'), d('AR_FAR'), d('AR_RANGE'), d('AR_WAND'), d('AR_HRANGE'), d('AR_HWAND')];
     this.wt = { SWD: d('WT_MELEE_SWD'), AXE: d('WT_MELEE_AXE'), STICK: d('WT_MELEE_STICK'), KNUCKLE: d('WT_MELEE_KNUCKLE'), STAFF: d('WT_MELEE_STAFF'), WAND: d('WT_MAGIC_WAND'), YOYO: d('WT_MELEE_YOYO'), BOW: d('WT_RANGE_BOW') };
@@ -167,14 +179,17 @@ export class CombatRules {
     const dst = new Map<number, number>();
     for (const [k, v] of buffs) if (k > 0 && v) dst.set(k, (dst.get(k) ?? 0) + v); // buffs ativos somam como os itens
     let weapon: ItemDef | null = null, weaponUpgrade = 0, defMin = 0, defMax = 0, adjHit = 0, parry = 0;
-    let wElem: [number, number] = [0, 0], sElem: [number, number] = [0, 0];
+    let wElem: [number, number] = [0, 0], sElem: [number, number] = [0, 0], wRare = 1;
     const add = (k: number, v: number) => { if (k > 0 && v) dst.set(k, (dst.get(k) ?? 0) + v); };
-    for (const { d, u, s, p, e, el, g } of equipped) {
+    for (const { d, u, s, p, e, el, g, r } of equipped) {
       // arma ultimate: joias engastadas (GetDestParamUltimate, só na mão direita)
       if (s === 10 && g?.length && this.upgrade) for (const [k, v] of this.upgrade.gemDst(g)) add(k, v);
       if (e && s === 10) wElem = [e, el ?? 0];
       if (e && s === 2) sElem = [e, el ?? 0];
-      for (let i = 0; i < d.dest.length; i++) add(d.dest[i], d.adj[i]);
+      // raridade (SetDestParamEquip): os DST do item × fStatsRate, truncados
+      const rare = this.items.rarityOf(r);
+      for (let i = 0; i < d.dest.length; i++) add(d.dest[i], r ? f32mul(d.adj[i], rare.stats) : d.adj[i]);
+      if (s === 10) wRare = rare.atk;
       // joia: bônus da linha do enchant dela (accessory.inc)
       for (const [k, v] of this.items.accessoryDst(d.id, u)) add(k, v);
       // piercing (DestParamPiercingAvail): os DST de cada carta espetada (blocos Piercing do propItemEtc.inc)
@@ -190,11 +205,21 @@ export class CombatRules {
     // conjuntos (SetDestParamSetItem): conta as peças de cada set equipadas no lugar certo e soma os bônus de 1…n peças
     const sets = new Set(equipped.map((e) => this.items.setByItem.get(e.d.id)).filter((x) => !!x));
     for (const set of sets) {
-      const n = set!.elems.filter((el) => equipped.some((e) => e.d.id === el.item && fitsPart(el.part, e.s))).length;
+      // como o SetDestParamSetItem: conta cada item equipado do conjunto (um anel só vale uma vez, mesmo o set tendo 2 vagas de anel)
+      const n = Math.min(set!.elems.length, equipped.filter((e) => this.items.setByItem.get(e.d.id) === set && set!.elems.some((el) => el.item === e.d.id && fitsPart(el.part, e.s))).length);
       for (const a of set!.avail) if (a.n <= n) dst.set(a.dst, (dst.get(a.dst) ?? 0) + a.adj);
     }
+    // enchant do conjunto (GetSetItem + SetSetItemAvail): as 4 peças de armadura equipadas, qualquer set, pelo menor enchant
+    const armor = [2, 4, 5, 6].map((part) => equipped.find((e) => e.s === part));
+    const minUp = armor.every((e) => e) ? Math.min(...armor.map((e) => e!.u)) : 0;
+    const su = minUp > 0 ? this.setUp[Math.min(minUp, this.setUp.length) - 1] : undefined;
+    if (su) {
+      const [hit, block, hpRate, magic, added] = su;
+      add(this.D.ADJ_HITRATE, hit); add(this.D.BLOCK_RANGE, block); add(this.D.BLOCK_MELEE, block); add(this.D.HP_MAX_RATE, hpRate); add(this.D.ADDMAGIC, magic);
+      for (const n of ['STR', 'DEX', 'INT', 'STA']) add(this.D[n], added);
+    }
     const f: Fighter = { level: ch.level, job: ch.job, str: ch.str, sta: ch.sta, dex: ch.dex, int: ch.int, base: { str: ch.str, sta: ch.sta, dex: ch.dex, int: ch.int },
-      weapon, weaponUpgrade, weaponMul: weapon ? 1 + this.expUpFor(weapon, weaponUpgrade) / 100 : 1, defMin, defMax, dst, adjHit, parry, wElem, sElem };
+      weapon, weaponUpgrade, weaponMul: weapon ? 1 + this.expUpFor(weapon, weaponUpgrade) / 100 : 1, defMin, defMax, dst, adjHit, parry, wElem, sElem, wRare };
     const all = this.dstOf(f, 'STAT_ALLUP');
     f.str += this.dstOf(f, 'STR') + all; f.sta += this.dstOf(f, 'STA') + all; f.dex += this.dstOf(f, 'DEX') + all; f.int += this.dstOf(f, 'INT') + all;
     return f;
@@ -217,7 +242,9 @@ export class CombatRules {
    */
   panel(f: Fighter) {
     const block = (n: string) => Math.max(0, Math.min(96, this.dstOf(f, n)));
-    return { mBlock: block('BLOCK_MELEE'), rBlock: block('BLOCK_RANGE'), dct: this.dstOf(f, 'SPELL_RATE'), pvm: this.dstOf(f, 'MONSTER_DMG'), pvp: this.dstOf(f, 'PVP_DMG') };
+    // __STATISTICS: Speed = DST_SPEED cru (GetSpeedRun), Hit Rate = DST_ADJ_HITRATE (GetHitRate), Dodge = DST_PARRY ≥ 0 (GetDodgeRate)
+    return { mBlock: block('BLOCK_MELEE'), rBlock: block('BLOCK_RANGE'), dct: this.dstOf(f, 'SPELL_RATE'), pvm: this.dstOf(f, 'MONSTER_DMG'), pvp: this.dstOf(f, 'PVP_DMG'),
+      mvPct: this.dstOf(f, 'SPEED'), hit: this.dstOf(f, 'ADJ_HITRATE'), dodgeRate: Math.max(0, this.dstOf(f, 'PARRY')) };
   }
   critChance(f: Fighter) { return Math.max(0, Math.floor(Math.floor(f.dex / 10) * this.job(f.job).critical) + this.dstOf(f, 'CHR_CHANCECRITICAL')); }
 
@@ -298,6 +325,8 @@ export class CombatRules {
     min += plus; max += plus;
     if (f.weapon) { min = Math.floor(min * f.weaponMul); max = Math.floor(max * f.weaponMul); }
     if (f.weapon && f.weaponUpgrade > 0) { const v = Math.floor(Math.pow(f.weaponUpgrade, 1.5)); min += v; max += v; }
+    // raridade da arma: × fAttackRate depois do enchant
+    if (f.weapon && f.wRare !== 1) { min = f32mul(min, f.wRare); max = f32mul(max, f.wRare); }
     return [Math.max(1, min), Math.max(1, max)];
   }
 
@@ -351,7 +380,8 @@ export class CombatRules {
     // elemento da arma contra o do mob (GetDamagePropertyFactor, n/10000)
     const elem = 1 + (this.upgrade?.elementFactor(f.wElem[0], f.wElem[1], m.element, m.elementLevel) ?? 0) / 10000;
     const atk = Math.floor(rand(min, max) * elem * (1 + this.dstOf(f, 'ATKPOWER_RATE') / 100) * (1 + this.dstOf(f, 'MONSTER_DMG') / 100)) + this.dstOf(f, 'ATKPOWER');
-    return { hit: true, dmg: Math.max(1, atk - this.mobDef(m)), crit };
+    // AttackArbiter (__WEAPON_RARITY): o golpe pronto × fAttackRate de novo
+    return { hit: true, dmg: Math.max(1, (f.wRare !== 1 ? f32mul(atk, f.wRare) : atk) - this.mobDef(m)), crit };
   }
 
   /** golpe do mob no jogador */

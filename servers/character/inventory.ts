@@ -30,11 +30,12 @@ export const RED_CHIP = 26460;
 /** item num espaço; u = enchant (+0–10), e = elemento (0 nenhum, 1 fogo, 2 água, 3 elétrico, 4 vento, 5 terra), el = nível do elemento */
 export interface InvItem { c: number; s: number; id: number; n: number; u: number; e: number; el: number; /** piercing: um item de carta por espaço aberto (0 = vazio) */ p?: number[]; /** item de tempo ativado: vale até (ms) */ x?: number;
   /** falhas seguidas de upgrade no nível atual (fail stack do UpgradeSuccess.inc) */ t?: number;
-  /** arma ultimate: joias engastadas, um item por espaço aberto (0 = vazio) */ g?: number[] }
+  /** arma ultimate: joias engastadas, um item por espaço aberto (0 = vazio) */ g?: number[];
+  /** raridade da arma (WeaponRarity.inc, 0 = Common) */ r?: number }
 /** melhorias pedidas ao criar um item (painel de GM) */
-export interface ItemUpgrade { u?: number; e?: number; el?: number; /** espaços de piercing abertos (suit: até 4) */ p?: number }
-const plain = (i: { u: number; e: number; el: number; p?: number[]; g?: number[] }) => !i.u && !i.e && !i.el && !i.p?.length && !i.g?.length;
-const sameUpgrade = (a: InvItem, b: InvItem) => a.u === b.u && a.e === b.e && a.el === b.el && (a.p ?? []).join() === (b.p ?? []).join() && (a.g ?? []).join() === (b.g ?? []).join();
+export interface ItemUpgrade { u?: number; e?: number; el?: number; /** espaços de piercing abertos (suit: até 4) */ p?: number; /** raridade da arma (WeaponRarity.inc) */ r?: number }
+const plain = (i: { u: number; e: number; el: number; p?: number[]; g?: number[]; r?: number }) => !i.u && !i.e && !i.el && !i.p?.length && !i.g?.length && !i.r;
+const sameUpgrade = (a: InvItem, b: InvItem) => a.u === b.u && a.e === b.e && a.el === b.el && (a.p ?? []).join() === (b.p ?? []).join() && (a.g ?? []).join() === (b.g ?? []).join() && (a.r ?? 0) === (b.r ?? 0);
 export interface InvState { gold: number; /** Red Chip (II_CHP_RED): contador como o penya, fora da bolsa */ chips: number; items: InvItem[] }
 /** o que um lado põe na janela de trade: espaços da bolsa (com quanto de cada pilha) e penya */
 export interface TradeOffer { items: { s: number; n: number; /** item que estava no espaço ao oferecer */ id: number }[]; gold: number }
@@ -50,12 +51,21 @@ const baseJob = (job: number) => (job >= 32 && job <= 39 ? job - 26 : job >= 24 
 const isBlade = (job: number) => baseJob(job) === 7;
 const dualWieldable = (d: ItemDef) => (d.kind3 === 2 || d.kind3 === 3) && !twoHanded(d);
 
-/** kit do personagem novo (Vagrant): equipados + bolsa, por sexo */
+/**
+ * Kit do personagem novo (Vagrant), igual ao do servidor Titanium (personagem recém-criado no banco oficial): conjunto Parmil/Leaf
+ * +3 (capacete, traje, luva, bota), espada de madeira e a roupa Beginner Fashion equipados; na bolsa a caixa de iniciante
+ * (II_SYS_SYS_SCR_MBGINRBOX); sem penya. `[símbolo, enchant]` por sexo.
+ */
 const STARTER = {
-  equip: { 0: ['II_ARM_M_VAG_SUIT01', 'II_ARM_M_VAG_GAUNTLET01', 'II_ARM_M_VAG_BOOTS01', 'II_WEA_SWO_WOODEN'], 1: ['II_ARM_F_VAG_SUIT01', 'II_ARM_F_VAG_GAUNTLET01', 'II_ARM_F_VAG_BOOTS01', 'II_WEA_SWO_WOODEN'] } as Record<number, string[]>,
-  bag: { 0: [['II_ARM_M_VAG_HELMET02', 1]], 1: [['II_ARM_F_VAG_HELMET02', 1]] } as Record<number, [string, number][]>,
-  common: [['II_GEN_POT_DRI_VITAL100', 20], ['II_GEN_POT_POT_ANTIDOTE', 5], ['II_SYS_SYS_EVE_GOLDENAPPLE', 3]] as [string, number][],
-  gold: 1000,
+  equip: {
+    0: [['II_ARM_M_VAG_HELMET04', 3], ['II_ARM_M_VAG_SUIT04', 3], ['II_ARM_M_VAG_GAUNTLET04', 3], ['II_ARM_M_VAG_BOOTS04', 3], ['II_WEA_SWO_WOODEN', 0],
+      ['II_ARM_M_CHR_BEGINNERFASH01HAT', 0], ['II_ARM_M_CHR_BEGINNERFASH01SUIT', 0], ['II_ARM_M_CHR_BEGINNERFASH01GLOVES', 0], ['II_ARM_M_CHR_BEGINNERFASH01SHOES', 0]],
+    1: [['II_ARM_F_VAG_HELMET04', 3], ['II_ARM_F_VAG_SUIT04', 3], ['II_ARM_F_VAG_GAUNTLET04', 3], ['II_ARM_F_VAG_BOOTS04', 3], ['II_WEA_SWO_WOODEN', 0],
+      ['II_ARM_F_CHR_BEGINNERFASH01HAT', 0], ['II_ARM_F_CHR_BEGINNERFASH01SUIT', 0], ['II_ARM_F_CHR_BEGINNERFASH01GLOVES', 0], ['II_ARM_F_CHR_BEGINNERFASH01SHOES', 0]],
+  } as Record<number, [string, number][]>,
+  bag: { 0: [], 1: [] } as Record<number, [string, number][]>,
+  common: [['II_SYS_SYS_SCR_MBGINRBOX', 1]] as [string, number][],
+  gold: 0,
 };
 
 /** o que mudou desde a última gravação */
@@ -81,12 +91,12 @@ export class Inventory {
     const q = (text: string, params?: unknown[]) => (db ? db.query(text, params) : query(text, params));
     const g = await q(`SELECT gold, red_chips FROM characters WHERE id = $1${lock ? ' FOR UPDATE' : ''}`, [characterId]);
     const r = await q(
-      `SELECT container, slot, item_id, count, upgrade, element, element_level, piercing, upgrade_tries, gems, (extract(epoch from expires_at) * 1000)::float8 AS expires FROM character_items WHERE character_id = $1 ORDER BY container, slot${lock ? ' FOR UPDATE' : ''}`, [characterId]);
-    return { gold: Number(g.rows[0]?.gold ?? 0), chips: Number(g.rows[0]?.red_chips ?? 0), items: r.rows.map((x: { container: number; slot: number; item_id: number; count: number; upgrade: number; element: number; element_level: number; piercing: unknown; upgrade_tries: number; gems: unknown; expires: number | null }) => {
+      `SELECT container, slot, item_id, count, upgrade, element, element_level, piercing, upgrade_tries, gems, rarity, (extract(epoch from expires_at) * 1000)::float8 AS expires FROM character_items WHERE character_id = $1 ORDER BY container, slot${lock ? ' FOR UPDATE' : ''}`, [characterId]);
+    return { gold: Number(g.rows[0]?.gold ?? 0), chips: Number(g.rows[0]?.red_chips ?? 0), items: r.rows.map((x: { container: number; slot: number; item_id: number; count: number; upgrade: number; element: number; element_level: number; piercing: unknown; upgrade_tries: number; gems: unknown; rarity: number; expires: number | null }) => {
       const p = Array.isArray(x.piercing) ? x.piercing.map((v) => Number(v) || 0).slice(0, MAX_PIERCING) : [];
       const g = Array.isArray(x.gems) ? x.gems.map((v) => Number(v) || 0).slice(0, 5) : [];
       return { c: x.container, s: x.slot, id: x.item_id, n: x.count, u: x.upgrade, e: x.element, el: x.element_level, ...(p.length ? { p } : {}), ...(x.expires ? { x: Math.round(x.expires) } : {}),
-        ...(x.upgrade_tries ? { t: x.upgrade_tries } : {}), ...(g.length ? { g } : {}) };
+        ...(x.upgrade_tries ? { t: x.upgrade_tries } : {}), ...(g.length ? { g } : {}), ...(x.rarity ? { r: x.rarity } : {}) };
     }) };
   }
 
@@ -101,12 +111,12 @@ export class Inventory {
     if (!ups.length && !dels.length && !goldDelta && !chipsDelta) return;
     await db.query(
       `WITH ups AS (
-         INSERT INTO character_items (character_id, container, slot, item_id, count, upgrade, element, element_level, piercing, expires_at, upgrade_tries, gems)
-         SELECT $1, t.c, t.s, t.i, t.n, t.u, t.e, t.el, t.p::jsonb, CASE WHEN t.x IS NULL THEN NULL ELSE to_timestamp(t.x / 1000.0) END, t.t, t.g::jsonb
-           FROM unnest($2::int[], $3::int[], $4::int[], $5::int[], $6::int[], $7::int[], $8::int[], $12::text[], $13::float8[], $15::int[], $16::text[]) AS t(c, s, i, n, u, e, el, p, x, t, g)
+         INSERT INTO character_items (character_id, container, slot, item_id, count, upgrade, element, element_level, piercing, expires_at, upgrade_tries, gems, rarity)
+         SELECT $1, t.c, t.s, t.i, t.n, t.u, t.e, t.el, t.p::jsonb, CASE WHEN t.x IS NULL THEN NULL ELSE to_timestamp(t.x / 1000.0) END, t.t, t.g::jsonb, t.r
+           FROM unnest($2::int[], $3::int[], $4::int[], $5::int[], $6::int[], $7::int[], $8::int[], $12::text[], $13::float8[], $15::int[], $16::text[], $17::int[]) AS t(c, s, i, n, u, e, el, p, x, t, g, r)
          ON CONFLICT (character_id, container, slot) DO UPDATE
            SET item_id = EXCLUDED.item_id, count = EXCLUDED.count, upgrade = EXCLUDED.upgrade, element = EXCLUDED.element, element_level = EXCLUDED.element_level, piercing = EXCLUDED.piercing, expires_at = EXCLUDED.expires_at,
-               upgrade_tries = EXCLUDED.upgrade_tries, gems = EXCLUDED.gems
+               upgrade_tries = EXCLUDED.upgrade_tries, gems = EXCLUDED.gems, rarity = EXCLUDED.rarity
          RETURNING 1),
        dels AS (
          DELETE FROM character_items ci USING unnest($9::int[], $10::int[]) AS d(c, s)
@@ -115,7 +125,7 @@ export class Inventory {
         WHERE id = $1 AND ($11 <> 0 OR $14 <> 0)`,
       [characterId, ups.map((i) => i.c), ups.map((i) => i.s), ups.map((i) => i.id), ups.map((i) => i.n), ups.map((i) => i.u), ups.map((i) => i.e), ups.map((i) => i.el),
         dels.map((d) => d[0]), dels.map((d) => d[1]), goldDelta, ups.map((i) => JSON.stringify(i.p ?? [])), ups.map((i) => i.x ?? null), chipsDelta,
-        ups.map((i) => i.t ?? 0), ups.map((i) => JSON.stringify(i.g ?? []))]);
+        ups.map((i) => i.t ?? 0), ups.map((i) => JSON.stringify(i.g ?? [])), ups.map((i) => i.r ?? 0)]);
   }
 
   /**
@@ -228,13 +238,17 @@ export class Inventory {
     return this.cache.get(characterId)?.state ?? this.read(null, characterId);
   }
 
-  private async giveStarter(characterId: number, sex: number) {
+  /** entrega o kit inicial uma vez só (na criação, para a seleção já mostrar vestido; e ao entrar, para personagens antigos) */
+  /** fail stack do ferreiro (UpgradeSuccess.inc) para a dica "Tentativas até o upgrade": categoria (dwReferStat1 / 'acc') → enchant → tentativas */
+  failStack: Record<string, Record<number, number>> | null = null;
+
+  async giveStarter(characterId: number, sex: number) {
     await transaction(async (db) => {
       const r = await db.query('UPDATE characters SET starter_given = true, gold = gold + $2 WHERE id = $1 AND NOT starter_given RETURNING id', [characterId, STARTER.gold]);
       if (!r.rowCount) return; // já recebeu
-      for (const sym of STARTER.equip[sex] ?? []) {
+      for (const [sym, up] of STARTER.equip[sex] ?? []) {
         const d = this.catalog.bySymbol.get(sym);
-        if (d && d.parts >= 0) await db.query('INSERT INTO character_items (character_id, container, slot, item_id) VALUES ($1, 1, $2, $3) ON CONFLICT DO NOTHING', [characterId, d.parts, d.id]);
+        if (d && d.parts >= 0) await db.query('INSERT INTO character_items (character_id, container, slot, item_id, upgrade) VALUES ($1, 1, $2, $3, $4) ON CONFLICT DO NOTHING', [characterId, d.parts, d.id, up]);
       }
       let slot = 0;
       for (const [sym, n] of [...(STARTER.bag[sex] ?? []), ...STARTER.common]) {
@@ -439,6 +453,42 @@ export class Inventory {
   }
 
   /**
+   * Abre a caixa do espaço `slot` (CUser::DoUsePackItem): precisa de um espaço livre na bolsa para cada item; cada item vem
+   * com o enchant e a quantidade do propPackItem.inc e vale `span` minutos. Gasta uma caixa.
+   */
+  openPack(characterId: number, slot: number) {
+    return this.mutate(characterId, (x): { state: InvState; names: string[] } | { error: string } => {
+      const it = x.state.items.find((i) => i.c === BAG && i.s === slot);
+      const pack = it && this.catalog.packs.get(it.id);
+      if (!it || !pack) return { error: 'Isso não é uma caixa.' };
+      const used = new Set(x.state.items.filter((i) => i.c === BAG).map((i) => i.s));
+      // a caixa sai (se for a última, o espaço dela também serve)
+      if (it.n <= 1) used.delete(slot);
+      // quantidade acima do empilhamento vira mais de um espaço (2 brincos = 2 espaços, como o CreateItem do original)
+      const pieces = pack.items.flatMap((p) => {
+        const d = this.catalog.byId.get(p.id)!, max = Math.max(1, d.packMax), out: { p: typeof p; n: number }[] = [];
+        for (let left = p.n; left > 0; left -= max) out.push({ p, n: Math.min(left, max) });
+        return out;
+      });
+      const free: number[] = [];
+      for (let s = 0; s < BAG_SLOTS && free.length < pieces.length; s++) if (!used.has(s)) free.push(s);
+      if (free.length < pieces.length) return { error: `Precisa de ${pieces.length} espaços livres na bolsa para abrir.` };
+      if (it.n > 1) it.n--; else x.state.items.splice(x.state.items.indexOf(it), 1);
+      x.touch(BAG, slot);
+      const until = pack.span > 0 ? Date.now() + pack.span * 60_000 : 0;
+      const names: string[] = [];
+      pieces.forEach(({ p, n }, k) => {
+        const d = this.catalog.byId.get(p.id)!;
+        const u = Math.max(0, Math.min(p.u, d.parts >= 0 ? maxUpgrade(d.parts) : 0));
+        x.state.items.push({ c: BAG, s: free[k], id: p.id, n, u, e: 0, el: 0, ...(until ? { x: until } : {}) });
+        x.touch(BAG, free[k]);
+      });
+      for (const p of pack.items) names.push(`${this.catalog.byId.get(p.id)!.name}${p.n > 1 ? ` (${p.n}x)` : ''}`);
+      return { state: x.state, names };
+    });
+  }
+
+  /**
    * Lixeira: apaga `n` do item no espaço `slot` da bolsa (equipado não: tire antes). Devolve o item apagado (cópia) e quanto,
    * ou o erro. Não volta atrás.
    */
@@ -497,7 +547,9 @@ export class Inventory {
     if (!d) throw new Error(`item ${itemId} não existe`);
     const clamp = (v: number | undefined, max: number) => Math.max(0, Math.min(max, Math.floor(Number(v) || 0)));
     const sockets = clamp(up.p, maxPiercing(d.parts));
-    const u = { u: clamp(up.u, maxUpgrade(d.parts)), e: clamp(up.e, 5), el: clamp(up.el, 10), ...(sockets ? { p: new Array<number>(sockets).fill(0) } : {}) };
+    // raridade só em arma (IK1_WEAPON), até o maior nível do WeaponRarity.inc
+    const rarity = d.kind1 === 1 ? clamp(up.r, Math.max(0, this.catalog.rarity.length - 1)) : 0;
+    const u = { u: clamp(up.u, maxUpgrade(d.parts)), e: clamp(up.e, 5), el: clamp(up.el, 10), ...(sockets ? { p: new Array<number>(sockets).fill(0) } : {}), ...(rarity ? { r: rarity } : {}) };
     if (!u.e) u.el = 0;
     if (!plain(u) && d.parts < 0) throw new Error(`${d.name} não é equipamento: não aceita enchant nem elemento`);
     const pack = plain(u) ? d.packMax : 1;
@@ -517,7 +569,7 @@ export class Inventory {
       for (let s = 0; s < BAG_SLOTS && left > 0; s++) {
         if (used.has(s)) continue;
         const k = Math.min(left, pack);
-        x.state.items.push({ c: BAG, s, id: itemId, n: k, u: u.u, e: u.e, el: u.el, ...(u.p ? { p: [...u.p] } : {}) });
+        x.state.items.push({ c: BAG, s, id: itemId, n: k, u: u.u, e: u.e, el: u.el, ...(u.p ? { p: [...u.p] } : {}), ...(u.r ? { r: u.r } : {}) });
         x.touch(BAG, s);
         left -= k;
       }
@@ -644,11 +696,11 @@ export class Inventory {
       for (const card of [...(i.p ?? []), ...(i.g ?? [])]) { const cd = card ? this.catalog.byId.get(card) : undefined; if (cd && !defs[card]) defs[card] = this.catalog.viewFull(cd); }
     }
     return { t: 'inv', gold: st.gold, chips: st.chips, bag: BAG_SLOTS, items: st.items.map((i) => {
-      // [c, s, id, n, u, e, el, piercing, tempo, joias da ultimate] — só até o último campo que o item tem
-      const row: unknown[] = [i.c, i.s, i.id, i.n, i.u, i.e, i.el, i.p ?? [], i.x ?? 0, i.g ?? []];
-      const last = i.g?.length ? 10 : i.x ? 9 : i.p?.length ? 8 : 7;
-      return row.slice(0, last) as [number, number, number, number, number, number, number, number[]?, number?, number[]?];
-    }), defs };
+      // [c, s, id, n, u, e, el, piercing, tempo, joias da ultimate, raridade, falhas de upgrade] — só até o último campo que o item tem
+      const row: unknown[] = [i.c, i.s, i.id, i.n, i.u, i.e, i.el, i.p ?? [], i.x ?? 0, i.g ?? [], i.r ?? 0, i.t ?? 0];
+      const last = i.t ? 12 : i.r ? 11 : i.g?.length ? 10 : i.x ? 9 : i.p?.length ? 8 : 7;
+      return row.slice(0, last) as [number, number, number, number, number, number, number, number[]?, number?, number[]?, number?, number?];
+    }), defs, rar: this.catalog.rarity.map((x) => [x.name, x.color, x.atk, x.stats]), ...(this.failStack ? { stack: this.failStack } : {}) };
   }
 
   /** símbolos II_* equipados que mudam o visual (para montar o modelo nos clientes): cash por cima, partes escondidas fora, enchant junto (shared/look.ts) */

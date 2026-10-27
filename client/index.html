@@ -66,38 +66,61 @@
     </form>
   </div>
 
-  <!-- seleção de personagem (3 vagas) e criação; o personagem aparece em 3D no centro da tela -->
-  <div id="charScreen" class="sidescreen" hidden>
-    <div id="charSelect" class="fwnd side">
-      <div class="fwnd-title">Personagens</div>
-      <div class="fwnd-body one">
-        <div class="pill" id="accountName">Conta</div>
-        <ul id="slotList" class="slots" role="listbox" aria-label="Personagens da conta"></ul>
-        <div class="frow3">
-          <button type="button" id="enterBtn" class="fbtn" data-img="ButtOk.tga" aria-label="Entrar"><span>Entrar</span></button>
-          <button type="button" id="newCharBtn" class="fbtn" data-img="ButtCreate.tga" aria-label="Criar"><span>Criar</span></button>
-          <button type="button" id="logoutBtn" class="fbtn" data-img="ButtBack.tga" aria-label="Voltar"><span>Voltar</span></button>
-        </div>
+  <!-- seleção de personagem (CWndSelectChar: 3 quadros com o personagem em 3D) e criação (CWndCreateChar), no centro da tela -->
+  <div id="charScreen" class="charscreen" hidden>
+    <div id="charSelect" class="cwnd sel" role="dialog" aria-labelledby="selTitle">
+      <div class="cwnd-title" id="selTitle">Selecionar personagem</div>
+      <div id="slotList" class="cards" role="listbox" aria-label="Personagens da conta"></div>
+      <div class="cbtns">
+        <button type="button" id="logoutBtn" class="fbtn txt" data-img="Button72x20.tga"><span>Voltar</span></button>
+        <button type="button" id="newCharBtn" class="fbtn txt" data-img="Button72x20.tga"><span>Criar</span></button>
+        <button type="button" id="deleteCharBtn" class="fbtn txt" data-img="Button72x20.tga"><span>Apagar</span></button>
+        <button type="button" id="enterBtn" class="fbtn txt" data-img="Button72x20.tga"><span>Entrar</span></button>
       </div>
-      <p class="fmsg" id="selectMsg" role="status"></p>
     </div>
 
-    <form id="charCreate" class="fwnd side" hidden autocomplete="off">
-      <div class="fwnd-title">Criar personagem</div>
+    <form id="charCreate" class="cwnd cre" hidden autocomplete="off" aria-labelledby="creTitle">
+      <div class="cwnd-title" id="creTitle">Novo personagem</div>
+      <div class="cre-in">
+        <label class="clabel cname-l" for="newName">Nome do personagem</label>
+        <input id="newName" class="fedit cname-e" maxlength="16" spellcheck="false" />
+        <span class="clabel" style="top:90px">Sexo</span>
+        <button type="button" id="maleBtn" class="fbtn txt sexbtn" data-img="Button72x20.tga" style="left:118px;top:90px" aria-pressed="true"><span>Masculino</span></button>
+        <button type="button" id="femaleBtn" class="fbtn txt sexbtn" data-img="Button72x20.tga" style="left:200px;top:90px" aria-pressed="false"><span>Feminino</span></button>
+        <span class="clabel" style="top:115px">Cabelo</span>
+        <button type="button" class="fbtn arrow2" data-img="ButtLeft.tga" data-key="hair" data-step="-1" style="left:118px;top:115px" aria-label="Cabelo anterior"><span>‹</span></button>
+        <output class="cval" id="hairVal" style="top:115px"></output>
+        <button type="button" class="fbtn arrow2" data-img="ButtRight.tga" data-key="hair" data-step="1" style="left:200px;top:115px" aria-label="Próximo cabelo"><span>›</span></button>
+        <span class="clabel" style="top:140px">Cor do cabelo</span>
+        <div id="hairColor" class="colorbars" role="group" aria-label="Cor do cabelo (vermelho, verde, azul)">
+          <input type="range" min="0" max="255" aria-label="Vermelho" data-c="0" />
+          <input type="range" min="0" max="255" aria-label="Verde" data-c="1" />
+          <input type="range" min="0" max="255" aria-label="Azul" data-c="2" />
+        </div>
+        <span class="clabel" style="top:220px">Rosto</span>
+        <button type="button" class="fbtn arrow2" data-img="ButtLeft.tga" data-key="head" data-step="-1" style="left:118px;top:220px" aria-label="Rosto anterior"><span>‹</span></button>
+        <output class="cval" id="headVal" style="top:220px"></output>
+        <button type="button" class="fbtn arrow2" data-img="ButtRight.tga" data-key="head" data-step="1" style="left:200px;top:220px" aria-label="Próximo rosto"><span>›</span></button>
+        <p class="cmsg" id="createMsg" role="status"></p>
+        <div id="createModel" class="cre-model"></div>
+        <button type="submit" id="createBtn" class="fbtn txt" data-img="Button72x20.tga" style="left:170px;top:320px"><span>OK</span></button>
+        <button type="button" id="createBackBtn" class="fbtn txt" data-img="Button72x20.tga" style="left:280px;top:320px"><span>Cancelar</span></button>
+      </div>
+    </form>
+
+    <form id="charDelete" class="fwnd cdel" hidden autocomplete="off" aria-labelledby="delTitle">
+      <div class="fwnd-title" id="delTitle">Apagar personagem</div>
       <div class="fwnd-body one">
-        <label class="pill" for="newName">Nome</label>
-        <input id="newName" class="fedit" maxlength="16" spellcheck="false" />
-        <div class="pill">Aparência</div>
-        <div class="picker" data-key="sex"><span class="plabel">Sexo</span><button type="button" class="fbtn arrow" data-img="ButtLeft.tga" data-step="-1" aria-label="Anterior"><span>‹</span></button><output></output><button type="button" class="fbtn arrow" data-img="ButtRight.tga" data-step="1" aria-label="Próximo"><span>›</span></button></div>
-        <div class="picker" data-key="hair"><span class="plabel">Cabelo</span><button type="button" class="fbtn arrow" data-img="ButtLeft.tga" data-step="-1" aria-label="Anterior"><span>‹</span></button><output></output><button type="button" class="fbtn arrow" data-img="ButtRight.tga" data-step="1" aria-label="Próximo"><span>›</span></button></div>
-        <div class="picker" data-key="head"><span class="plabel">Rosto</span><button type="button" class="fbtn arrow" data-img="ButtLeft.tga" data-step="-1" aria-label="Anterior"><span>‹</span></button><output></output><button type="button" class="fbtn arrow" data-img="ButtRight.tga" data-step="1" aria-label="Próximo"><span>›</span></button></div>
+        <p class="cdel-q" id="deleteQ"></p>
+        <label class="pill" for="deletePass">Senha da conta</label>
+        <input id="deletePass" class="fedit" type="password" maxlength="128" autocomplete="current-password" />
         <div class="frow">
-          <button type="submit" id="createBtn" class="fbtn" data-img="ButtCreate.tga" aria-label="Criar"><span>Criar</span></button>
-          <button type="button" id="createBackBtn" class="fbtn" data-img="ButtBack.tga" aria-label="Voltar"><span>Voltar</span></button>
+          <button type="submit" id="deleteOk" class="fbtn txt" data-img="Button72x20.tga"><span>Apagar</span></button>
+          <button type="button" id="deleteCancel" class="fbtn txt" data-img="Button72x20.tga"><span>Cancelar</span></button>
         </div>
       </div>
-      <p class="fmsg" id="createMsg" role="status"></p>
     </form>
+    <p class="fmsg cscreen-msg" id="selectMsg" role="status"></p>
   </div>
 
   <div id="help" hidden>WASD anda · Espaço pula · X anda/corre · clique no chão para andar · clique no mob para selecionar · Esc desmarca · I inventário · H personagem · K skills · Enter chat</div>

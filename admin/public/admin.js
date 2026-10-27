@@ -19,6 +19,7 @@ function show(view) {
   for (const a of document.querySelectorAll('#side a[data-view]')) a.classList.toggle('on', a.dataset.view === view);
   if (view === 'account') loadAccounts();
   else if (view === 'world') loadRates();
+  else if (view === 'database') loadDb();
   else refresh();
 }
 addEventListener('hashchange', () => show(location.hash.slice(1) || 'dashboard'));
@@ -309,3 +310,134 @@ $('annStop').onclick = async () => {
 api('/announce/state').then(annRender).catch(() => {});
 
 show(location.hash.slice(1) || 'dashboard');
+
+
+// ---------------- database: backup, baixar, apagar, restaurar e zerar ----------------
+const fmtSize = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB');
+let dbState = null;
+async function loadDb() {
+  try { dbState = await api('/db'); } catch (e) {
+    // painel aberto antes da atualização: a página é nova mas o servidor do painel ainda é o antigo (sem as rotas do banco)
+    const old = /Rota desconhecida/.test(e.message);
+    $('dbDot').className = 'dot';
+    $('dbStatusText').textContent = old ? 'O painel precisa ser reiniciado para usar esta página: feche a janela do painel e abra de novo (.Iniciar Servidor.bat).' : 'Sem resposta do painel: ' + e.message;
+    for (const id of ['cnSave', 'dbInstallBtn', 'dbBackupBtn', 'dbResetBtn']) $(id).disabled = true;
+    say($('dbMsg'), '');
+    return;
+  }
+  const s = dbState;
+  const ok = s.health.state === 'ok';
+  $('dbDot').className = 'dot' + (ok ? ' up' : '');
+  $('dbStatusText').textContent = ok ? `Banco "${s.database}" conectado (${s.connection.user}@${s.connection.host}:${s.connection.port}).`
+    : s.health.message + (s.health.state === 'missing' ? ' Use "2. Instalar banco zerado".' : s.health.state === 'auth' ? ' Confira o usuário e a senha em "1. Conexão" (ou instale o banco).' : '');
+  $('dbName').textContent = s.database; $('dbUserName').textContent = s.user;
+  // conexão: preenche (sem a senha) e trava o que vem do ambiente (Docker)
+  const c = s.connection;
+  for (const [id, k] of [['cnHost', 'host'], ['cnPort', 'port'], ['cnDb', 'database'], ['cnUser', 'user']]) {
+    if (document.activeElement !== $(id)) $(id).value = c[k];
+    $(id).disabled = !!c.fixed[k];
+  }
+  $('cnInfo').textContent = (c.hasPassword ? 'Senha salva.' : 'Nenhuma senha salva para este usuário.') + (Object.values(c.fixed).some(Boolean) ? ' Campos travados vêm das variáveis de ambiente (PG*).' : '');
+  $('cnSave').disabled = s.gameRunning || s.siteRunning;
+  $('dbInstallBtn').disabled = s.gameRunning || s.siteRunning;
+  $('dbConnForm').classList.toggle('attention', s.health.state === 'auth');
+  $('dbInstallForm').classList.toggle('attention', s.health.state === 'missing');
+  $('dbBackupBtn').disabled = !ok;
+  $('dbTools').textContent = s.tools.pgDump && s.tools.pgRestore ? 'Ferramentas do PostgreSQL encontradas (pg_dump / pg_restore).' : 'pg_dump/pg_restore não encontrados: instale o PostgreSQL ou ponha a pasta bin no PATH.';
+  const busy = !ok || s.gameRunning || s.siteRunning || s.others.length > 0;
+  $('dbInUse').textContent = !ok ? 'Travado: o banco não está acessível.' : s.gameRunning || s.siteRunning ? 'Travado: o servidor do jogo está rodando (Dashboard → Parar).' : s.others.length ? 'Travado: banco em uso por ' + s.others.join(', ') + '.' : 'Banco livre: pode zerar.';
+  $('dbInUse').classList.toggle('bad', busy);
+  $('dbResetBtn').disabled = busy;
+  $('dbRows').innerHTML = s.backups.length
+    ? s.backups.map((b) => `<tr><td class="dbname">${esc(b.name)}</td><td>${fmtDate(b.date)}</td><td>${fmtSize(b.size)}</td><td><div class="dbacts">
+        <button class="btn sm" data-dl="${esc(b.name)}">⬇ Baixar</button>
+        <button class="btn sm stop" data-restore="${esc(b.name)}" ${busy ? 'disabled title="Pare o servidor do jogo antes"' : ''}>Restaurar</button>
+        <button class="btn sm" data-del="${esc(b.name)}">Apagar</button></div></td></tr>`).join('')
+    : '<tr><td colspan="4" class="empty">Nenhum backup ainda.</td></tr>';
+}
+$('dbRefresh').addEventListener('click', () => { say($('dbMsg'), ''); loadDb(); });
+$('dbBackupForm').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const btn = $('dbBackupBtn');
+  btn.disabled = true; say($('dbMsg'), 'Fazendo backup…');
+  try {
+    const b = await api('/db/backup', { method: 'POST', body: JSON.stringify({ label: $('dbLabel').value }) });
+    $('dbLabel').value = '';
+    say($('dbMsg'), `Backup criado: ${b.name} (${fmtSize(b.size)}).`);
+  } catch (e) { say($('dbMsg'), e.message, true); }
+  btn.disabled = false; loadDb();
+});
+$('dbRows').addEventListener('click', async (ev) => {
+  const t = ev.target.closest('button');
+  if (!t) return;
+  if (t.dataset.dl) {
+    // o download também passa pelo cabeçalho x-admin: baixa como blob e entrega pelo navegador
+    try {
+      const r = await fetch('/admin/api/db/backups/' + encodeURIComponent(t.dataset.dl), { headers: { 'x-admin': '1' } });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Falha (${r.status})`);
+      const url = URL.createObjectURL(await r.blob());
+      const a = Object.assign(document.createElement('a'), { href: url, download: t.dataset.dl });
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (e) { say($('dbMsg'), e.message, true); }
+  } else if (t.dataset.del) {
+    if (!confirm(`Apagar o backup ${t.dataset.del}? Não tem como desfazer.`)) return;
+    try { await api('/db/backups/' + encodeURIComponent(t.dataset.del), { method: 'DELETE' }); say($('dbMsg'), 'Backup apagado.'); } catch (e) { say($('dbMsg'), e.message, true); }
+    loadDb();
+  } else if (t.dataset.restore) {
+    const name = t.dataset.restore, dlg = $('dlgRestore');
+    dlg.querySelector('.who').textContent = name;
+    $('restoreConfirm').value = '';
+    dlg.returnValue = '';
+    dlg.showModal();
+    dlg.addEventListener('close', async () => {
+      if (dlg.returnValue !== 'ok') return;
+      if ($('restoreConfirm').value.trim() !== name) { say($('dbMsg'), 'O nome digitado não confere: nada foi restaurado.', true); return; }
+      say($('dbMsg'), 'Restaurando… (não feche o painel)');
+      try {
+        const r = await api('/db/restore', { method: 'POST', body: JSON.stringify({ name, confirm: name }) });
+        say($('dbMsg'), `Restaurado ${name}. O estado anterior ficou salvo em ${r.backup.name}.`);
+      } catch (e) { say($('dbMsg'), e.message, true); }
+      loadDb();
+    }, { once: true });
+  }
+});
+$('dbResetForm').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  if ($('dbResetConfirm').value.trim() !== 'ZERAR') { say($('dbMsg'), 'Digite ZERAR (em maiúsculas) para confirmar.', true); return; }
+  const btn = $('dbResetBtn');
+  btn.disabled = true; say($('dbMsg'), 'Zerando o banco… (não feche o painel)');
+  try {
+    const r = await api('/db/reset', { method: 'POST', body: JSON.stringify({ confirm: 'ZERAR' }) });
+    $('dbResetConfirm').value = '';
+    say($('dbMsg'), `Banco zerado (${r.migrations} migrações aplicadas). O estado anterior ficou salvo em ${r.backup.name}. Crie as contas de novo em Account.`);
+  } catch (e) { say($('dbMsg'), e.message, true); }
+  loadDb();
+});
+
+$('dbInstallForm').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const btn = $('dbInstallBtn'), log = $('insLog');
+  btn.disabled = true; say($('dbMsg'), 'Instalando o banco…'); log.hidden = true;
+  try {
+    const r = await api('/db/install', { method: 'POST', body: JSON.stringify({
+      adminUser: $('insAdmin').value, adminPassword: $('insAdminPass').value,
+      ownerUser: $('insOwner').value, ownerPassword: $('insOwnerPass').value }) });
+    log.textContent = r.steps.join('\n'); log.hidden = false;
+    say($('dbMsg'), `Banco instalado (${r.migrations} migrações).${r.ownerId ? ' Conta de dono criada.' : ' Crie as contas em Account.'}`);
+  } catch (e) { say($('dbMsg'), e.message, true); }
+  $('insAdminPass').value = ''; $('insOwnerPass').value = '';
+  btn.disabled = false; loadDb();
+});
+
+$('dbConnForm').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const btn = $('cnSave');
+  btn.disabled = true; say($('dbMsg'), 'Salvando e testando a conexão…');
+  try {
+    const r = await api('/db/connection', { method: 'PUT', body: JSON.stringify({ host: $('cnHost').value, port: Number($('cnPort').value), database: $('cnDb').value, user: $('cnUser').value, password: $('cnPass').value }) });
+    $('cnPass').value = '';
+    say($('dbMsg'), r.health.state === 'ok' ? 'Conexão salva e funcionando.' : 'Conexão salva, mas: ' + r.health.message, r.health.state !== 'ok' && r.health.state !== 'missing');
+  } catch (e) { say($('dbMsg'), e.message, true); }
+  btn.disabled = false; loadDb();
+});
