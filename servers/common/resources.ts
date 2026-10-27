@@ -18,6 +18,20 @@ const IMAGE_TYPES: Record<string, string> = { '.cur': 'image/x-icon', '.bmp': 'i
 /** hash curto (FNV-1a) do caminho real: o mesmo nome pedido pode vir de pastas diferentes */
 const hash = (s: string) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0; return h; };
 
+/** caminho real de um arquivo de `/res` (ex.: `Data/Item/itm_x.dds`) nas pastas `roots`, ou null */
+export function resolveRes(roots: ResRoot[], rel: string): string | null {
+  const clean = rel.replace(/\\/g, '/').replace(/^\/+/, '');
+  for (const r of roots) {
+    if (!fs.existsSync(r.dir)) continue;
+    const dir = path.resolve(r.dir);
+    for (const v of r.strip && /^data\//i.test(clean) ? [clean.slice(5), clean] : [clean]) {
+      const p = path.resolve(dir, '.' + path.sep + v);
+      if ((p === dir || p.startsWith(dir + path.sep)) && fs.existsSync(p) && fs.statSync(p).isFile()) return p;
+    }
+  }
+  return null;
+}
+
 export function resourceMiddleware(roots: ResRoot[]) {
   const list = roots.filter((r) => fs.existsSync(r.dir)).map((r) => ({ dir: path.resolve(r.dir), strip: !!r.strip }));
   /** caminhos candidatos (dentro de cada pasta, sem escapar dela) para o caminho pedido */

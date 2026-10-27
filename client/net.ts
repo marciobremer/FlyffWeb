@@ -16,7 +16,7 @@ import type { GroundRow } from './ground';
  * O próprio jogador manda posição/rumo/estado no máximo 10×/s e só quando muda; os remotos chegam 10×/s e são suavizados
  * a cada quadro (interpolação exponencial da posição e do rumo), com as mesmas animações do jogador local.
  */
-export interface PlayerView { /** nome da guild */ guild?: string; id: number; name: string; sex: number; hair: number; head: number; /** cor do cabelo (0xAARRGGBB; 0 = padrão da malha) */ hc?: number; level: number; p: [number, number, number]; h: number; s: string; /** símbolos II_* equipados */ eq?: string[]; /** postura de combate 1–15 (0 = normal) */ mt?: number; /** 'admin' ou 'gm' (cor do nome) */ rank?: string; /** GM invisível (só GMs recebem): translúcido */ iv?: 1 }
+export interface PlayerView { /** nome da guild */ guild?: string; id: number; name: string; sex: number; hair: number; head: number; /** cor do cabelo (0xAARRGGBB; 0 = padrão da malha) */ hc?: number; level: number; p: [number, number, number]; h: number; s: string; /** símbolos II_* equipados */ eq?: string[]; /** postura de combate 1–15 (0 = normal) */ mt?: number; /** 'admin' ou 'gm' (cor do nome) */ rank?: string; /** GM invisível (só GMs recebem): translúcido */ iv?: 1; /** pet coletor seguindo (MI_*) */ pet?: number }
 
 /** seus atributos (server/realtime.ts statsMsg) */
 export interface PlayerStats {
@@ -307,6 +307,12 @@ export class NetClient {
   onInvis: (on: boolean) => void = () => {};
   /** seu modo imortal de GM/admin (//god) */
   onGod: (on: boolean) => void = () => {};
+  /** pet coletor: do jogador `a` apareceu (m = MI_*) ou sumiu (m = 0); foi buscar um item em (x, z), chega em `ms` */
+  onPet: (a: number, m: number) => void = () => {};
+  onPetGo: (a: number, x: number, z: number, ms: number) => void = () => {};
+  /** filtro do pet (ao entrar e depois de gravar) com nome e ícone dos itens das listas; resultado da busca de itens */
+  onPetFilter: (f: import('../shared/petfilter').PetFilter, names: Record<number, [string, string]>) => void = () => {};
+  onPetFind: (list: [number, string, string][]) => void = () => {};
   /** relógio do servidor (dia e noite) e a hora fixada pelo GM (null = andando) */
   onClock: (now: number, fixed: number | null) => void = () => {};
   /** o servidor mandou trocar de mundo (ticket de Azria, teleporte para outro mapa) */
@@ -380,14 +386,17 @@ export class NetClient {
       if (m.t === 'welcome') {
         this.myId = m.id as number;
         this.remotes.clear();
-        for (const p of m.players as PlayerView[]) this.remotes.add(p);
+        for (const p of m.players as PlayerView[]) { this.remotes.add(p); if (p.pet) this.onPet(p.id, p.pet); }
         this.online = this.remotes.count + 1;
         this.onStatus('');
         this.onWelcome((m.eq ?? []) as string[], Number(m.mt ?? 0));
       } else if (m.t === 'enter') {
-        this.remotes.add(m.player as PlayerView); this.online = this.remotes.count + 1;
+        const p = m.player as PlayerView;
+        this.remotes.add(p); this.online = this.remotes.count + 1;
+        this.onPet(p.id, p.pet ?? 0);
       } else if (m.t === 'leave') {
         this.remotes.remove(m.id as number); this.online = this.remotes.count + 1;
+        this.onPet(m.id as number, 0);
       } else if (m.t === 'states') {
         for (const [id, x, y, z, h, s] of m.list as [number, number, number, number, number, string][]) if (id !== this.myId) this.remotes.update(id, x, y, z, h, s);
       } else if (m.t === 'mobs') {
@@ -435,6 +444,14 @@ export class NetClient {
       } else if (m.t === 'pong') {
         const rtt = performance.now() - Number(m.c);
         if (rtt >= 0 && rtt < 60000) this.ping = this.ping === null ? rtt : this.ping * 0.7 + rtt * 0.3;
+      } else if (m.t === 'pet') {
+        this.onPet(Number(m.a), Number(m.m) || 0);
+      } else if (m.t === 'petGo') {
+        this.onPetGo(Number(m.a), Number(m.x), Number(m.z), Number(m.ms) || 0);
+      } else if (m.t === 'petFilter') {
+        this.onPetFilter(m.f as import('../shared/petfilter').PetFilter, (m.n ?? {}) as Record<number, [string, string]>);
+      } else if (m.t === 'petFind') {
+        this.onPetFind((m.list ?? []) as [number, string, string][]);
       } else if (m.t === 'clock') {
         this.onClock(Number(m.now) || Date.now(), typeof m.fixed === 'number' ? m.fixed : null);
       } else if (m.t === 'changeWorld') {
@@ -579,6 +596,9 @@ export class NetClient {
   pick(id: number) { return this.raw({ t: 'pick', id }); }
   /** golpe no mob `id` (o servidor confere alcance e ritmo) */
   attack(id: number) { return this.raw({ t: 'atk', id }); }
+  /** grava o filtro do pet; busca itens (nome/símbolo) para as listas do filtro */
+  petFilter(f: import('../shared/petfilter').PetFilter) { return this.raw({ t: 'petFilter', f }); }
+  petFind(q: string) { return this.raw({ t: 'petFind', q }); }
   /** painel de GM: busca no catálogo de itens (nome/símbolo, categoria) */
   gmItems(q: string, k: string, g = 0) { return this.raw({ t: 'gmItems', q, k, g }); }
   /** a cada 2 s manda o carimbo do relógio; o pong volta com ele e dá o ping */

@@ -20,6 +20,7 @@ function show(view) {
   if (view === 'account') loadAccounts();
   else if (view === 'world') loadRates();
   else if (view === 'database') loadDb();
+  else if (view === 'items') loadItems();
   else refresh();
 }
 addEventListener('hashchange', () => show(location.hash.slice(1) || 'dashboard'));
@@ -440,4 +441,124 @@ $('dbConnForm').addEventListener('submit', async (ev) => {
     say($('dbMsg'), r.health.state === 'ok' ? 'Conexão salva e funcionando.' : 'Conexão salva, mas: ' + r.health.message, r.health.state !== 'ok' && r.health.state !== 'missing');
   } catch (e) { say($('dbMsg'), e.message, true); }
   btn.disabled = false; loadDb();
+});
+
+
+// ---------------- items: lista, copiar ID, editar, criar, remover ----------------
+let itMeta = null, itPage = 1, itTotal = 0, itTimer = 0, itEditing = null;
+const iconUrl = (f) => (f ? '/admin/icons/' + encodeURIComponent(f) : '');
+const nameOf = (list, v) => (list.find((x) => x[0] === v) || [, ''])[1];
+const shortName = (s) => String(s).replace(/^(IK[123]|PARTS|ITEM_GRADE|JOB|WT)_/, '');
+async function itLoadMeta() {
+  if (itMeta) return itMeta;
+  itMeta = await api('/items/meta');
+  const fill = (sel, list, keep) => { for (const [v, n] of list) sel.insertAdjacentHTML('beforeend', `<option value="${v}">${esc(shortName(n))}</option>`); if (keep !== undefined) sel.value = keep; };
+  fill($('itK1'), itMeta.ik1); fill($('itParts'), itMeta.parts); fill($('itGrade'), itMeta.grade);
+  const opts = (list, none) => (none ? `<option value="${none[0]}">${none[1]}</option>` : '') + list.map(([v, n]) => `<option value="${v}">${esc(shortName(n))}</option>`).join('');
+  $('ie_kind1').innerHTML = opts(itMeta.ik1, [0, '—']); $('ie_kind2').innerHTML = opts(itMeta.ik2, [0, '—']); $('ie_kind3').innerHTML = opts(itMeta.ik3, [0, '—']);
+  $('ie_parts').innerHTML = opts(itMeta.parts, [-1, 'Não equipa']); $('ie_ignorePart').innerHTML = opts(itMeta.parts, [-1, 'Nenhuma']);
+  $('ie_sex').innerHTML = opts(itMeta.sex); $('ie_job').innerHTML = opts(itMeta.job, [-1, 'Qualquer']); $('ie_weaponType').innerHTML = opts(itMeta.wt, [0, '—']);
+  $('ie_handed').innerHTML = opts(itMeta.handed); $('ie_grade').innerHTML = opts(itMeta.grade); $('ie_element').innerHTML = opts(itMeta.element);
+  $('ie_fx').innerHTML = Array.from({ length: 6 }, (_, i) => `<div class="fxrow"><select data-fx="${i}" aria-label="Bônus ${i + 1}">${opts(itMeta.dst, [0, '— nenhum —'])}</select><input data-fxv="${i}" type="number" aria-label="Valor do bônus ${i + 1}" /></div>`).join('');
+  return itMeta;
+}
+async function loadItems() {
+  try { await itLoadMeta(); } catch (e) { say($('itMsg'), e.message, true); return; }
+  const size = Number($('itSize').value);
+  const qs = new URLSearchParams({ q: $('itQ').value, k1: $('itK1').value, parts: $('itParts').value, grade: $('itGrade').value, custom: $('itCustom').value, page: itPage, size });
+  let r;
+  try { r = await api('/items?' + qs); } catch (e) { say($('itMsg'), e.message, true); return; }
+  itTotal = r.total;
+  const pages = Math.max(1, Math.ceil(r.total / size));
+  $('itInfo').textContent = `Página ${itPage} de ${pages} · ${r.total.toLocaleString('pt-BR')} item(ns)`;
+  $('itPrev').disabled = itPage <= 1; $('itNext').disabled = itPage >= pages;
+  $('itRows').innerHTML = r.rows.length ? r.rows.map((d) => `<tr class="${d.status === 'removido' ? 'removido' : ''}">
+      <td class="ic">${d.icon ? `<img class="ic" src="${iconUrl(d.icon)}" alt="" loading="lazy" />` : ''}</td>
+      <td><button class="idbtn" data-copy="${d.id}" title="Copiar o ID (ex.: /ci ${d.id} no servidor local)">${d.id}</button></td>
+      <td class="itname"><b>${esc(d.name)}${d.status ? `<span class="badge ${d.status}">${d.status}</span>` : ''}</b><small>${esc(d.symbol)}</small></td>
+      <td class="itdesc">${esc(d.desc)}</td>
+      <td class="itkind">${esc(shortName(nameOf(itMeta.ik3, d.kind3) || nameOf(itMeta.ik2, d.kind2) || ''))}${d.parts >= 0 ? ' · ' + esc(shortName(nameOf(itMeta.parts, d.parts))) : ''}</td>
+      <td>${d.level || ''}</td>
+      <td><button class="btn sm" data-edit="${d.id}">Editar</button></td></tr>`).join('')
+    : '<tr><td colspan="7" class="empty">Nenhum item encontrado.</td></tr>';
+}
+const itReload = (resetPage = true) => { if (resetPage) itPage = 1; clearTimeout(itTimer); itTimer = setTimeout(loadItems, 200); };
+$('itFilter').addEventListener('submit', (e) => { e.preventDefault(); itReload(); });
+$('itQ').addEventListener('input', () => itReload());
+for (const id of ['itK1', 'itParts', 'itGrade', 'itCustom', 'itSize']) $(id).addEventListener('change', () => itReload());
+$('itPrev').addEventListener('click', () => { if (itPage > 1) { itPage--; loadItems(); } });
+$('itNext').addEventListener('click', () => { itPage++; loadItems(); });
+$('itRows').addEventListener('click', async (ev) => {
+  const t = ev.target.closest('button');
+  if (!t) return;
+  if (t.dataset.copy) {
+    // copia o ID (para usar no /ci do servidor local)
+    try { await navigator.clipboard.writeText(t.dataset.copy); } catch { const ta = Object.assign(document.createElement('textarea'), { value: t.dataset.copy }); document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+    t.classList.add('ok'); const old = t.textContent; t.textContent = 'copiado!';
+    setTimeout(() => { t.classList.remove('ok'); t.textContent = old; }, 900);
+  } else if (t.dataset.edit) openItem(Number(t.dataset.edit));
+});
+
+const IE_FIELDS = ['name', 'desc', 'icon', 'look', 'kind1', 'kind2', 'kind3', 'parts', 'ignorePart', 'sex', 'job', 'level', 'abilityMin', 'abilityMax', 'attackSpeed', 'weaponType', 'handed', 'grade', 'element', 'packMax', 'cost', 'shopAble'];
+const NUMERIC = new Set(['kind1', 'kind2', 'kind3', 'parts', 'ignorePart', 'sex', 'job', 'level', 'abilityMin', 'abilityMax', 'attackSpeed', 'weaponType', 'handed', 'grade', 'element', 'packMax', 'cost', 'shopAble']);
+function readForm() {
+  const out = {};
+  for (const k of IE_FIELDS) { const v = $('ie_' + k).value; out[k] = NUMERIC.has(k) ? Number(v) : v; }
+  out.fx = [];
+  for (let i = 0; i < 6; i++) { const k = Number(document.querySelector(`[data-fx="${i}"]`).value), v = Number(document.querySelector(`[data-fxv="${i}"]`).value); if (k > 0) out.fx.push([k, v]); }
+  return out;
+}
+/** marca em amarelo o que difere do original */
+function markChanged() {
+  const o = itEditing?.original;
+  for (const k of IE_FIELDS) $('ie_' + k).classList.toggle('changed', !!o && String(o[k] ?? '') !== String($('ie_' + k).value));
+  const now = JSON.stringify(readForm().fx);
+  $('ie_fx').classList.toggle('changed', !!o && JSON.stringify(o.fx) !== now);
+  $('ieIcon').src = iconUrl($('ie_icon').value.trim());
+}
+async function openItem(id) {
+  try { await itLoadMeta(); itEditing = await api('/items/' + id); } catch (e) { say($('itMsg'), e.message, true); return; }
+  const d = itEditing.item;
+  $('ieTitle').textContent = `${d.name}`;
+  $('ieSub').textContent = `ID ${d.id} · ${d.symbol}${itEditing.status ? ' · ' + itEditing.status : ''}`;
+  for (const k of IE_FIELDS) { const el = $('ie_' + k); el.value = d[k] ?? ''; if (el.tagName === 'SELECT' && el.value === '' && d[k] !== undefined) el.insertAdjacentHTML('beforeend', `<option value="${d[k]}">${d[k]}</option>`), (el.value = d[k]); }
+  for (let i = 0; i < 6; i++) { const f = d.fx[i]; document.querySelector(`[data-fx="${i}"]`).value = f ? f[0] : 0; document.querySelector(`[data-fxv="${i}"]`).value = f ? f[1] : ''; }
+  $('ieRestore').hidden = !(itEditing.status === 'editado' || itEditing.status === 'removido');
+  $('ieDelete').textContent = itEditing.status === 'novo' ? 'Excluir item novo' : 'Remover do jogo';
+  $('ieDelete').hidden = itEditing.status === 'removido';
+  markChanged();
+  $('dlgItem').showModal();
+}
+$('itForm').addEventListener('input', markChanged);
+$('itForm').addEventListener('change', markChanged);
+$('ieSave').addEventListener('click', async () => {
+  try {
+    const r = await api('/items/' + itEditing.item.id, { method: 'PUT', body: JSON.stringify(readForm()) });
+    $('dlgItem').close();
+    say($('itMsg'), `Item ${itEditing.item.id} salvo${r.status ? ' (' + r.status + ')' : ' (igual ao original)'}. Clique em "Aplicar no jogo" para valer no servidor.`);
+    loadItems();
+  } catch (e) { alert(e.message); }
+});
+$('ieRestore').addEventListener('click', async () => {
+  if (!confirm('Voltar este item ao original do Spec_Item?')) return;
+  try { await api(`/items/${itEditing.item.id}/restore`, { method: 'POST' }); $('dlgItem').close(); say($('itMsg'), 'Item voltou ao original.'); loadItems(); } catch (e) { alert(e.message); }
+});
+$('ieDelete').addEventListener('click', async () => {
+  const novo = itEditing.status === 'novo';
+  if (!confirm(novo ? 'Excluir este item novo? Não tem como desfazer.' : 'Remover este item do jogo? (dá para desfazer em "Só removidos" → Voltar ao original)')) return;
+  try { await api('/items/' + itEditing.item.id, { method: 'DELETE' }); $('dlgItem').close(); say($('itMsg'), novo ? 'Item excluído.' : 'Item removido do jogo.'); loadItems(); } catch (e) { alert(e.message); }
+});
+$('itNew').addEventListener('click', () => { $('niSymbol').value = ''; $('niName').value = ''; $('niBase').value = ''; $('dlgNewItem').returnValue = ''; $('dlgNewItem').showModal(); });
+$('dlgNewItem').addEventListener('close', async () => {
+  if ($('dlgNewItem').returnValue !== 'ok') return;
+  try {
+    const r = await api('/items', { method: 'POST', body: JSON.stringify({ symbol: $('niSymbol').value, name: $('niName').value, base: $('niBase').value }) });
+    say($('itMsg'), `Item criado com o ID ${r.id}.`);
+    await openItem(r.id);
+    loadItems();
+  } catch (e) { say($('itMsg'), e.message, true); }
+});
+$('itApply').addEventListener('click', async () => {
+  if (!confirm('Reiniciar o servidor do jogo agora para valer as mudanças dos itens? Quem estiver online é desconectado.')) return;
+  try { await api('/game/restart', { method: 'POST' }); say($('itMsg'), 'Servidor do jogo reiniciando com os itens novos.'); } catch (e) { say($('itMsg'), e.message, true); }
 });

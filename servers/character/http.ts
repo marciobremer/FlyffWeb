@@ -42,7 +42,7 @@ export async function charactersOf(accountId: number): Promise<CharacterInfo[]> 
   return r.rows.map((c) => {
     const items = eq.get(Number(c.id)) ?? [];
     const equip: LookPiece[] = [];
-    for (const i of items) { const sym = inventory?.catalog.byId.get(i.id)?.symbol; if (sym) equip.push({ s: i.s, sym, u: i.u, e: i.e, el: i.el }); }
+    for (const i of items) { const it = inventory?.catalog.byId.get(i.id), sym = it?.look ?? it?.symbol; if (sym) equip.push({ s: i.s, sym, u: i.u, e: i.e, el: i.el }); }
     return {
       id: Number(c.id), slot: c.slot, name: c.name, sex: c.sex, hairMesh: c.hair_mesh, hairColor: c.hair_color, headMesh: c.head_mesh,
       job: c.job, level: c.level, worldId: c.world_id, pos: [c.pos_x, c.pos_y, c.pos_z] as [number, number, number], angle: c.angle,

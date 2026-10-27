@@ -954,3 +954,32 @@ Comparado com o MikePanqueca (Blade 73) do servidor oficial local (banco CHARACT
   em tela estreita (< 1400 px) o rodapé sobe para cima da barra de atalhos.
 - Ritmo do dia e noite: o ciclo continua 28,8 min reais, mas o dia (6h–19h) ocupa 3/4 dele (21,6 min, ~1 min 40 s por hora do
   jogo) e a noite (19h–6h) 1/4 (7,2 min, ~39 s por hora) — shared/gameclock.ts (DAWN, DUSK, DAY_SHARE).
+
+## 51. Painel admin → Items (2026-10-28)
+- Aba **Items**: todos os itens (15,5 mil) com ícone (DDS → PNG no painel, servers/common/icons.ts), ID (clicar copia, para o
+  `/ci` do servidor local), nome, símbolo, descrição, tipo e espaço; busca por nome/ID/símbolo e filtros (tipo, espaço,
+  raridade, só alterados, só removidos), paginação.
+- **Editar** (nome, descrição, ícone, visual de outro item, IK1/2/3, espaço PARTS, peça escondida, sexo, classe, nível,
+  ataque/defesa, velocidade, tipo de arma, mãos, raridade, elemento, empilhar, preço, loja e até 6 bônus DST); os campos
+  diferentes do Spec_Item ficam em amarelo. **Novo item** (símbolo II_*, opcional copiar de outro — vem com o visual dele),
+  **Remover do jogo** (desfazível) e **Voltar ao original**.
+- As mudanças ficam em `data/items-custom.json` (por cima do Spec_Item, que não é mexido; servers/common/items-custom.ts) e
+  valem no jogo ao reiniciar o servidor ("Aplicar no jogo"). Item novo usa o modelo de outro item (`look`) até ter modelo próprio.
+- Rudolph antigo (`II_ARM_*_CLO_RUDOLF01*`, IDs 4414–4421): no Spec_Item vai nos espaços de armadura (capacete/traje/luva/bota)
+  — a própria descrição oficial diz "Must be worn in the equipment slot"; os outros Rudolph vão nos de fashion (26–29).
+
+## 52. Pet coletor e Pet Filter (tecla U) (2026-10-28)
+- Itens IK3_PET (II_PET_LAWOLF1, AIBATT1, LEYENA1…): duplo clique chama o pet (dwLinkKind = MI_* que aparece) e de novo
+  recolhe; outro pet troca. Não gasta o item. Todos perto veem o pet (`pet` no PlayerView, mensagem 'pet').
+- Servidor (realtime.ts, como o CAIPet/__SYS_PETFILTER do Titanium): a cada 0,3 s o pet livre procura o item mais perto do dono
+  (até 20 unidades) que o dono pode pegar (dono do drop ou sem dono) e que passa no filtro; corre ~8 u/s ('petGo') e põe na
+  bolsa (giveLoot). Bolsa cheia: o item fica e o pet não insiste. Não busca morto, voando ou trocando de mapa.
+- Filtro (shared/petfilter.ts, bits do defineFilter.h + CUser::ShouldPickUp): marcar = NÃO pega — arma azul/verde/ultimate/
+  outras classes, armadura masculina/feminina/set azul/verde/outras classes, craft, ovo, sunstone, moonstone, quest, joias,
+  comida HP/MP/FP, colar/brinco/anel, cartas elemento/4%/7%/B/A; raridade mínima de arma e armadura (os drops ainda são todos
+  Common, então "a partir de Precious" ou mais deixa de pegar armas/armaduras). Lista branca pega sempre; negra, nunca.
+  Gravado em `characters.pet_filter` (migração 021).
+- Janela (client/petfilter.ts): abas Filtros (Todos/Nenhum/Salvar) e Listas (busca de item no lugar da janela Wiki do original;
+  Adicionar/Remover em cada lista, salva na hora). Cliente: client/pets.ts (pet = mob externo sem nome e sem clique).
+- GM: `//drop <II_…|id> [qtd]` larga itens sem dono no chão em volta (para testar o pet).
+- Falta: o pet não volta sozinho ao relogar (chamar de novo); raridade nos drops.

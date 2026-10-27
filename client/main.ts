@@ -19,6 +19,8 @@ import { SmithWindow, smithOptions, isUpgradeMaterial } from './smith';
 import { ShopWindow } from './shop';
 import { SkillWindow } from './skillwnd';
 import { JobWindow } from './jobwnd';
+import { Pets } from './pets';
+import { PetFilterWindow } from './petfilter';
 import { BuffBar } from './buffbar';
 import { PartyBuffs } from './partybuffs';
 import { TradeWindow } from './trade';
@@ -159,6 +161,9 @@ gmPanel.monsters = () => {
 gmPanel.search = (q, k, g) => { net.gmItems(q, k, g); };
 /** outros jogadores (WebSocket /ws) */
 const remotes = new RemotePlayers(view);
+// pet coletor (o seu e o dos outros): segue o dono e corre até o item que o servidor manda pegar
+const pets = new Pets(view, (id) => (id === net.myId ? (view.player ? [...view.player.pos] as [number, number, number] : null) : remotes.pos(id)));
+const petFilterWnd = new PetFilterWindow(document.body);
 const net = new NetClient(remotes);
 let inGame = false;
 // versão nova do jogo no servidor: recarrega fora do mundo, avisa dentro dele (client/version.ts)
@@ -476,7 +481,7 @@ net.onStats = (s) => {
   charWnd.setStats(s);
   jobWnd.setOptions(s.jobOpts ?? []);
 };
-net.onReset = () => { deathScreen(false); view.moverMgr.clearExternal(); ground.clear(); friendsWnd.clear(); partyWnd.set(null, 0); partyBuffs.set(null); guildWnd.set(null, 0); myGuild = null; myInvis = false; gmPanel.setInvis(false); tradeWnd.close(); };
+net.onReset = () => { deathScreen(false); pets.clear(); view.moverMgr.clearExternal(); ground.clear(); friendsWnd.clear(); partyWnd.set(null, 0); partyBuffs.set(null); guildWnd.set(null, 0); myGuild = null; myInvis = false; gmPanel.setInvis(false); tradeWnd.close(); };
 /** guild (tecla G); o nome da sua guild fica acima do seu nome */
 const guildWnd = new GuildWindow(document.body);
 let myGuild: string | null = null;
@@ -729,6 +734,12 @@ net.onGod = (on) => gmPanel.setGod(on);
 // ---------- dia e noite (shared/gameclock.ts: dia 6h–19h em 21,6 min e noite em 7,2 min reais, igual para todos) ----------
 /** diferença entre o relógio do servidor e o deste computador; hora fixada pelo GM (//time) */
 let clockOffset = 0, clockFixed: number | null = null;
+net.onPet = (a, m) => pets.set(a, m);
+net.onPetGo = (a, x, z, ms) => pets.go(a, x, z, ms);
+net.onPetFilter = (f, n) => petFilterWnd.set(f, n);
+net.onPetFind = (list) => petFilterWnd.found(list);
+petFilterWnd.onSave = (f) => { if (!net.petFilter(f)) chat.system('Sem conexão com o servidor.'); };
+petFilterWnd.onFind = (q) => { net.petFind(q); };
 net.onClock = (now, fixed) => { clockOffset = now - Date.now(); clockFixed = fixed; tickClock(); };
 /** a cada minuto do jogo (1,2 s) muda a hora do mundo: céu (dia/entardecer/noite), nuvens, sol/lua, luz, névoa e lampiões */
 function tickClock() {
@@ -761,6 +772,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyI' && !e.repeat) inventory.toggle();
   else if (e.code === 'KeyH' && !e.repeat) charWnd.toggle();
   else if (e.code === 'KeyK' && !e.repeat) skillWnd.toggle();
+  else if (e.code === 'KeyU' && !e.repeat) petFilterWnd.toggle(); // filtro do pet coletor
   else if (e.code === 'KeyJ' && !e.repeat) jobWnd.toggle(); // reabre a escolha de classe, se ainda há
   else if (e.code === 'KeyC' && !e.repeat) runActionSlot();
   else if (e.code === 'KeyV' && !e.repeat) teleportWnd.toggle();
@@ -930,6 +942,7 @@ view.onFrame = (dt) => {
   if (previewing) view.player?.preview(dt, 0);
   if (inGame) {
     remotes.frame(dt);
+    pets.update(dt);
     const p = view.player;
     combat.frame(performance.now());
     ground.frame(performance.now());

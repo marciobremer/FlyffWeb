@@ -1,3 +1,4 @@
+import { FILTER, cleanPetFilter, emptyPetFilter, type PetFilter } from '../../shared/petfilter';
 import type { IncomingMessage, Server } from 'node:http';
 import { TICKS_PER_SEC } from '../../shared/math';
 import type { Duplex } from 'node:stream';
@@ -10,7 +11,7 @@ import { gmAuthority, runGmCommand } from './gm';
 import { rankOf, type Rank } from '../../shared/rank';
 import { RIDE_TAG } from '../../shared/look';
 import { TRADE_SLOTS, type TradeOffer } from '../character/inventory';
-import { ItemCatalog } from '../common/items';
+import { ItemCatalog, jobCanUse } from '../common/items';
 import type { CombatRules, Equipped, Fighter } from './combat';
 import { MOB_ATTACK_RANGE, type Mob } from './mobs';
 import { GROUND_MS, OWNER_MS, type DropRules } from './drops';
@@ -74,6 +75,10 @@ import type { InvEdit } from '../character/inventory';
  * (servidor → cliente):
  *   { t: 'welcome', id, players: PlayerView[] }     seu id + quem já está no mundo
  *   { t: 'ping', c } → { t: 'pong', c }          ping do rodapé (o cliente mede a ida e volta)
+ *   { t: 'pet', a, m }                               pet coletor do jogador `a` apareceu (m = MI_*) ou sumiu (m = 0)
+ *   { t: 'petGo', a, x, z, ms }                      o pet de `a` vai buscar o item em (x, z) e chega em `ms`
+ *   { t: 'petFilter', f, n } ↔                       filtro do pet (o cliente manda para gravar; o servidor manda ao entrar, n = nome e ícone dos itens das listas)
+ *   { t: 'petFind', q } → { t: 'petFind', list }     busca de itens para as listas do filtro: [id, nome, ícone]
  *   { t: 'clock', now, fixed }                       relógio do servidor (dia e noite) e a hora fixada pelo GM (null = andando)
  *   { t: 'friends', list: FriendView[] } / { t: 'friendOn', id, on } / { t: 'friendReq', id, name }
  *   { t: 'friendNew', f: FriendView } / { t: 'friendDel', id }   lista de amigos (ao entrar), amigo entrou/saiu, pedido
@@ -115,7 +120,7 @@ import type { InvEdit } from '../character/inventory';
  *                                                   s stand/walk/run/dead; hp em milésimos do máximo
  * O servidor confere a sessão e o dono do personagem, descarta valores absurdos e salva a posição ao sair.
  */
-export interface PlayerView { /** mundo onde está (WdMadrigal, WdKebaras…) */ w: string; /** nome da guild (aparece acima do nome) */ guild?: string; id: number; name: string; sex: number; hair: number; head: number; /** cor do cabelo (m_dwHairColor; 0 = padrão) */ hc?: number; level: number; p: [number, number, number]; h: number; s: string; /** símbolos II_* equipados */ eq: string[]; /** postura de combate 1–15 (0 = sem arma) */ mt: number; /** classe (JOB_*) */ job: number; /** conta de admin ou GM (cor do nome) */ rank?: Rank; /** GM invisível (Dark Illusion) — só GMs/admins recebem */ iv?: 1 }
+export interface PlayerView { /** mundo onde está (WdMadrigal, WdKebaras…) */ w: string; /** nome da guild (aparece acima do nome) */ guild?: string; id: number; name: string; sex: number; hair: number; head: number; /** cor do cabelo (m_dwHairColor; 0 = padrão) */ hc?: number; /** pet coletor (MI_*) seguindo o personagem */ pet?: number; level: number; p: [number, number, number]; h: number; s: string; /** símbolos II_* equipados */ eq: string[]; /** postura de combate 1–15 (0 = sem arma) */ mt: number; /** classe (JOB_*) */ job: number; /** conta de admin ou GM (cor do nome) */ rank?: Rank; /** GM invisível (Dark Illusion) — só GMs/admins recebem */ iv?: 1 }
 
 /** trade entre dois jogadores: o que cada um pôs, quem deu OK (trava a oferta) e quem confirmou a troca */
 interface Trade { a: Conn; b: Conn; offer: Map<Conn, TradeOffer>; lock: Set<Conn>; ok: Set<Conn>; busy: boolean }
@@ -125,6 +130,9 @@ interface Conn { ws: WebSocket; player: PlayerView | null; accountId: number; di
   /** partes do visual escondidas pelo jogador (máscara de bits, shared/look.ts) */ hide: number;
   /** GM invisível (Dark Illusion do painel): jogadores comuns não o veem e os mobs o ignoram */ invis?: boolean;
   /** GM/admin imortal (//god, ligado ao entrar): os golpes chegam e o dano aparece, mas o HP não cai */ god?: boolean;
+  /** pet coletor ativo (item IK3_PET): item, MI_* que aparece, ocupado buscando um item até `busy` (ms) e itens que não couberam */
+  pet?: { item: number; mover: number; busy: number; skip: Set<number> };
+  /** filtro do pet (janela Pet Filter, tecla U) */ petFilter?: PetFilter;
   /** modo de batalha desligado (MOT_BASE_BATTLE): postura normal mesmo com arma; atacar liga de novo */ peace?: boolean; /** postura da arma equipada */ weaponMt?: number;
   /** ids dos amigos (Mensageiro) e pedidos de amizade recebidos (id de quem pediu → quando) */ friends?: Set<number>; friendReqs?: Map<number, number>;
   /** convites de party recebidos (id de quem convidou → quando) */ partyReqs?: Map<number, number>;
@@ -1328,6 +1336,95 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (killer?.player) { rewardKill(killer, m!.prop!, m!.x, m!.z); dropLoot(m!, killer); }
   }
 
+  // ---------- pet coletor (CAIPet + __SYS_PETFILTER do Titanium) ----------
+  /** o pet procura itens até 20 unidades do dono (CAIPet::SubItemLoot), corre a ~8 u/s e procura de novo a cada 0,3 s */
+  const PET_RANGE = 20, PET_SPEED = 8;
+  /** item IK3_PET: chama o pet (dwLinkKind = MI_* que aparece) ou recolhe se é o mesmo; outro pet troca */
+  function togglePet(c: Conn, item: number, mover: number) {
+    const p = c.player;
+    if (!p) return;
+    const same = c.pet?.item === item;
+    c.pet = same ? undefined : { item, mover, busy: 0, skip: new Set() };
+    p.pet = same ? undefined : mover;
+    const msg = { t: 'pet', a: p.id, m: same ? 0 : mover };
+    send(c.ws, msg);
+    broadcast(msg, c, p.w);
+  }
+  /** manda o filtro com nome e ícone dos itens das listas */
+  function sendPetFilter(c: Conn) {
+    const f = c.petFilter ?? emptyPetFilter(), n: Record<number, [string, string]> = {};
+    for (const id of [...f.white, ...f.black]) { const d = inventory?.catalog.byId.get(id); if (d) n[id] = [d.name, d.icon]; }
+    send(c.ws, { t: 'petFilter', f, n });
+  }
+  /** o filtro deixa o pet pegar este item? (CUser::ShouldPickUp + listas branca e negra) */
+  function petWants(c: Conn, itemId: number, gold: number): boolean {
+    if (gold > 0) return true;
+    const f = c.petFilter ?? emptyPetFilter(), d = inventory?.catalog.byId.get(itemId);
+    if (!d) return false;
+    if (f.white.includes(d.id)) return true;
+    if (f.black.includes(d.id)) return false;
+    const b = f.bits, sym = d.symbol, has = (bit: number) => (b & bit) !== 0;
+    const job = c.player?.job ?? 0;
+    if (has(FILTER.HPFOOD) && d.kind2 === D('IK2_FOOD')) return false;
+    if (has(FILTER.MPFOOD) && d.kind3 === D('IK3_REFRESHER')) return false;
+    if (has(FILTER.FPFOOD) && (d.kind2 === D('IK2_POTION') || d.kind3 === D('IK3_DRINK'))) return false;
+    if (has(FILTER.BWEAPON) && d.kind1 === D('IK1_WEAPON') && d.referStat1 !== 1) return false;
+    if (has(FILTER.GWEAPON) && d.kind1 === D('IK1_WEAPON') && d.referStat1 === 1) return false;
+    if (has(FILTER.ULT_WEAP) && d.referStat1 === 2) return false;
+    if (has(FILTER.BSET) && d.kind1 === D('IK1_ARMOR') && d.referStat1 !== 3) return false;
+    if (has(FILTER.GSET) && d.referStat1 === 3) return false;
+    if (has(FILTER.NECKLACE) && d.kind3 === D('IK3_NECKLACE')) return false;
+    if (has(FILTER.EARRING) && d.kind3 === D('IK3_EARRING')) return false;
+    if (has(FILTER.RING) && d.kind3 === D('IK3_RING')) return false;
+    if (has(FILTER.EGG) && sym === 'II_PET_EGG') return false;
+    if (has(FILTER.SUNSTONE) && /^II_(GEN_MAT_ORICHALCUM0[12](_1)?|SYS_SYS_SCR_SCRAPORICHALCUM)$/.test(sym)) return false;
+    if (has(FILTER.MOONSTONE) && /^II_(GEN_MAT_MOONSTONE(_1)?|SYS_SYS_SCR_SCRAPMOONSTONE)$/.test(sym)) return false;
+    if (has(FILTER.QUESTITEM) && (d.kind2 === D('IK2_GEM') || d.kind3 === D('IK3_GEM') || d.kind3 === D('IK3_EVENTSUB'))) return false;
+    if (has(FILTER.CRAFT_MAT) && d.kind3 === D('IK3_CRAFTING_MAT')) return false;
+    if (has(FILTER.ELECARDS) && d.kind3 === D('IK3_ELECARD')) return false;
+    if (has(FILTER.CARD4P) && /^II_GEN_MAT_ELE_(MAGMA|FLOOD|STORM|THUNDER|MOUNTAIN)$/.test(sym)) return false;
+    if (has(FILTER.CARD7P) && /^II_GEN_MAT_ELE_(EARTHQUAKE|LIGHTING|VACCUM|OCEAN|VOLCANO)$/.test(sym)) return false;
+    if (has(FILTER.BPIECARD) && /^II_GEN_MAT_ELE_(CANDLE|RAINATK|BREEZEATK|SPARKATK|SANDATK)B$/.test(sym)) return false;
+    if (has(FILTER.APIECARD) && /^II_GEN_MAT_ELE_(CANDLE|RAINATK|BREEZEATK|SPARKATK|SANDATK)A$/.test(sym)) return false;
+    if (has(FILTER.MALE) && d.sex === 0) return false;
+    if (has(FILTER.FEMALE) && d.sex === 1) return false;
+    if (has(FILTER.JEWELS) && d.kind2 === D('IK2_MATERIAL') && d.kind3 === D('IK3_ULTIMATE')) return false;
+    const weapon = d.kind1 === D('IK1_WEAPON') || d.kind3 === D('IK3_SHIELD'), armor = d.kind1 === D('IK1_ARMOR') && d.kind3 !== D('IK3_SHIELD');
+    if (has(FILTER.OTHER_WEAP) && weapon && !jobCanUse(d.job, job)) return false;
+    if (has(FILTER.OTHER_ARM) && armor && !jobCanUse(d.job, job)) return false;
+    // raridade mínima: os drops ainda não sorteiam raridade (são todos Common), então só "Common" ou desligado deixa pegar
+    if (f.wr > 0 && weapon) return false;
+    if (f.ar > 0 && armor) return false;
+    return true;
+  }
+  /** a cada 0,3 s: cada pet livre vai buscar o item mais perto do dono que ele pode pegar */
+  const petTick = setInterval(() => {
+    const now = Date.now();
+    for (const c of conns) {
+      const p = c.player, pet = c.pet;
+      if (!p || !pet || pet.busy > now || c.cb?.dead || c.switching || p.s.startsWith('fly')) continue;
+      let best: GroundItem | null = null, bestD = PET_RANGE;
+      for (const g of ground.values()) {
+        if (g.w !== p.w || pet.skip.has(g.id)) continue;
+        const dist = Math.hypot(g.x - p.p[0], g.z - p.p[2]);
+        if (dist >= bestD || (g.owner !== p.id && now < g.ownerUntil) || !petWants(c, g.itemId, g.gold)) continue;
+        best = g; bestD = dist;
+      }
+      if (!best) continue;
+      const g = best, ms = Math.round((bestD / PET_SPEED) * 1000) + 250;
+      pet.busy = now + ms + 300;
+      sendNear(p.w, g.x, g.z, { t: 'petGo', a: p.id, x: g.x, z: g.z, ms });
+      setTimeout(() => {
+        if (c.pet !== pet || !c.player || ground.get(g.id) !== g || c.player.w !== g.w) return;
+        ground.delete(g.id);
+        c.invQueue = c.invQueue.then(async () => {
+          const left = await giveLoot(c, g.itemId, g.count, g.upgrade, g.gold);
+          if (left > 0) { g.count = left; ground.set(g.id, g); pet.skip.add(g.id); } // bolsa cheia: não fica tentando
+        }).catch((e) => { console.error('realtime: pet pegar item', e); ground.set(g.id, g); });
+      }, ms);
+    }
+  }, 300);
+
   /**
    * Usa o item do espaço `slot` da bolsa (CMover::DoUseItem / DoUseItemFood): poção, comida e refresher curam HP/MP/FP
    * pelo dwDestParam/nAdjParamVal; acima do limite dwAbilityMin a cura cai para 30 %; espera dwSkillReady (mín. 1 s) por grupo.
@@ -1341,6 +1438,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       const d = it && inventory.catalog.byId.get(it.id);
       if (!d) return;
       if (d.kind3 === 122 && await useTicket(c, slot, d.symbol)) return; // IK3_TICKET: viagem para outro mapa (Azria)
+      if (d.kind3 === D('IK3_PET') && d.linkKind) { togglePet(c, d.id, d.linkKind); return; } // pet coletor: chama / recolhe
       if (it.x && it.x <= Date.now()) { send(c.ws, { t: 'invError', error: `${d.name} expirou.` }); return; }
       // caixa (propPackItem.inc): tudo o que vem dentro vai para a bolsa
       if (inventory.catalog.packs.has(d.id)) {
@@ -1547,8 +1645,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     const s = opts.resolveSession ? (tok ? await opts.resolveSession(tok) : null) : sessionFrom(tok);
     if (!s) { send(c.ws, { t: 'error', error: 'Sessão expirada. Entre novamente.' }); c.ws.close(); return; }
     const r = await query<{ id: string; name: string; sex: number; hair_mesh: number; hair_color: number; head_mesh: number; level: number; job: number; pos_x: number; pos_y: number; pos_z: number; angle: number;
-      str: number; sta: number; dex: number; int: number; hp: number; mp: number; fp: number; exp: string; stat_points: number; shortcuts: unknown; skills: Record<string, number>; skill_points: number; world_id: number }>(
-      'SELECT id, name, sex, hair_mesh, hair_color, head_mesh, level, job, pos_x, pos_y, pos_z, angle, world_id, str, sta, dex, "int", hp, mp, fp, exp, stat_points, shortcuts, skills, skill_points FROM characters WHERE id = $1 AND account_id = $2 AND NOT deleted',
+      str: number; sta: number; dex: number; int: number; hp: number; mp: number; fp: number; exp: string; stat_points: number; shortcuts: unknown; skills: Record<string, number>; skill_points: number; world_id: number; pet_filter: unknown }>(
+      'SELECT id, name, sex, hair_mesh, hair_color, head_mesh, level, job, pos_x, pos_y, pos_z, angle, world_id, str, sta, dex, "int", hp, mp, fp, exp, stat_points, shortcuts, skills, skill_points, pet_filter FROM characters WHERE id = $1 AND account_id = $2 AND NOT deleted',
       [Number(msg.characterId), s.accountId]);
     const ch = r.rows[0];
     if (!ch) { send(c.ws, { t: 'error', error: 'Personagem não encontrado nesta conta.' }); c.ws.close(); return; }
@@ -1587,6 +1685,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     }
     c.onlineSet = query('UPDATE characters SET online = true WHERE id = $1', [id]).then(() => {}, () => {}); // o site mostra quem está online
     const me = c.player;
+    c.petFilter = cleanPetFilter(ch.pet_filter);
+    sendPetFilter(c);
     send(c.ws, { t: 'clock', now: Date.now(), fixed: clockFixed });
     send(c.ws, { t: 'welcome', id, w: me.w, p: me.p, eq: me.eq, mt: me.mt, players: [...conns].filter((o) => o !== c && o.player && o.player.w === me.w && seesActor(c, o.player.id)).map((o) => o.player) });
     // GM/admin entra imortal (pode desligar com //god off ou no painel)
@@ -1706,6 +1806,14 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
               const want = on ?? !c.invis;
               setInvis(c, want);
               return want ? 'Dark Illusion: você está invisível para os jogadores (GMs e admins ainda veem você).' : 'Dark Illusion desligada: todos veem você de novo.';
+            },
+            drop: (itemId, n) => {
+              const p = c.player!, now = Date.now(), name = inventory?.catalog.byId.get(itemId)?.name ?? 'Item';
+              for (let i = 0; i < n; i++) {
+                const a = Math.random() * Math.PI * 2, r = 3 + Math.random() * 6;
+                ground.set(++groundSeq, { w: p.w, id: groundSeq, itemId, count: 1, upgrade: 0, gold: 0, x: p.p[0] + Math.cos(a) * r, z: p.p[2] + Math.sin(a) * r, owner: 0, ownerUntil: 0, expires: now + GROUND_MS });
+              }
+              return `${n}× ${name} no chão.`;
             },
             time: (hour) => {
               clockFixed = hour;
@@ -1870,6 +1978,14 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         cb.f.str += s; cb.f.sta += t; cb.f.dex += d; cb.f.int += i;
         recalcMax(c);
         void saveCombat(c.player.id, cb, c.player.level).catch((e) => console.error('realtime: salvar atributos', e));
+      } else if (msg.t === 'petFilter' && c.player) {
+        c.petFilter = cleanPetFilter(msg.f);
+        void query('UPDATE characters SET pet_filter = $2 WHERE id = $1', [c.player.id, JSON.stringify(c.petFilter)]).catch((e) => console.error('realtime: filtro do pet', e));
+        c.pet?.skip.clear();
+        sendPetFilter(c);
+      } else if (msg.t === 'petFind' && c.player && inventory) {
+        const q = typeof msg.q === 'string' ? msg.q.slice(0, 40) : '';
+        send(ws, { t: 'petFind', list: q.trim().length < 2 ? [] : inventory.catalog.search(q, '', 0, 40).map((d) => [d.id, d.name, d.icon]) });
       } else if (msg.t === 'pick' && c.player) {
         if (Number.isInteger(msg.id)) pickUp(c, msg.id as number);
       } else if (msg.t === 'atk' && c.player) {
@@ -2042,7 +2158,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     }
   }, 15000);
 
-  http.on('close', () => { clearInterval(tick); clearInterval(ping); clearInterval(partyTick); wss.close(); });
+  http.on('close', () => { clearInterval(tick); clearInterval(ping); clearInterval(petTick); clearInterval(partyTick); wss.close(); });
   return {
     online: () => [...conns].filter((c) => c.player).length,
     /** retrato para o painel admin */

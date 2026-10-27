@@ -18,7 +18,7 @@
       <a href="#database" data-view="database">🗄️ <span>Database</span></a>
       <h6>Conteúdo</h6>
       <a class="off" title="Em breve">📍 <span>Zones</span></a>
-      <a class="off" title="Em breve">📦 <span>Items</span></a>
+      <a href="#items" data-view="items">📦 <span>Items</span></a>
       <a class="off" title="Em breve">🏰 <span>Guild</span></a>
       <a class="off" title="Em breve">😈 <span>Mobs</span></a>
       <h6>Sistemas</h6>
@@ -123,6 +123,39 @@
         <h6 class="ann-slots-title">Mensagens guardadas <span class="dim small">— arraste a prévia (ou o texto selecionado) para um slot; clique no slot para usar</span></h6>
         <div class="ann-slots" id="annSlots"></div>
       </form>
+    </section>
+
+    <!-- ================= ITEMS ================= -->
+    <section id="view-items" class="view" hidden>
+      <header class="top">
+        <div><h1>Items</h1><p>Todos os itens do servidor: pesquisar, copiar o ID, editar, criar e remover</p></div>
+        <div class="actions">
+          <button class="btn teal" id="itNew">＋ Novo item</button>
+          <button class="btn" id="itApply" title="As mudanças valem no jogo depois de reiniciar o servidor do jogo">⟳ Aplicar no jogo</button>
+        </div>
+      </header>
+      <p id="itMsg" class="msg" role="status"></p>
+
+      <form class="itfilters" id="itFilter" autocomplete="off">
+        <input id="itQ" type="search" placeholder="Buscar por nome, ID ou símbolo (II_…)" aria-label="Buscar item" />
+        <select id="itK1" aria-label="Tipo"><option value="">Todos os tipos</option></select>
+        <select id="itParts" aria-label="Espaço onde equipa"><option value="">Todos os espaços</option></select>
+        <select id="itGrade" aria-label="Raridade"><option value="">Toda raridade</option></select>
+        <select id="itCustom" aria-label="Mostrar"><option value="">Todos</option><option value="any">Só alterados</option><option value="removed">Só removidos</option></select>
+      </form>
+
+      <div class="card">
+        <table class="grid items">
+          <thead><tr><th></th><th>ID</th><th>Nome</th><th>Descrição</th><th>Tipo · espaço</th><th>Nível</th><th></th></tr></thead>
+          <tbody id="itRows"><tr><td colspan="7" class="empty">Carregando…</td></tr></tbody>
+        </table>
+        <div class="pager">
+          <button class="btn" id="itPrev">← Anterior</button>
+          <span id="itInfo">—</span>
+          <select id="itSize" aria-label="Itens por página"><option>25</option><option selected>50</option><option>100</option><option>200</option></select>
+          <button class="btn" id="itNext">Próxima →</button>
+        </div>
+      </div>
     </section>
 
     <!-- ================= DATABASE ================= -->
@@ -255,6 +288,64 @@
       <div class="dactions"><button class="btn" value="cancel">Cancelar</button><button class="btn stop" value="ok">Banir</button></div>
     </form>
   </dialog>
+  <!-- editar item -->
+  <dialog id="dlgItem" class="itdlg">
+    <form method="dialog" id="itForm" autocomplete="off">
+      <div class="ithead"><img id="ieIcon" alt="" /><div><h4 id="ieTitle">Item</h4><p class="dim small" id="ieSub"></p></div></div>
+      <div class="itgrid">
+        <fieldset><legend>Básico</legend>
+          <label>Nome <input id="ie_name" maxlength="64" required /></label>
+          <label class="wide">Descrição <textarea id="ie_desc" maxlength="400" rows="2"></textarea></label>
+          <label>Ícone (Data/Item) <input id="ie_icon" maxlength="64" placeholder="itm_xxx.dds" /></label>
+          <label>Visual de outro item <input id="ie_look" maxlength="64" placeholder="II_… (vazio = o próprio)" /></label>
+        </fieldset>
+        <fieldset><legend>Tipo e onde equipa</legend>
+          <label>Tipo 1 (IK1) <select id="ie_kind1"></select></label>
+          <label>Tipo 2 (IK2) <select id="ie_kind2"></select></label>
+          <label>Tipo 3 (IK3) <select id="ie_kind3"></select></label>
+          <label>Espaço (PARTS) <select id="ie_parts"></select></label>
+          <label>Esconde a peça <select id="ie_ignorePart"></select></label>
+          <label>Sexo <select id="ie_sex"></select></label>
+          <label>Classe <select id="ie_job"></select></label>
+          <label>Nível <input id="ie_level" type="number" min="0" max="999" /></label>
+        </fieldset>
+        <fieldset><legend>Valores</legend>
+          <label>Ataque/Defesa mín. <input id="ie_abilityMin" type="number" /></label>
+          <label>Ataque/Defesa máx. <input id="ie_abilityMax" type="number" /></label>
+          <label>Velocidade da arma <input id="ie_attackSpeed" type="number" step="0.001" /></label>
+          <label>Tipo de arma (WT) <select id="ie_weaponType"></select></label>
+          <label>Mãos <select id="ie_handed"></select></label>
+          <label>Raridade <select id="ie_grade"></select></label>
+          <label>Elemento <select id="ie_element"></select></label>
+          <label>Empilha até <input id="ie_packMax" type="number" min="1" max="9999" /></label>
+          <label>Preço (penya) <input id="ie_cost" type="number" min="0" /></label>
+          <label>Loja <select id="ie_shopAble"><option value="-1">Não aparece</option><option value="0">Aparece (0)</option><option value="1">Aparece (1)</option></select></label>
+        </fieldset>
+        <fieldset class="fx"><legend>Bônus (DST)</legend><div id="ie_fx"></div></fieldset>
+      </div>
+      <p class="dim small" id="ieNote">Campos em amarelo estão diferentes do original (Spec_Item). As mudanças valem no jogo depois de "Aplicar no jogo".</p>
+      <div class="dactions">
+        <button class="btn stop" type="button" id="ieDelete">Remover</button>
+        <button class="btn" type="button" id="ieRestore">Voltar ao original</button>
+        <span class="grow"></span>
+        <button class="btn" value="cancel" formnovalidate>Cancelar</button>
+        <button class="btn teal" type="button" id="ieSave">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- novo item -->
+  <dialog id="dlgNewItem">
+    <form method="dialog" autocomplete="off">
+      <h4>Novo item</h4>
+      <label>Símbolo <input id="niSymbol" placeholder="II_ARM_M_L2_DRACONIC_SUIT" maxlength="62" /></label>
+      <label>Nome <input id="niName" placeholder="Draconic Suit" maxlength="64" /></label>
+      <label>Copiar de (opcional) <input id="niBase" placeholder="II_… de um item parecido (tipo, espaço, visual)" maxlength="62" /></label>
+      <p class="dim small">Copiar de outro item já traz tipo, espaço, bônus e o visual dele; depois é só ajustar.</p>
+      <div class="dactions"><button class="btn" value="cancel">Cancelar</button><button class="btn teal" value="ok">Criar</button></div>
+    </form>
+  </dialog>
+
   <dialog id="dlgRestore">
     <form method="dialog">
       <h4>Restaurar <span class="who"></span></h4>

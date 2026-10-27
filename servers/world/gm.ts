@@ -37,6 +37,8 @@ export interface GmContext {
   invis?(on?: boolean): string;
   /** imortal: liga (true), desliga (false) ou alterna (sem valor) — leva os golpes mas o HP não cai */
   god?(on?: boolean): string;
+  /** larga `count` do item no chão em volta de quem digitou (sem dono; para testar o pet coletor) */
+  drop?(itemId: number, count: number): string;
   /** dia e noite: fixa a hora do jogo para todos (1–24, decimal) ou volta a andar (null) */
   time?(hour: number | null): string;
   revive?(id: number): string;
@@ -56,6 +58,7 @@ const HELP = [
   '//set-job [personagem] <classe>   muda a classe (ex.: knight, blade, ringmaster, elementor… ou o número JOB_*)',
   '//give-item [personagem] <II_…|id> [quantidade] [+enchant] [elemento+nível] [furosN]   ex.: //give-item II_WEA_SWO_WOODEN +5 fogo+3',
   '   enchant: joias até +20, o resto até +10 · furos1–4: espaços de piercing (só suit) · rar0–N ou o nome (epic, legendary…): raridade da arma',
+  '//drop <II_…|id> [quantidade]   larga o item no chão em volta de você (um por vez, máx. 20), sem dono',
   '//reset-stats [personagem]   devolve os pontos de atributo (STR/STA/DEX/INT voltam a 15)',
   '//give-penya [personagem] <quantia>',
   '//mob <MI_…|id> [quantidade] [x z]   invoca monstros perto de você ou no ponto x z (não renascem; boss já vem agressivo)',
@@ -206,6 +209,15 @@ export async function runGmCommand(ctx: GmContext, text: string): Promise<void> 
     const x = Number(args[2]), z = Number(args[3]);
     ctx.reply(ctx.summonMob ? ctx.summonMob(what, n, Number.isFinite(x) && Number.isFinite(z) && args[3] !== undefined ? [x, z] : undefined) : 'Invocar monstros não está disponível aqui.');
     log(`mob ${what} ×${n}`);
+    return;
+  }
+  if (name === 'drop') {
+    const inv = ctx.inventory, what = args[0];
+    const def = !inv ? undefined : isInt(what) ? inv.catalog.byId.get(Number(what)) : inv.catalog.bySymbol.get((what ?? '').toUpperCase());
+    if (!def) { ctx.reply(what ? `Item ${what} não existe.` : 'Uso: //drop <II_…|id> [quantidade]'); return; }
+    const n = Math.min(20, Math.max(1, isInt(args[1]) ? Number(args[1]) : 1));
+    ctx.reply(ctx.drop ? ctx.drop(def.id, n) : 'Largar itens não está disponível aqui.');
+    log(`drop ${def.symbol} ×${n}`);
     return;
   }
   if (name === 'give-item' || name === 'item') {

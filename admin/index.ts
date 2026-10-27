@@ -9,6 +9,7 @@ import { SiteProcess } from './site-process';
 import { RATES_FILE, RATE_MAX, RATE_MIN, rates, saveRates } from '../servers/common/rates';
 import { AdminError, banAccount, createAccount, dbStatus, listAccounts, setPassword, unbanAccount, unbanByName } from '../servers/auth/accounts';
 import { dbHealth, installDatabase } from '../servers/common/db/install';
+import { itemIcon, itemsApi } from './items-api';
 import { ADMIN_APP, DbOpError, backupPath, createBackup, deleteBackup, listBackups, otherConnections, resetDatabase, restoreBackup, toolsReady } from '../servers/common/db/backup';
 
 // conexões do painel com o nome dele (o jogo e o site que ele inicia usam outro): "banco em uso" não conta o próprio painel
@@ -153,6 +154,9 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
     return send(res, 200, r);
   }
 
+  // ---------------- Items: lista, busca, edição, criação e remoção (admin/items-api.ts) ----------------
+  if (await itemsApi(p, m, url, () => readJson(req), (status, body) => send(res, status, body))) return;
+
   // ---------------- Database: backup, baixar, apagar, restaurar e zerar ----------------
   if (p === '/db' && m === 'GET') {
     // abre mesmo com o banco fora do ar (é quando a parte de instalar faz falta)
@@ -262,6 +266,8 @@ const server = http.createServer((req, res) => {
   // só pelo nome desta máquina (contra DNS rebinding); a porta pode ser outra quando o Docker mapeia o painel
   const hostName = host.replace(/:\d+$/, '');
   if (hostName !== '127.0.0.1' && hostName !== 'localhost' && host !== `${HOST}:${PORT}`) { res.statusCode = 421; res.end('host não permitido'); return; }
+  // ícones dos itens (PNG) para a aba Items: só imagem, sem o cabeçalho x-admin (o <img> não manda cabeçalho)
+  if (url.pathname.startsWith('/admin/icons/')) { itemIcon(res, url.pathname.slice('/admin/icons/'.length)); return; }
   if (url.pathname.startsWith('/admin/api/')) {
     if (req.headers['x-admin'] !== '1') return send(res, 403, { error: 'Cabeçalho x-admin ausente.' });
     api(req, res, url).catch((e) => {

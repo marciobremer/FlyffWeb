@@ -534,7 +534,7 @@ export class MoverManager {
 
   /** Instância dona de um objeto 3D (malha atingida por raycast). */
   instanceOf(o: Object3D | null): MoverInstance | null {
-    for (; o; o = o.parent) for (const inst of this.active.values()) if (inst.group === o) return inst;
+    for (; o; o = o.parent) for (const inst of this.active.values()) if (inst.group === o) return inst.owner === 'pets' ? null : inst;
     return null;
   }
 
@@ -546,7 +546,7 @@ export class MoverManager {
     let best: MoverInstance | null = null, bestK = 1;
     const focal = height / 2 / Math.tan((camera.fov * Math.PI) / 360);
     for (const inst of this.active.values()) {
-      if (!inst.group.parent) continue;
+      if (!inst.group.parent || inst.owner === 'pets') continue;
       lpos.set(0, inst.tpl.height * 0.5, 0).applyMatrix4(inst.group.matrixWorld);
       const dist = lpos.distanceTo(camera.position);
       lpos.project(camera);
@@ -650,21 +650,24 @@ export class MoverManager {
   private external = new Map<number, External>();
   private externalObjs = new Set<WorldObject>();
 
-  /** Cria um mob vindo do servidor: modelo pelo `entry`, nome/seleção como os mobs de spawn (`owner` 'spawns'). */
-  addExternal(id: number, entry: ModelEntry, x: number, z: number, h: number, state: string, y: number | null, hp = 1000) {
+  /**
+   * Cria um mob vindo do servidor: modelo pelo `entry`, nome/seleção como os mobs de spawn (`owner` 'spawns').
+   * `pet`: pet coletor de um jogador (`owner` 'pets'): sem nome, não dá para clicar nem aparece no mini mapa.
+   */
+  addExternal(id: number, entry: ModelEntry, x: number, z: number, h: number, state: string, y: number | null, hp = 1000, pet = false) {
     this.removeExternal(id);
     const flying = y !== null;
     const gy = flying ? y : this.heightAt(x, z) ?? 100;
     const obj: WorldObject = { type: OT.MOVER, modelId: entry.id, pos: [x, gy, z], rot: [0, h, 0], scale: [1, 1, 1], motion: 0, ai: 0, ai2: 0, name: '' };
-    const e: External = { obj, inst: null, target: [x, z], cur: [x, gy, z], h, curH: h, s: state, flying, gone: false, hp, oneShot: false };
+    const e: External = { obj, inst: null, target: [x, z], cur: [x, gy, z], h, curH: h, s: state, flying, gone: false, hp, oneShot: false, pet };
     this.external.set(id, e);
     this.externalObjs.add(obj);
     void this.template(entry, obj).then((tpl) => {
       if (!tpl || e.gone) return;
       const s = entry.scale;
       const inst = new MoverInstance(tpl, obj, objectMatrix({ pos: e.cur, rot: [0, e.curH, 0], scale: [s, s, s] }, new Matrix4()));
-      inst.owner = 'spawns';
-      const label = this.labelOf('spawns', obj);
+      inst.owner = pet ? 'pets' : 'spawns';
+      const label = pet ? null : this.labelOf('spawns', obj);
       if (label) inst.setLabel(label, this.labelClassOf('spawns', obj));
       inst.play(...mobMotion(e.s));
       this.parent.add(inst.group);
@@ -691,12 +694,12 @@ export class MoverManager {
   }
 
   /** mob do servidor desenhado por esta instância (id) — para atacar o que foi clicado */
-  externalIdOf(inst: MoverInstance) { for (const [id, e] of this.external) if (e.inst === inst) return id; return null; }
+  externalIdOf(inst: MoverInstance) { for (const [id, e] of this.external) if (e.inst === inst && !e.pet) return id; return null; }
 
   /** posição (FlyFF), HP (milésimos), estado e instância de um mob do servidor */
   externalInfo(id: number) { const e = this.external.get(id); return e ? { pos: e.cur, hp: e.hp, s: e.s, inst: e.inst } : null; }
   /** posição (x, z) dos mobs do servidor vivos — pontos vermelhos do mini mapa */
-  externalPositions(): [number, number][] { const out: [number, number][] = []; for (const e of this.external.values()) if (!e.gone && e.hp > 0) out.push([e.cur[0], e.cur[2]]); return out; }
+  externalPositions(): [number, number][] { const out: [number, number][] = []; for (const e of this.external.values()) if (!e.gone && e.hp > 0 && !e.pet) out.push([e.cur[0], e.cur[2]]); return out; }
 
   setExternalHp(id: number, hp: number) { const e = this.external.get(id); if (e) e.hp = hp; }
 
@@ -746,6 +749,7 @@ interface External {
   obj: WorldObject; inst: MoverInstance | null; target: [number, number]; cur: [number, number, number]; h: number; curH: number; s: string; flying: boolean; gone: boolean;
   /** HP em milésimos do máximo; tocando um movimento de uma vez (golpe, dano) que depois volta ao do estado */
   hp: number; oneShot: boolean;
+  /** pet coletor de um jogador (não é mob) */ pet: boolean;
 }
 
 /** movimento do mob para o estado vindo do servidor */

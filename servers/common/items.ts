@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { applyPatch, blankItem, readItemsCustom, type ItemsCustom } from './items-custom';
 import path from 'node:path';
 import { parseDefines } from '../../shared/formats/inc';
 import { decodeText } from '../../shared/formats/rgn';
@@ -56,6 +57,10 @@ export interface ItemDef {
   referStat1: number; referStat2: number; referTarget1: number; referTarget2: number;
   /** descrição (szComment: texto entre aspas ou IDS_* do propItem.txt.txt) */
   desc?: string;
+  /** visual: símbolo II_* de outro item cujo modelo aparece no personagem (itens criados no painel admin) */
+  look?: string;
+  /** dwLinkKind: no pet coletor (IK3_PET), o MI_* que aparece seguindo o dono; -1 = nenhum */
+  linkKind?: number;
 }
 
 /**
@@ -173,7 +178,7 @@ export class ItemCatalog {
       a1: col('nAdjParamVal1'), a2: col('nAdjParamVal2'), a3: col('nAdjParamVal3'), a4: col('nAdjParamVal4'), a5: col('nAdjParamVal5'), a6: col('nAdjParamVal6'),
       ready: col('dwSkillReady'), range: col('dwAttackRange'), job: col('dwItemJob'), hand: col('dwHanded'), hit: col('nAdjHitRate'), parry: col('dwParry'), sa1: col('dwSndAttack1'), sa2: col('dwSndAttack2'),
       ignore: col('dwBasePartsIgnore'), grade: col('dwItemGrade'), elem: col('eItemType'),
-      cm: col('szComment'), rs1: col('dwReferStat1'), rs2: col('dwReferStat2'), rt1: col('dwReferTarget1'), rt2: col('dwReferTarget2'), fs: col('fFlightSpeed'), flr: col('fFlightLRAngle'), ftb: col('fFlightTBAngle'),
+      cm: col('szComment'), link: col('dwLinkKind'), rs1: col('dwReferStat1'), rs2: col('dwReferStat2'), rt1: col('dwReferTarget1'), rt2: col('dwReferTarget2'), fs: col('fFlightSpeed'), flr: col('fFlightLRAngle'), ftb: col('fFlightTBAngle'),
     };
     const float = (v: string | undefined) => { const n = Number((v ?? '').trim()); return Number.isFinite(n) ? n : 0; };
     if (C.id < 0 || C.icon < 0) { console.warn('Itens: cabeçalho do arquivo de itens não reconhecido'); return this; }
@@ -213,6 +218,7 @@ export class ItemCatalog {
         referTarget1: C.rt1 < 0 ? -1 : num(c[C.rt1], -1), referTarget2: C.rt2 < 0 ? -1 : num(c[C.rt2], -1),
       };
       if (C.cm >= 0) { const cm = (c[C.cm] ?? '').trim(); const t = cm.startsWith('"') ? cm.replace(/"/g, '').trim() : names.get(cm) ?? ''; if (t && t !== '=') def.desc = t; }
+      if (C.link >= 0) { const lk = num(c[C.link], -1); if (lk > 0) def.linkKind = lk; }
       if (def.element < 0 || def.element > 5) def.element = 0;
       // 0 arma geral, 1 unique, 2 ultimate, 3 armadura de set (ARMOR_SET: fail stack próprio do UpgradeSuccess.inc)
       if (def.referStat1 > 3) def.referStat1 = -1;
@@ -238,7 +244,46 @@ export class ItemCatalog {
       for (const d of this.byId.values()) { const n = table.items[d.symbol]; if (n) d.name = n; }
       for (const s of this.sets) { const first = this.byId.get(s.elems[0]?.item)?.symbol; const n = first && table.sets[first]; if (n) s.name = n; }
     }
+    this.applyCustom(readItemsCustom());
     return this;
+  }
+
+  // ---------- alterações do painel admin (data/items-custom.json, servers/common/items-custom.ts) ----------
+  /** cópia de cada item como veio do Spec_Item (antes das alterações), para desfazer e para o painel comparar */
+  readonly original = new Map<number, ItemDef>();
+  /** ids mexidos pelas alterações atuais: editados, criados e removidos */
+  readonly customIds = { edited: new Set<number>(), added: new Set<number>(), removed: new Set<number>() };
+
+  /** volta tudo o que as alterações anteriores mexeram e aplica `c` (o painel chama de novo a cada gravação) */
+  applyCustom(c: ItemsCustom) {
+    if (!this.original.size) for (const d of this.byId.values()) this.original.set(d.id, structuredClone(d));
+    for (const id of [...this.customIds.edited, ...this.customIds.removed]) {
+      const o = this.original.get(id);
+      if (o) { const d = structuredClone(o); this.byId.set(id, d); this.bySymbol.set(d.symbol, d); }
+    }
+    for (const id of this.customIds.added) { const d = this.byId.get(id); this.byId.delete(id); if (d) { this.bySymbol.delete(d.symbol); this.defines.delete(d.symbol); } }
+    this.customIds.edited.clear(); this.customIds.added.clear(); this.customIds.removed.clear();
+    for (const n of c.added) {
+      const id = Math.floor(Number(n.id)), symbol = String(n.symbol ?? '').trim().toUpperCase();
+      if (!(id > 0) || !/^II_[A-Z0-9_]+$/.test(symbol) || this.original.has(id) || this.bySymbol.has(symbol)) continue;
+      const base = n.base ? this.bySymbol.get(n.base) : undefined;
+      const d = base ? { ...structuredClone(base), id, symbol } : blankItem(id, symbol);
+      applyPatch(d, n);
+      this.byId.set(id, d); this.bySymbol.set(symbol, d); this.defines.set(symbol, id);
+      this.customIds.added.add(id);
+    }
+    for (const [k, p] of Object.entries(c.edits)) {
+      const d = this.byId.get(Number(k));
+      if (!d || this.customIds.added.has(d.id)) continue;
+      applyPatch(d, p);
+      this.customIds.edited.add(d.id);
+    }
+    for (const id of c.removed) {
+      const d = this.byId.get(id);
+      if (!d) continue;
+      this.byId.delete(id); this.bySymbol.delete(d.symbol);
+      this.customIds.removed.add(id);
+    }
   }
 
   /** blocos `Add_Weapon_Rarity { nRarityLevel = n; szName = "…"; dwColor = 0x…; fAttackRate = 1.04f; fStatsRate = 1.10f; }` */

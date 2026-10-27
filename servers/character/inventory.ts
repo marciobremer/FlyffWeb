@@ -710,7 +710,7 @@ export class Inventory {
     for (const i of st.items) {
       const d = i.c === EQUIP ? this.catalog.byId.get(i.id) : undefined;
       if (!d) continue;
-      pieces.push({ s: i.s, sym: d.symbol, u: i.u, e: i.e, el: i.el });
+      pieces.push({ s: i.s, sym: d.look ?? d.symbol, u: i.u, e: i.e, el: i.el });
       if (i.s === 13) ride = d.rideMotion;
     }
     const list = lookList(pieces, hide);
