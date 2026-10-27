@@ -342,7 +342,7 @@ net.onChangeWorld = (w, p) => {
     await view.spawnPlayer(p[0], p[2], p[1], sex, look);
     if (view.player) view.player.runSpeed = moveSpeed;
     const ch = characters.find((c) => c.slot === selectedSlot);
-    if (ch) { view.player?.inst?.setLabel(ch.name, rankOf(account?.authority), PLAYER_LABEL_LIFT); view.player?.inst?.setGuildTag(myGuild); }
+    if (ch) { view.player?.inst?.setLabel(ch.name, rankOf(account?.authority), PLAYER_LABEL_LIFT); view.player?.inst?.setGuildTag(myGuild, myGuildMaster); }
     void view.player?.setCombat(combatMt);
     view.playerControl = true;
     net.resume();
@@ -481,18 +481,20 @@ net.onStats = (s) => {
   charWnd.setStats(s);
   jobWnd.setOptions(s.jobOpts ?? []);
 };
-net.onReset = () => { deathScreen(false); pets.clear(); view.moverMgr.clearExternal(); ground.clear(); friendsWnd.clear(); partyWnd.set(null, 0); partyBuffs.set(null); guildWnd.set(null, 0); myGuild = null; myInvis = false; gmPanel.setInvis(false); tradeWnd.close(); };
+net.onReset = () => { deathScreen(false); pets.clear(); view.moverMgr.clearExternal(); ground.clear(); friendsWnd.clear(); partyWnd.set(null, 0); partyBuffs.set(null); guildWnd.set(null, 0); myGuild = null; myGuildMaster = false; myInvis = false; gmPanel.setInvis(false); tradeWnd.close(); };
 /** guild (tecla G); o nome da sua guild fica acima do seu nome */
 const guildWnd = new GuildWindow(document.body);
 let myGuild: string | null = null;
+/** você é o mestre da guild (nome da guild dourado) */
+let myGuildMaster = false;
 hud.onGuild = () => guildWnd.toggle();
 guildWnd.onOpen = () => net.guild('guildInfo');
 guildWnd.onCreate = (name) => net.guild('guildCreate', { name });
 guildWnd.onLeave = () => net.guild('guildLeave');
 guildWnd.onKick = (id) => net.guild('guildKick', { id });
 guildWnd.onDisband = () => net.guild('guildDisband');
-net.onGuildView = (g) => { guildWnd.set(g, net.myId); net.onMyGuildTag(g?.name ?? null); };
-net.onMyGuildTag = (g) => { myGuild = g; view.player?.inst?.setGuildTag(g); };
+net.onGuildView = (g) => { guildWnd.set(g, net.myId); net.onMyGuildTag(g?.name ?? null, !!g && g.master === net.myId); };
+net.onMyGuildTag = (g, master) => { myGuild = g; myGuildMaster = master; view.player?.inst?.setGuildTag(g, master); };
 net.onGuildReq = (id, name, guild) => friendRequestPrompt(document.body, name, (ok) => net.guild('guildAnswer', { id, ok }), `${name} convidou você para a guild ${guild}.`);
 /** party (tecla P) e lista de partys (tecla L) */
 const partyWnd = new PartyWindow(document.body);
@@ -755,7 +757,7 @@ async function restyle(eq: string[]) {
   lookNow = eq;
   const inst = await view.player?.restyle(eq);
   const ch = characters.find((c) => c.slot === selectedSlot);
-  if (inst && ch) { inst.setLabel(ch.name, rankOf(account?.authority), PLAYER_LABEL_LIFT); inst.setGuildTag(myGuild); }
+  if (inst && ch) { inst.setLabel(ch.name, rankOf(account?.authority), PLAYER_LABEL_LIFT); inst.setGuildTag(myGuild, myGuildMaster); }
   if (inst && myInvis) inst.setGhost(true);
   updateInvPreview();
 }
@@ -954,7 +956,7 @@ view.onFrame = (dt) => {
 };
 view.start();
 // testes: com `?debug` no endereço, o console enxerga o mundo e a rede (window.__flyff)
-if (new URLSearchParams(location.search).has('debug')) (window as unknown as Record<string, unknown>).__flyff = { view, net, combat, inventory };
+if (new URLSearchParams(location.search).has('debug')) (window as unknown as Record<string, unknown>).__flyff = { view, net, combat, inventory, pets };
 
 // ---------- tela de carregamento (antes do login) ----------
 /**
@@ -1341,7 +1343,7 @@ async function enter() {
   try { queue = JSON.parse(localStorage.getItem(`flyff.queue.${ch.id}`) ?? '[]') as (BarItem | null)[]; } catch { /* sem armazenamento */ }
   actionBar.setQueue(Array.isArray(queue) ? queue : []);
   view.player?.inst?.setLabel(ch.name, rankOf(account.authority), PLAYER_LABEL_LIFT);
-  view.player?.inst?.setGuildTag(myGuild);
+  view.player?.inst?.setGuildTag(myGuild, myGuildMaster);
   view.labelRenderer.domElement.hidden = false;
   view.playerControl = true;
   $('charScreen').hidden = true;

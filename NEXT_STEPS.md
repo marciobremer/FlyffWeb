@@ -983,3 +983,21 @@ Comparado com o MikePanqueca (Blade 73) do servidor oficial local (banco CHARACT
   Adicionar/Remover em cada lista, salva na hora). Cliente: client/pets.ts (pet = mob externo sem nome e sem clique).
 - GM: `//drop <II_…|id> [qtd]` larga itens sem dono no chão em volta (para testar o pet).
 - Falta: o pet não volta sozinho ao relogar (chamar de novo); raridade nos drops.
+- Altura: mobs que andam e o pet pisam também no chão dos objetos (calçadas, escadas, pontes), como o jogador —
+  MoverManager.floorAt = terreno ou colisão do objeto até um degrau (0,7) acima de onde estão; antes afundavam nas calçadas.
+
+## 53. Nomes: NPC, seleção e guild (2026-10-28)
+- NPCs e os mobs de cidade que não são monstros (guardas MI_MAFL_PATROL, cidadãos) têm o nome em COLOR_NPC (0xFFA0A0FF,
+  `.npc-label.npc`). Selecionar não muda mais a cor de nenhum nome; só aparecem as 4 setas.
+- Nome da guild 2 px maior (16 px); o mestre da guild (cargo 0) tem o nome da guild dourado (`gmaster` no PlayerView, `m` no
+  'guildTag', `.guild-tag.master`).
+- Falta: título do NPC acima do nome ("[Colosseum Shop]", "[Weapon]" — m_nStructure do character.inc).
+
+## 54. Objetos animados (2026-10-28)
+- Objetos do mapa que se mexem tocam a animação do próprio .o3d (shared/objanim.ts), como o CModelObject do original:
+  TM por objeto (`m_pFrame` de cada GMOBJECT, CObject3D::Animate — sino das torres de Flaris, placas, engrenagens, luzes) e
+  esqueleto embutido com movimento (m_pBaseBone + CMotion — ventiladores, guindastes, bandeiras, arbustos). O quadro anda
+  m_fPerSlerp por tique (62,5/s) e repete; todas as cópias de um modelo usam a mesma pose (calculada uma vez por quadro).
+- O leitor do .o3d agora guarda perSlerp, os quadros por peça, todos os nós (inclusive os sem malha) e os ossos embutidos.
+- As instâncias paradas desses modelos ficam invisíveis, só para o clique; as cópias animadas é que aparecem.
+- Correção: a geometria parada (models.ts) agora transforma uma cópia dos vértices — antes mudava o array do .o3d em cache.

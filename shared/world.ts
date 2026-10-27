@@ -8,6 +8,7 @@ import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { WorldData } from './data';
 import { buildTerrain, disposeTerrain, setTerrainWireframe, terrainLight, terrainShadow, TerrainTextures, type ColorMode } from './terrain';
 import { getPlaceholderGeometry, ModelLibrary, placeholderMaterial } from './models';
+import { ObjectAnimations } from './objanim';
 import { objectMatrix, toThree } from './math';
 import { OT, MAP_SIZE, type WorldObject } from './formats/types';
 import type { Landscape } from './formats/lnd';
@@ -85,6 +86,8 @@ export class WorldView {
 
   data: WorldData | null = null;
   readonly lib = new ModelLibrary(new Set(), new Set());
+  /** objetos que se mexem (sino, engrenagens, ventiladores…): shared/objanim.ts */
+  private objAnims = new ObjectAnimations(this.lib);
   readonly tiles = new Map<string, TileView>();
   private loading = new Set<string>();
   readonly moverMgr: MoverManager;
@@ -231,14 +234,24 @@ export class WorldView {
       const info: PickInfo = { objects: objs, label, tile: key(view.x, view.y), kind: 'Objeto' };
       const placeholder = this.addInstances(view.objGroup, objs, getPlaceholderGeometry(), placeholderMaterial(id), info, view.pickables);
       if (entry && this.lib.exists(entry)) {
-        void this.lib.get(entry).then((model) => {
+        const group = view.objGroup;
+        void this.lib.get(entry).then(async (model) => {
           if (!model || view.disposed) return;
-          view.objGroup.remove(placeholder);
+          const anim = await this.objAnims.get(model);
+          if (view.disposed || placeholder.parent !== group) return; // tile descarregado ou refeito (editor) enquanto carregava
+          group.remove(placeholder);
           view.pickables.splice(view.pickables.indexOf(placeholder), 1);
           placeholder.dispose();
           for (const part of model.parts) {
-            const m = this.addInstances(view.objGroup, objs, part.geometry, part.materials.length > 1 ? part.materials : part.materials[0], info, view.pickables);
-            if (part.light) { m.userData.nightOnly = true; m.visible = this.isNight(); }
+            const m = this.addInstances(group, objs, part.geometry, part.materials.length > 1 ? part.materials : part.materials[0], info, view.pickables);
+            // animado: as instâncias paradas ficam só para o clique (o raio não olha `visible`); quem aparece são as cópias animadas
+            if (anim) m.visible = false;
+            else if (part.light) { m.userData.nightOnly = true; m.visible = this.isNight(); }
+          }
+          if (anim) {
+            const night = this.isNight();
+            for (const o of objs) anim.add(group, o, night, () => !view.disposed);
+            this.objAnims.track(anim);
           }
         });
       }
@@ -683,6 +696,7 @@ export class WorldView {
     });
     const mm = this.moverMgr;
     mm.heightAt = (x, z) => this.sampleHeight(x, z);
+    mm.objectGround = (x, z, yTop) => this.collision.groundAt(x, z, yTop);
     mm.isFlying = (id) => d.flyingMovers.has(id);
     // NPCs humanos (MI_MALE/MI_FEMALE): corpo = partes Part_*.o3d escolhidas por character.inc (SetFigure/SetEquip)
     mm.variant = (entry, obj) => {
@@ -692,7 +706,9 @@ export class WorldView {
       return { key: humanKey(spec), load: () => loadHumanTemplate(entry, spec, d, this.lib) };
     };
     // nome acima da cabeça: mobs = nome do propMover; NPCs = SetName do character.inc, senão o do propMover
-    mm.labelClassOf = (owner, obj) => (owner === 'spawns' && d.bossMovers.has(obj.modelId) ? 'boss' : undefined);
+    // NPCs e os mobs de cidade que não são monstros (guardas, cidadãos): COLOR_NPC; boss: vermelho
+    mm.labelClassOf = (owner, obj) => (owner === 'movers' || (owner === 'spawns' && !d.monsterMovers.has(obj.modelId)) ? 'npc'
+      : owner === 'spawns' && d.bossMovers.has(obj.modelId) ? 'boss' : undefined);
     mm.labelOf = (owner, obj) => owner === 'spawns' ? d.moverNames.get(obj.modelId) ?? null
       : (obj.characterKey ? d.characters.get(obj.characterKey.toLowerCase())?.name : undefined) ?? d.moverNames.get(obj.modelId) ?? null;
     mm.speedOf = (id) => d.moverSpeed.get(id) ?? 0;
@@ -1087,6 +1103,7 @@ export class WorldView {
     if (this.gameCamera) this.constrainCamera(dt);
     this.stream(now);
     this.moverMgr.update(dt, camera.position);
+    this.objAnims.update(dt);
     this.updateShadow();
     this.water.update(dt);
     this.sfxMgr.update(dt, camera);

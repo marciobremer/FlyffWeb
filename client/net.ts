@@ -16,7 +16,7 @@ import type { GroundRow } from './ground';
  * O próprio jogador manda posição/rumo/estado no máximo 10×/s e só quando muda; os remotos chegam 10×/s e são suavizados
  * a cada quadro (interpolação exponencial da posição e do rumo), com as mesmas animações do jogador local.
  */
-export interface PlayerView { /** nome da guild */ guild?: string; id: number; name: string; sex: number; hair: number; head: number; /** cor do cabelo (0xAARRGGBB; 0 = padrão da malha) */ hc?: number; level: number; p: [number, number, number]; h: number; s: string; /** símbolos II_* equipados */ eq?: string[]; /** postura de combate 1–15 (0 = normal) */ mt?: number; /** 'admin' ou 'gm' (cor do nome) */ rank?: string; /** GM invisível (só GMs recebem): translúcido */ iv?: 1; /** pet coletor seguindo (MI_*) */ pet?: number }
+export interface PlayerView { /** nome da guild */ guild?: string; id: number; name: string; sex: number; hair: number; head: number; /** cor do cabelo (0xAARRGGBB; 0 = padrão da malha) */ hc?: number; level: number; p: [number, number, number]; h: number; s: string; /** símbolos II_* equipados */ eq?: string[]; /** postura de combate 1–15 (0 = normal) */ mt?: number; /** 'admin' ou 'gm' (cor do nome) */ rank?: string; /** GM invisível (só GMs recebem): translúcido */ iv?: 1; /** pet coletor seguindo (MI_*) */ pet?: number; /** mestre da guild (nome da guild dourado) */ gmaster?: 1 }
 
 /** seus atributos (server/realtime.ts statsMsg) */
 export interface PlayerStats {
@@ -111,7 +111,7 @@ export class RemotePlayers {
     inst.setHairColor(hairRgb(r.view.hc ?? 0, sex, r.view.hair || 1));
     applyEnchantGlow(inst, r.view.eq ?? [], sex, d, false);
     inst.setLabel(r.view.name, r.view.rank, PLAYER_LABEL_LIFT);
-    inst.setGuildTag(r.view.guild);
+    inst.setGuildTag(r.view.guild, !!r.view.gmaster);
     if (this.partyIds.has(r.view.id)) inst.label?.element.classList.add('party');
     if (r.view.iv) inst.setGhost(true); // GM invisível (só GMs recebem)
     inst.play(...motionOf(r.s, r.view.mt ?? 0));
@@ -227,11 +227,12 @@ export class RemotePlayers {
   instOf(id: number) { return this.list.get(id)?.inst ?? null; }
 
   /** a guild de um jogador mudou: nome da guild acima do nome dele */
-  guildTag(id: number, g: string | null) {
+  guildTag(id: number, g: string | null, master = false) {
     const r = this.list.get(id);
     if (!r) return;
     if (g) r.view.guild = g; else delete r.view.guild;
-    r.inst?.setGuildTag(g);
+    if (master) r.view.gmaster = 1; else delete r.view.gmaster;
+    r.inst?.setGuildTag(g, master);
   }
 
   /** membros da sua party: o nome deles fica verde */
@@ -320,7 +321,7 @@ export class NetClient {
   /** guild: sua guild (null = sem guild), convite recebido, o nome da sua guild mudou */
   onGuildView: (g: import('./guild').GuildView | null) => void = () => {};
   onGuildReq: (id: number, name: string, guild: string) => void = () => {};
-  onMyGuildTag: (g: string | null) => void = () => {};
+  onMyGuildTag: (g: string | null, master: boolean) => void = () => {};
   /** party: sua party (null = sem party), convite recebido, lista de partys */
   onParty: (p: import('./party').PartyView | null) => void = () => {};
   onPartyReq: (id: number, name: string) => void = () => {};
@@ -462,7 +463,7 @@ export class NetClient {
         this.onGuildReq(Number(m.id), String(m.name ?? ''), String(m.guild ?? ''));
       } else if (m.t === 'guildTag') {
         const g = m.g == null ? null : String(m.g);
-        if (Number(m.id) === this.myId) this.onMyGuildTag(g); else this.remotes.guildTag(Number(m.id), g);
+        if (Number(m.id) === this.myId) this.onMyGuildTag(g, !!m.m); else this.remotes.guildTag(Number(m.id), g, !!m.m);
       } else if (m.t === 'party') {
         this.onParty((m.p ?? null) as import('./party').PartyView | null);
       } else if (m.t === 'partyReq') {

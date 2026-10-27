@@ -77,8 +77,9 @@ export class ModelLibrary {
       for (const p of o3d.parts) {
         if (!p.positions.length || !p.indices.length) continue;
         const geo = new BufferGeometry();
-        geo.setAttribute('position', new BufferAttribute(p.positions, 3));
-        geo.setAttribute('normal', new BufferAttribute(p.normals, 3));
+        // cópias: o applyMatrix4 abaixo muda o array, e o original serve ainda à colisão e aos objetos animados (objanim.ts)
+        geo.setAttribute('position', new BufferAttribute(p.positions.slice(), 3));
+        geo.setAttribute('normal', new BufferAttribute(p.normals.slice(), 3));
         geo.setAttribute('uv', new BufferAttribute(p.uvs, 2));
         geo.setIndex(new BufferAttribute(p.indices, 1));
         if (!p.skinned) geo.applyMatrix4(world(p));

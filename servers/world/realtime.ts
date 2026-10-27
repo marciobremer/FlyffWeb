@@ -85,7 +85,7 @@ import type { InvEdit } from '../character/inventory';
  *                                                   recebido, amizade feita, desfeita
  *   { t: 'party', p: PartyView | null } / { t: 'partyReq', id, name } / { t: 'partyList', list }   sua party (ao mudar e
  *                                                   a cada 1,5 s, com o HP dos membros), convite recebido, lista de partys
- *   { t: 'guildView', g } / { t: 'guildReq', id, name, guild } / { t: 'guildTag', id, g }   sua guild (membros, cargos),
+ *   { t: 'guildView', g } / { t: 'guildReq', id, name, guild } / { t: 'guildTag', id, g, m? }   sua guild (membros, cargos),
  *                                                   convite recebido, nome da guild de alguém mudou (acima do nome)
  *   { t: 'pm', with, wname, from, name, text }      mensagem privada (com quem é a conversa e o nome dele, quem escreveu)
  *   { t: 'tradeReq', id, name } / { t: 'trade', name, me, them, lock: [eu, ele], ok: [eu, ele] } / { t: 'tradeClose', text }
@@ -120,7 +120,7 @@ import type { InvEdit } from '../character/inventory';
  *                                                   s stand/walk/run/dead; hp em milésimos do máximo
  * O servidor confere a sessão e o dono do personagem, descarta valores absurdos e salva a posição ao sair.
  */
-export interface PlayerView { /** mundo onde está (WdMadrigal, WdKebaras…) */ w: string; /** nome da guild (aparece acima do nome) */ guild?: string; id: number; name: string; sex: number; hair: number; head: number; /** cor do cabelo (m_dwHairColor; 0 = padrão) */ hc?: number; /** pet coletor (MI_*) seguindo o personagem */ pet?: number; level: number; p: [number, number, number]; h: number; s: string; /** símbolos II_* equipados */ eq: string[]; /** postura de combate 1–15 (0 = sem arma) */ mt: number; /** classe (JOB_*) */ job: number; /** conta de admin ou GM (cor do nome) */ rank?: Rank; /** GM invisível (Dark Illusion) — só GMs/admins recebem */ iv?: 1 }
+export interface PlayerView { /** mundo onde está (WdMadrigal, WdKebaras…) */ w: string; /** nome da guild (aparece acima do nome) */ guild?: string; id: number; name: string; sex: number; hair: number; head: number; /** cor do cabelo (m_dwHairColor; 0 = padrão) */ hc?: number; /** pet coletor (MI_*) seguindo o personagem */ pet?: number; /** mestre da guild (nome da guild dourado) */ gmaster?: 1; level: number; p: [number, number, number]; h: number; s: string; /** símbolos II_* equipados */ eq: string[]; /** postura de combate 1–15 (0 = sem arma) */ mt: number; /** classe (JOB_*) */ job: number; /** conta de admin ou GM (cor do nome) */ rank?: Rank; /** GM invisível (Dark Illusion) — só GMs/admins recebem */ iv?: 1 }
 
 /** trade entre dois jogadores: o que cada um pôs, quem deu OK (trava a oferta) e quem confirmou a troca */
 interface Trade { a: Conn; b: Conn; offer: Map<Conn, TradeOffer>; lock: Set<Conn>; ok: Set<Conn>; busy: boolean }
@@ -802,7 +802,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     o.guild = g;
     if (!o.player) return;
     if (g) o.player.guild = g.name; else delete o.player.guild;
-    broadcast({ t: 'guildTag', id: o.player.id, g: g?.name ?? null });
+    if (g?.rank === 0) o.player.gmaster = 1; else delete o.player.gmaster;
+    broadcast({ t: 'guildTag', id: o.player.id, g: g?.name ?? null, ...(g?.rank === 0 ? { m: 1 } : {}) });
   }
   const guildNotice = (guildId: number, text: string) => { for (const o of conns) if (o.guild?.id === guildId) send(o.ws, { t: 'chat', id: 0, name: '', text }); };
 
@@ -1666,7 +1667,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     const wr = [...worlds.values()].find((x) => x.id === ch.world_id) ?? null;
     const wname = wr?.name ?? MAIN;
     const pStart = wr ? (inWorld(p0) ? p0 : [ch.pos_x, ch.pos_y, ch.pos_z]) : [...REVIVE_AT];
-    c.player = { w: wname, ...(guildRow ? { guild: guildRow.name } : {}), id, name: ch.name, sex: ch.sex, hair: ch.hair_mesh, ...(ch.hair_color ? { hc: ch.hair_color } : {}), head: ch.head_mesh, level: ch.level, p: pStart as [number, number, number], h: ch.angle, s: 'stand', eq: inv ? inventory!.looks(inv, c.hide) : [], job: ch.job, mt: stanceOf(c, inv ? inventory!.combatMotion(inv, ch.job) : 0), rank };
+    c.player = { w: wname, ...(guildRow ? { guild: guildRow.name } : {}), ...(guildRow?.rank === 0 ? { gmaster: 1 as const } : {}), id, name: ch.name, sex: ch.sex, hair: ch.hair_mesh, ...(ch.hair_color ? { hc: ch.hair_color } : {}), head: ch.head_mesh, level: ch.level, p: pStart as [number, number, number], h: ch.angle, s: 'stand', eq: inv ? inventory!.looks(inv, c.hide) : [], job: ch.job, mt: stanceOf(c, inv ? inventory!.combatMotion(inv, ch.job) : 0), rank };
     if (rules) {
       const okJob = jobForLevel(ch.job, ch.level);
       if (okJob !== ch.job) { // nível abaixo do da classe (mexido fora do jogo): volta para a classe que o nível permite

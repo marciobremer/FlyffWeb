@@ -21,6 +21,18 @@ export interface O3dPart {
   textures: string[];
   /** blocos de material: início no buffer de índices, nº de triângulos, materialId */
   blocks: { start: number; triangles: number; material: number; /** ossos locais deste bloco (registradores c[i*3]); vazio = usa os do objeto */ usedBones: number[] }[];
+  /** animação TM do objeto (LoadTMAni): frameCount × 7 floats (quatérnio x,y,z,w e posição x,y,z, local ao pai); só GMT_NORMAL */
+  frames?: Float32Array;
+}
+/** nó do grupo LOD 0 (inclui os sem malha, que podem ser pai de outros) — para animar a hierarquia */
+export interface O3dNode { id: number; parentId: number; parentType: number; transform: number[]; frames?: Float32Array }
+/** ossos embutidos no .o3d (objetos com esqueleto próprio: m_pBaseBone/m_pBaseBoneInv + CMotion::ReadTM) */
+export interface O3dBones {
+  /** pose padrão (mundo do modelo) e inversa, por osso — D3D linha-vetor */
+  base: number[][]; inverse: number[][];
+  parents: number[];
+  /** por osso: frameCount × 7 floats, ou null (osso parado usa `staticTm`) */
+  frames: (Float32Array | null)[]; staticTm: (number[] | null)[];
 }
 export interface O3d {
   name: string;
@@ -28,7 +40,11 @@ export interface O3d {
   frameCount: number;
   boneCount: number;
   bounds: { min: [number, number, number]; max: [number, number, number] };
+  /** quadros por tique do Neuz (m_fPerSlerp) */
+  perSlerp: number;
   parts: O3dPart[];
+  nodes: O3dNode[];
+  bones: O3dBones | null;
   /** malha de colisão (`m_collObj`, espaço do objeto) quando o arquivo tem uma */
   collision: { positions: Float32Array; indices: Uint16Array } | null;
 }
@@ -42,6 +58,8 @@ class Reader {
   f32() { const v = this.dv.getFloat32(this.o, true); this.o += 4; return v; }
   u8() { return this.dv.getUint8(this.o++); }
   skip(n: number) { this.o += n; }
+  mat() { const m: number[] = []; for (let i = 0; i < 16; i++) m.push(this.f32()); return m; }
+  floats(n: number) { const a = new Float32Array(n); for (let i = 0; i < n; i++) a[i] = this.f32(); return a; }
 }
 
 const GMT_NORMAL = 0, GMT_SKIN = 1;
@@ -114,7 +132,7 @@ export function parseO3d(buf: ArrayBuffer): O3d {
     min: [r.f32(), r.f32(), r.f32()] as [number, number, number],
     max: [r.f32(), r.f32(), r.f32()] as [number, number, number],
   };
-  r.f32(); // perSlerp
+  const perSlerp = r.f32();
   const frameCount = r.i32();
   const eventCount = r.i32();
   r.skip(12 * eventCount);
@@ -126,17 +144,26 @@ export function parseO3d(buf: ArrayBuffer): O3d {
   }
   const lod = r.i32() !== 0;
   const boneCount = r.i32();
+  let bones: O3dBones | null = null;
   if (boneCount > 0) {
-    r.skip(64 * boneCount * 2);
+    const base: number[][] = [], inverse: number[][] = [];
+    for (let i = 0; i < boneCount; i++) base.push(r.mat());
+    for (let i = 0; i < boneCount; i++) inverse.push(r.mat());
     if (frameCount > 0) {
-      for (let i = 0; i < boneCount; i++) { const len = r.i32(); r.skip(len + 128 + 4); }
+      const parents: number[] = [];
+      for (let i = 0; i < boneCount; i++) { const len = r.i32(); r.skip(len + 128); parents.push(r.i32()); }
       r.i32(); // aniCount
-      for (let i = 0; i < boneCount; i++) r.skip(r.i32() === 1 ? 28 * frameCount : 64);
+      const frames: (Float32Array | null)[] = [], staticTm: (number[] | null)[] = [];
+      for (let i = 0; i < boneCount; i++) {
+        if (r.i32() === 1) { frames.push(r.floats(7 * frameCount)); staticTm.push(null); } else { frames.push(null); staticTm.push(r.mat()); }
+      }
+      bones = { base, inverse, parents, frames, staticTm };
     }
     r.i32(); // sendVS
   }
   r.i32(); // poolSize
   const parts: O3dPart[] = [];
+  const nodes: O3dNode[] = [];
   for (let g = 0; g < (lod ? MAX_GROUP : 1); g++) {
     const count = r.i32();
     for (let i = 0; i < count; i++) {
@@ -152,9 +179,10 @@ export function parseO3d(buf: ArrayBuffer): O3d {
       for (let k = 0; k < 16; k++) transform.push(r.f32());
       const part: Partial<O3dPart> = { id, parentId, parentType, light: (t & 0x80000000) !== 0, transform, skinned: type === GMT_SKIN, usedBones };
       readGM(r, type, part);
-      if (type === GMT_NORMAL && frameCount > 0 && r.i32()) r.skip(28 * frameCount);
+      if (type === GMT_NORMAL && frameCount > 0 && r.i32()) part.frames = r.floats(7 * frameCount);
+      if (g === 0) nodes.push({ id, parentId, parentType, transform, frames: part.frames });
       if (g === 0 && type !== 2) parts.push(part as O3dPart); // 2 = bone (sem malha)
     }
   }
-  return { name, version, frameCount, boneCount, bounds, parts, collision };
+  return { name, version, frameCount, boneCount, bounds, perSlerp, parts, nodes, bones, collision };
 }

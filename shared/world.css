@@ -12,27 +12,29 @@
 /* nome do dono do servidor (Z: preto com contorno claro) e de GM (G) — shared/rank.ts */
 .npc-label.admin { color: #000; text-shadow: 0 0 3px #fff, 0 0 2px #fff, 0 1px 1px #fff; }
 .npc-label.gm { color: #9200ba; }
-.npc-label.selected { color: #ffe066; }
+/* NPC: azul lavanda (COLOR_NPC 0xFFA0A0FF do original); selecionar não muda a cor — só as setas aparecem */
+.npc-label.npc { color: #a0a0ff; }
 /* boss: nome vermelho (agressivo — ataca quem passa perto) */
 .npc-label.boss { color: #ff3b30; }
 /* modo de posicionar (painel de GM): cursor desenhado no centro da tela */
 .place-cursor { position: fixed; z-index: 50; width: 22px; height: 22px; margin: -11px 0 0 -11px; pointer-events: none; border: 2px solid #ff5a3c; border-radius: 50%; box-shadow: 0 0 0 1px #000, inset 0 0 0 1px #000; }
 .place-cursor::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: #ff5a3c; }
-.npc-label.boss.selected { color: #ff8a80; }
 /* nome da guild acima do nome do jogador */
-.npc-label .guild-tag { display: block; font-size: 14px; font-weight: 600; color: #e0b8ff; text-align: center; }
+.npc-label .guild-tag { display: block; font-size: 16px; font-weight: 600; color: #e0b8ff; text-align: center; text-shadow: 0 0 3px #000, 0 0 2px #000, 0 1px 1px #000; }
+/* mestre da guild: nome da guild dourado */
+.npc-label .guild-tag.master { color: #ffd34d; }
 /* membro da sua party */
 .npc-label.party { color: #4cff6a; }
 /* balão de fala do chat acima do nome (MoverInstance.say) */
 .chat-bubble { max-width: 220px; padding: 3px 8px; border: 1px solid #8a8f99; border-radius: 6px; background: rgb(240 240 236 / .95); color: #222; font: 600 13px system-ui, sans-serif; text-align: center; white-space: normal; overflow-wrap: anywhere; pointer-events: none; box-shadow: 0 1px 3px rgb(0 0 0 / .45); position: relative; }
 .chat-bubble.emo { padding: 2px 4px; line-height: 0; }
 .chat-bubble::after { content: ''; position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%); border: 6px solid transparent; border-bottom: 0; border-top-color: rgb(240 240 236 / .95); }
-/* seleção do alvo como no FlyFF Universe: 4 setas nos cantos do contorno na tela, apontando para dentro, pulsando de leve */
+/* seleção do alvo como no FlyFF Universe: 4 setas nos cantos do contorno na tela, com a ponta para dentro, pulsando de leve */
 .sel-arrows { position: fixed; z-index: 3; pointer-events: none; }
 .sel-arrows i { position: absolute; width: 16px; height: 16px; background: linear-gradient(135deg, #f4f8ff, #a9bcdf); clip-path: polygon(0 0, 100% 45%, 55% 55%, 45% 100%); filter: drop-shadow(0 0 1px #24324f) drop-shadow(0 1px 1px rgb(0 0 0 / .6)); animation: selPulse 0.9s ease-in-out infinite alternate; }
 .sel-arrows.hostile i { background: linear-gradient(135deg, #fff2f0, #e7a09a); }
-.sel-arrows .tl { left: -18px; top: -18px; --dx: 4px; --dy: 4px; }
-.sel-arrows .tr { right: -18px; top: -18px; transform: scaleX(-1); --dx: -4px; --dy: 4px; }
-.sel-arrows .bl { left: -18px; bottom: -18px; transform: scaleY(-1); --dx: 4px; --dy: -4px; }
-.sel-arrows .br { right: -18px; bottom: -18px; transform: scale(-1, -1); --dx: -4px; --dy: -4px; }
+.sel-arrows .tl { left: -18px; top: -18px; transform: scale(-1, -1); --dx: 4px; --dy: 4px; }
+.sel-arrows .tr { right: -18px; top: -18px; transform: scaleY(-1); --dx: -4px; --dy: 4px; }
+.sel-arrows .bl { left: -18px; bottom: -18px; transform: scaleX(-1); --dx: 4px; --dy: -4px; }
+.sel-arrows .br { right: -18px; bottom: -18px; --dx: -4px; --dy: -4px; }
 @keyframes selPulse { to { translate: var(--dx) var(--dy); } }

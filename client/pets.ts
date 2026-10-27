@@ -10,6 +10,8 @@ interface Pet { mover: number; pos: [number, number]; h: number; go: { x: number
 
 /** distância atrás do dono; corre mais rápido que o dono para alcançar */
 const FOLLOW = 1.6, SPEED = 9;
+/** parado, só sai andando quando fica tanto além da distância de seguir */
+const RESTART = 0.8;
 
 export class Pets {
   private list = new Map<number, Pet>();
@@ -53,14 +55,14 @@ export class Pets {
       if (p.go) { tx = p.go.x; tz = p.go.z; stop = 0.2; } else { tx = o[0]; tz = o[2]; stop = FOLLOW; }
       const dx = tx - p.pos[0], dz = tz - p.pos[1], dist = Math.hypot(dx, dz);
       if (dist > 40) { p.pos = [o[0] + 1, o[2] + 1]; continue; } // ficou muito longe (teleporte): reaparece ao lado
-      let s = 'stand';
-      if (dist > stop) {
+      // parado só volta a andar quando o dono se afasta um pouco (sem isso alterna andar/parado a cada passinho do dono)
+      if (p.s === 'stand' ? dist > stop + (p.go ? 0 : RESTART) : dist > stop + 0.05) {
         const step = Math.min(dist - stop, (p.go ? SPEED : Math.max(SPEED * 0.6, dist * 2)) * dt);
         p.pos = [p.pos[0] + (dx / dist) * step, p.pos[1] + (dz / dist) * step];
         p.h = (Math.atan2(dx, -dz) * 180) / Math.PI;
-        s = dist - stop > 0.4 ? 'run' : 'walk';
-      }
-      p.s = s;
+        p.s = 'run';
+      } else p.s = 'stand';
+      const s = p.s;
       mm.moveExternal(-owner, p.pos[0], p.pos[1], p.h, s);
     }
   }

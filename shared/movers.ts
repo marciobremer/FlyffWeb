@@ -83,6 +83,68 @@ function mul16(a: number[], b: number[]) {
   return o;
 }
 
+/**
+ * Geometria com skinning de uma parte GMT_SKIN do .o3d (2 pesos + 2 índices por vértice). Cada MaterialBlock tem sua lista de
+ * ossos (constantes c[i*3] ligadas por bloco em _renderSkin): índice do vértice = 3·posição nessa lista. Para suportar
+ * esqueletos com >28 ossos os vértices são duplicados por bloco, já com o osso global resolvido. `nTex`: nº de texturas.
+ */
+export function skinnedGeometry(part: O3dPart, boneCount: number, nTex: number): BufferGeometry {
+  const maxBone = boneCount - 1, sw0 = part.skinWeights!, si0 = part.skinIndices!;
+  if (!part.blocks.length) {
+    const geo = new BufferGeometry();
+    geo.setAttribute('position', new BufferAttribute(part.positions, 3));
+    geo.setAttribute('normal', new BufferAttribute(part.normals, 3));
+    geo.setAttribute('uv', new BufferAttribute(part.uvs, 2));
+    geo.setIndex(new BufferAttribute(part.indices, 1));
+    const n = part.positions.length / 3;
+    const si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
+    const ub = part.usedBones;
+    for (let i = 0; i < n; i++) {
+      const a = si0[i * 2] / 3, b = si0[i * 2 + 1] / 3;
+      si[i * 4] = Math.min(maxBone, ub.length ? ub[a] ?? 0 : a); si[i * 4 + 1] = Math.min(maxBone, ub.length ? ub[b] ?? 0 : b);
+      sw[i * 4] = sw0[i * 2]; sw[i * 4 + 1] = sw0[i * 2 + 1];
+    }
+    geo.setAttribute('skinIndex', new BufferAttribute(si, 4));
+    geo.setAttribute('skinWeight', new BufferAttribute(sw, 4));
+    geo.addGroup(0, part.indices.length, 0);
+    geo.computeBoundingSphere();
+    return geo;
+  }
+  const P: number[] = [], N: number[] = [], U: number[] = [], SI: number[] = [], SW: number[] = [], IDX: number[] = [];
+  const groups: { start: number; count: number; material: number }[] = [];
+  for (const b of part.blocks) {
+    const map = b.usedBones.length ? b.usedBones : part.usedBones;
+    const seen = new Map<number, number>();
+    const start = IDX.length;
+    for (let k = 0; k < b.triangles * 3; k++) {
+      const v = part.indices[b.start + k];
+      let nv = seen.get(v);
+      if (nv === undefined) {
+        nv = P.length / 3;
+        seen.set(v, nv);
+        P.push(part.positions[v * 3], part.positions[v * 3 + 1], part.positions[v * 3 + 2]);
+        N.push(part.normals[v * 3], part.normals[v * 3 + 1], part.normals[v * 3 + 2]);
+        U.push(part.uvs[v * 2], part.uvs[v * 2 + 1]);
+        const a = si0[v * 2] / 3, c = si0[v * 2 + 1] / 3;
+        SI.push(Math.min(maxBone, map.length ? map[a] ?? 0 : a), Math.min(maxBone, map.length ? map[c] ?? 0 : c), 0, 0);
+        SW.push(sw0[v * 2], sw0[v * 2 + 1], 0, 0);
+      }
+      IDX.push(nv);
+    }
+    groups.push({ start, count: IDX.length - start, material: Math.min(b.material, nTex - 1) });
+  }
+  const g2 = new BufferGeometry();
+  g2.setAttribute('position', new BufferAttribute(new Float32Array(P), 3));
+  g2.setAttribute('normal', new BufferAttribute(new Float32Array(N), 3));
+  g2.setAttribute('uv', new BufferAttribute(new Float32Array(U), 2));
+  g2.setAttribute('skinIndex', new BufferAttribute(new Uint16Array(SI), 4));
+  g2.setAttribute('skinWeight', new BufferAttribute(new Float32Array(SW), 4));
+  g2.setIndex(new BufferAttribute(new Uint32Array(IDX), 1));
+  for (const gr of groups) g2.addGroup(gr.start, gr.count, gr.material);
+  g2.computeBoundingSphere();
+  return g2;
+}
+
 /** Template a partir de uma ou mais malhas .o3d que compartilham o esqueleto `<base>.chr` (humanos = várias partes). */
 export async function loadTemplate(entry: ModelEntry, o3dFiles: string[], base: string, lib: ModelLibrary, hands: HandAttachment[] = []): Promise<MoverTemplate | null> {
   const [chrBuf, ...o3dBufs] = await Promise.all([lib.fetchModelFile(base + '.chr'), ...o3dFiles.map((f) => lib.fetchModelFile(f))]);
@@ -122,59 +184,9 @@ export async function loadTemplate(entry: ModelEntry, o3dFiles: string[], base: 
       geo.setAttribute('uv', new BufferAttribute(part.uvs, 2));
       geo.setIndex(new BufferAttribute(part.indices, 1));
       const names = part.textures.length ? part.textures : [''];
-      if (part.skinned && part.skinWeights && part.skinIndices && part.blocks.length) {
-        // Cada MaterialBlock tem sua lista de ossos (constantes c[i*3] ligadas por bloco em _renderSkin): índice do vértice = 3·posição
-        // nessa lista. Para suportar esqueletos com >28 ossos duplicamos os vértices por bloco, já com o osso global resolvido.
-        const maxBone = skeleton.bones.length - 1;
-        const P: number[] = [], N: number[] = [], U: number[] = [], SI: number[] = [], SW: number[] = [], IDX: number[] = [];
-        const groups: { start: number; count: number; material: number }[] = [];
-        for (const b of part.blocks) {
-          const map = b.usedBones.length ? b.usedBones : part.usedBones;
-          const seen = new Map<number, number>();
-          const start = IDX.length;
-          for (let k = 0; k < b.triangles * 3; k++) {
-            const v = part.indices[b.start + k];
-            let nv = seen.get(v);
-            if (nv === undefined) {
-              nv = P.length / 3;
-              seen.set(v, nv);
-              P.push(part.positions[v * 3], part.positions[v * 3 + 1], part.positions[v * 3 + 2]);
-              N.push(part.normals[v * 3], part.normals[v * 3 + 1], part.normals[v * 3 + 2]);
-              U.push(part.uvs[v * 2], part.uvs[v * 2 + 1]);
-              const a = part.skinIndices[v * 2] / 3, c = part.skinIndices[v * 2 + 1] / 3;
-              SI.push(Math.min(maxBone, map.length ? map[a] ?? 0 : a), Math.min(maxBone, map.length ? map[c] ?? 0 : c), 0, 0);
-              SW.push(part.skinWeights[v * 2], part.skinWeights[v * 2 + 1], 0, 0);
-            }
-            IDX.push(nv);
-          }
-          groups.push({ start, count: IDX.length - start, material: Math.min(b.material, names.length - 1) });
-        }
-        const g2 = new BufferGeometry();
-        g2.setAttribute('position', new BufferAttribute(new Float32Array(P), 3));
-        g2.setAttribute('normal', new BufferAttribute(new Float32Array(N), 3));
-        g2.setAttribute('uv', new BufferAttribute(new Float32Array(U), 2));
-        g2.setAttribute('skinIndex', new BufferAttribute(new Uint16Array(SI), 4));
-        g2.setAttribute('skinWeight', new BufferAttribute(new Float32Array(SW), 4));
-        g2.setIndex(new BufferAttribute(new Uint32Array(IDX), 1));
-        for (const gr of groups) g2.addGroup(gr.start, gr.count, gr.material);
-        g2.computeBoundingSphere();
-        parts.push({ part, geometry: g2, materials: await Promise.all(names.map((t) => lib.material(t))), file: fileOf.get(part) });
-        continue;
-      }
       if (part.skinned && part.skinWeights && part.skinIndices) {
-        const n = part.positions.length / 3;
-        const si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
-        const ub = part.usedBones;
-        for (let i = 0; i < n; i++) {
-          // Skin.vs: 2 pesos + 2 índices locais à lista usedBones do objeto
-          // o índice é um registrador de constante: cada matriz de osso ocupa 3 registradores (c[i*3])
-          const a = part.skinIndices[i * 2] / 3, b = part.skinIndices[i * 2 + 1] / 3;
-          const maxBone = skeleton.bones.length - 1;
-          si[i * 4] = Math.min(maxBone, ub.length ? ub[a] ?? 0 : a); si[i * 4 + 1] = Math.min(maxBone, ub.length ? ub[b] ?? 0 : b);
-          sw[i * 4] = part.skinWeights[i * 2]; sw[i * 4 + 1] = part.skinWeights[i * 2 + 1];
-        }
-        geo.setAttribute('skinIndex', new BufferAttribute(si, 4));
-        geo.setAttribute('skinWeight', new BufferAttribute(sw, 4));
+        parts.push({ part, geometry: skinnedGeometry(part, skeleton.bones.length, names.length), materials: await Promise.all(names.map((t) => lib.material(t))), file: fileOf.get(part) });
+        continue;
       }
       if (part.blocks.length) for (const b of part.blocks) geo.addGroup(b.start, b.triangles * 3, Math.min(b.material, names.length - 1));
       else geo.addGroup(0, part.indices.length, 0);
@@ -408,14 +420,15 @@ export class MoverInstance {
     this.group.add(this.label);
   }
 
-  /** nome da guild em cima do nome (null tira) */
-  setGuildTag(guild: string | null | undefined) {
+  /** nome da guild em cima do nome (null tira); `master`: é o mestre da guild (nome dourado) */
+  setGuildTag(guild: string | null | undefined, master = false) {
     const el = this.label?.element;
     if (!el) return;
     let tag = el.querySelector<HTMLElement>('.guild-tag');
     if (!guild) { tag?.remove(); return; }
     if (!tag) { tag = document.createElement('span'); tag.className = 'guild-tag'; el.prepend(tag); }
     tag.textContent = guild;
+    tag.classList.toggle('master', master);
   }
 
   private bubble: CSS2DObject | null = null;
@@ -495,6 +508,17 @@ export class MoverManager {
   enabled: (owner: string) => boolean = () => true;
   /** altura do terreno em (x, z) FlyFF, quando o tile está carregado (usado nos mobs espalhados dos spawns) */
   heightAt: (x: number, z: number) => number | null = () => null;
+  /** chão de objeto (calçadas, escadas, pontes) mais alto até `yTop`; null se não há */
+  objectGround: (x: number, z: number, yTop: number) => number | null = () => null;
+  /**
+   * Altura onde um mob que anda pisa em (x, z): o terreno ou o chão de objeto mais alto que ele alcança subindo um degrau
+   * (`STEP`) a partir de `y` — como o jogador (Player.groundAt). Sem `y`, parte do terreno.
+   */
+  floorAt(x: number, z: number, y?: number): number | null {
+    const t = this.heightAt(x, z);
+    const o = this.objectGround(x, z, Math.max(t ?? -Infinity, y ?? -Infinity) + MOB_STEP);
+    return o !== null && (t === null || o > t) ? o : t;
+  }
   isFlying: (modelId: number) => boolean = () => false;
   private needsHeight = new Map<WorldObject, MoverInstance>();
   onVisibleChange: (owner: string, index: number, hasModel: boolean) => void = () => {};
@@ -599,7 +623,7 @@ export class MoverManager {
         if (!keep.has(c.obj) && !this.enabled(c.owner)) return;
         // mobs de spawn andam no terreno (voadores mantêm a altura do spawn); sem o tile carregado usa a altura do spawn e corrige depois
         const grounded = c.owner === 'spawns' && !this.isFlying(c.entry.id);
-        const h = grounded ? this.heightAt(c.obj.pos[0], c.obj.pos[2]) : null;
+        const h = grounded ? this.floorAt(c.obj.pos[0], c.obj.pos[2], c.obj.pos[1]) : null;
         const o = { ...c.obj, pos: [c.obj.pos[0], h ?? c.obj.pos[1], c.obj.pos[2]] as [number, number, number], scale: [c.entry.scale, c.entry.scale, c.entry.scale] as [number, number, number] };
         const inst = new MoverInstance(tpl, c.obj, objectMatrix(o, new Matrix4()));
         inst.owner = c.owner;
@@ -642,7 +666,7 @@ export class MoverManager {
     }
     const k = Math.min(1, step / Math.max(dist, 1e-6));
     const nx = inst.pos[0] + dx * k, nz = inst.pos[2] + dz * k;
-    const ny = w.flying ? inst.pos[1] : this.heightAt(nx, nz) ?? inst.pos[1];
+    const ny = w.flying ? inst.pos[1] : this.floorAt(nx, nz, inst.pos[1]) ?? inst.pos[1];
     inst.place([nx, ny, nz], dist > 1e-3 ? (Math.atan2(dx, -dz) * 180) / Math.PI : inst.rotY);
   }
 
@@ -657,7 +681,7 @@ export class MoverManager {
   addExternal(id: number, entry: ModelEntry, x: number, z: number, h: number, state: string, y: number | null, hp = 1000, pet = false) {
     this.removeExternal(id);
     const flying = y !== null;
-    const gy = flying ? y : this.heightAt(x, z) ?? 100;
+    const gy = flying ? y : this.floorAt(x, z) ?? 100;
     const obj: WorldObject = { type: OT.MOVER, modelId: entry.id, pos: [x, gy, z], rot: [0, h, 0], scale: [1, 1, 1], motion: 0, ai: 0, ai2: 0, name: '' };
     const e: External = { obj, inst: null, target: [x, z], cur: [x, gy, z], h, curH: h, s: state, flying, gone: false, hp, oneShot: false, pet };
     this.external.set(id, e);
@@ -723,8 +747,9 @@ export class MoverManager {
     const k = 1 - Math.exp(-dt * 8);
     for (const e of this.external.values()) {
       const c = e.cur, [tx, tz] = e.target;
-      if (Math.hypot(tx - c[0], tz - c[2]) > 30) { c[0] = tx; c[2] = tz; } else { c[0] += (tx - c[0]) * k; c[2] += (tz - c[2]) * k; }
-      if (!e.flying) c[1] = this.heightAt(c[0], c[2]) ?? c[1];
+      // o pet já anda suave a cada quadro (client/pets.ts): vai direto, senão desliza depois de parar a animação
+      if (e.pet || Math.hypot(tx - c[0], tz - c[2]) > 30) { c[0] = tx; c[2] = tz; } else { c[0] += (tx - c[0]) * k; c[2] += (tz - c[2]) * k; }
+      if (!e.flying) c[1] = this.floorAt(c[0], c[2], c[1]) ?? c[1];
       const dh = ((e.h - e.curH + 540) % 360) - 180;
       e.curH = (e.curH + dh * k + 360) % 360;
       e.inst?.place([c[0], c[1], c[2]], e.curH);
@@ -742,6 +767,9 @@ export class MoverManager {
     }
   }
 }
+
+/** quanto um mob sobe de uma vez (degrau, meio-fio) — o mesmo do jogador */
+const MOB_STEP = 0.7;
 
 interface Wander { area?: RectXZ; origin: [number, number]; target: [number, number] | null; wait: number; flying: boolean; speed: number }
 
