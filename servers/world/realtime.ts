@@ -13,7 +13,8 @@ import { RIDE_TAG } from '../../shared/look';
 import { TRADE_SLOTS, type TradeOffer } from '../character/inventory';
 import { ItemCatalog, jobCanUse } from '../common/items';
 import type { CombatRules, Equipped, Fighter } from './combat';
-import { MOB_ATTACK_RANGE, type Mob } from './mobs';
+import { MOB_ATTACK_RANGE, isBoss, type Mob } from './mobs';
+import { RustLink } from './rustlink';
 import { GROUND_MS, OWNER_MS, type DropRules } from './drops';
 import { notifyInventory } from '../character/inventory';
 import type { ShopCatalog } from './shops';
@@ -146,7 +147,10 @@ interface Conn { ws: WebSocket; player: PlayerView | null; accountId: number; di
   /** guild do personagem (cargo: 0 mestre … 4 rookie) e convites de guild recebidos */ guild?: { id: number; name: string; rank: number } | null; guildReqs?: Map<number, number>;
   /** último emote/emoticon (ms) — no máximo 3 por segundo */ emoteAt?: number;
   /** anti-speedhack: última mensagem de posição (ms), reserva de deslocamento (u), último puxão de volta e quantos já levou */
-  move?: { at: number; budget: number; pulledAt: number; pulls: number } }
+  move?: { at: number; budget: number; pulledAt: number; pulls: number };
+  /** área de visão: jogadores que este cliente conhece (id → conexão) e conexões que conhecem este jogador */
+  seen: Map<number, Conn>; viewers: Set<Conn>;
+  /** ordem de chegada: espalha a revisão da área de visão pelos ticks */ seq: number }
 
 /** item no chão (drop de mob) */
 interface GroundItem { /** mundo */ w: string; id: number; itemId: number; count: number; upgrade: number; gold: number; x: number; z: number; owner: number; ownerUntil: number; expires: number }
@@ -164,6 +168,14 @@ interface PlayerCombat {
 
 /** raio (unidades) e limite de mobs enviados a cada jogador */
 const MOB_RADIUS = 150, MOB_MAX = 80;
+/**
+ * Área de visão dos jogadores: cada cliente só conhece (recebe 'enter', 'states', 'look'…) os jogadores a até VIEW_RADIUS —
+ * os VIEW_MAX mais perto —, e só esquece quem passa de VIEW_KEEP (a folga evita entrar e sair na borda). A grade de GRID×GRID
+ * acha quem está perto sem passar por todos. Sem isso, cada movimento ia para o mapa inteiro (cresce com o quadrado de jogadores).
+ */
+const VIEW_RADIUS = 150, VIEW_KEEP = 170, VIEW_MAX = 100, GRID = 100;
+/** a área de visão de cada cliente é revista a cada VIEW_EVERY ticks (espalhados: cada tick revê 1/VIEW_EVERY dos clientes) */
+const VIEW_EVERY = 4;
 
 const STATES = new Set(['stand', 'walk', 'run', 'jump1', 'jump2', 'jump3', 'jump4', 'atk', 'dead', 'emote', 'fly', 'flyrun']);
 /** alcance do golpe do jogador (corpo a corpo) com folga para a latência, e de onde se renasce ao morrer (Flaris) */
@@ -255,6 +267,31 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   let groundSeq = 0;
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4096 });
   const conns = new Set<Conn>();
+  /** conexão de cada personagem no mundo (a mais nova, se ele reconectou) */
+  const byId = new Map<number, Conn>();
+  let connSeq = 0;
+  /** jogadores por mundo e célula da grade (refeita a cada tick; entre ticks vale a do último) */
+  let grid = new Map<string, Map<number, Conn[]>>();
+  const cellOf = (x: number, z: number) => Math.floor(x / GRID) * 65536 + Math.floor(z / GRID);
+  function rebuildGrid() {
+    grid = new Map();
+    for (const c of byId.values()) {
+      const p = c.player;
+      if (!p || c.switching || c.ws.readyState !== WebSocket.OPEN) continue;
+      let w = grid.get(p.w);
+      if (!w) grid.set(p.w, (w = new Map()));
+      const k = cellOf(p.p[0], p.p[2]);
+      const l = w.get(k);
+      if (l) l.push(c); else w.set(k, [c]);
+    }
+  }
+  /** conexões nas células que cobrem o círculo (x, z, r) do mundo `w` — quem chama confere a distância de verdade */
+  function nearConns(w: string, x: number, z: number, r: number, fn: (o: Conn) => void) {
+    const g = grid.get(w);
+    if (!g) return;
+    const x0 = Math.floor((x - r) / GRID), x1 = Math.floor((x + r) / GRID), z0 = Math.floor((z - r) / GRID), z1 = Math.floor((z + r) / GRID);
+    for (let cx = x0; cx <= x1; cx++) for (let cz = z0; cz <= z1; cz++) { const l = g.get(cx * 65536 + cz); if (l) for (const o of l) fn(o); }
+  }
   /** contadores para o painel admin: conexões desde o boot e mensagens recebidas/enviadas */
   const counters = { connections: 0, msgIn: 0, msgOut: 0 };
 
@@ -288,6 +325,64 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     const data = JSON.stringify(msg), actor = actorOf(msg);
     for (const c of conns) if (c !== except && c.player && (!w || c.player.w === w) && c.ws.readyState === WebSocket.OPEN && seesActor(c, actor)) { c.ws.send(data); counters.msgOut++; }
   };
+
+  /** para o próprio `c` (se `self`) e quem vê o jogador dele (visual, nível, classe, morte…) */
+  const toWatchers = (c: Conn | null | undefined, msg: unknown, self = true) => {
+    if (!c) return;
+    const data = JSON.stringify(msg);
+    if (self && c.ws.readyState === WebSocket.OPEN) { c.ws.send(data); counters.msgOut++; }
+    for (const o of c.viewers) if (o.ws.readyState === WebSocket.OPEN) { o.ws.send(data); counters.msgOut++; }
+  };
+  /** `o` passa a ver o jogador de `c` */
+  function showTo(o: Conn, c: Conn) {
+    const id = c.player!.id, prev = o.seen.get(id);
+    if (prev === c) return;
+    prev?.viewers.delete(o);
+    o.seen.set(id, c);
+    c.viewers.add(o);
+    send(o.ws, { t: 'enter', player: c.player });
+  }
+  /** `o` deixa de ver o jogador de `c` */
+  function hideFrom(o: Conn, c: Conn) {
+    const id = c.player!.id;
+    if (o.seen.get(id) !== c) return;
+    o.seen.delete(id);
+    c.viewers.delete(o);
+    send(o.ws, { t: 'leave', id });
+  }
+  /**
+   * Revê quem `c` vê. Quem já via continua até passar de VIEW_KEEP (numa multidão, trocar sempre pelos "mais perto" virava
+   * 'leave'/'enter' sem parar); as vagas livres (até VIEW_MAX) vão para os mais perto a até VIEW_RADIUS. Invisível só GM/admin vê.
+   */
+  function refreshView(c: Conn) {
+    const p = c.player;
+    if (!p || c.switching) return;
+    const staff = isStaff(c), [x, , z] = p.p;
+    for (const o of [...c.seen.values()]) {
+      const q = o.player;
+      if (!q || o.switching || q.w !== p.w || o.ws.readyState !== WebSocket.OPEN || (o.invis && !staff) || Math.hypot(q.p[0] - x, q.p[2] - z) > VIEW_KEEP) hideFrom(c, o);
+    }
+    const free = VIEW_MAX - c.seen.size;
+    if (free <= 0) return; // lotado: só confere quem já vê, sem procurar
+    const fresh: [number, Conn][] = [];
+    nearConns(p.w, x, z, VIEW_RADIUS, (o) => {
+      const q = o.player;
+      if (o === c || !q || q.id === p.id || c.seen.get(q.id) === o || (o.invis && !staff)) return;
+      const d = Math.hypot(q.p[0] - x, q.p[2] - z);
+      if (d <= VIEW_RADIUS) fresh.push([d, o]);
+    });
+    if (fresh.length > free) fresh.sort((a, b) => a[0] - b[0]); // vagas para os mais perto
+    for (let i = 0; i < fresh.length && i < free; i++) showTo(c, fresh[i][1]);
+  }
+  /** quem está perto de `c` passa a vê-lo agora (ao entrar e ao deixar de ficar invisível), sem esperar a revisão */
+  function introduce(c: Conn) {
+    const p = c.player;
+    if (!p) return;
+    nearConns(p.w, p.p[0], p.p[2], VIEW_RADIUS, (o) => {
+      if (o === c || !o.player || o.switching || o.seen.size >= VIEW_MAX || (c.invis && !isStaff(o))) return;
+      if (Math.hypot(o.player.p[0] - p.p[0], o.player.p[2] - p.p[2]) <= VIEW_RADIUS) showTo(o, c);
+    });
+  }
 
   async function savePosition(p: PlayerView, cb: PlayerCombat | null = null, playedMs = 0) {
     try {
@@ -337,8 +432,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     send(c.ws, statsMsg(c));
     const mt = stanceOf(c, inventory.combatMotion(st, job));
     if (mt !== p.mt) p.mt = mt;
-    broadcast({ t: 'look', id: p.id, eq: p.eq, mt: p.mt });
-    broadcast({ t: 'job', id: p.id, job });
+    toWatchers(c, { t: 'look', id: p.id, eq: p.eq, mt: p.mt });
+    toWatchers(c, { t: 'job', id: p.id, job });
     send(c.ws, { t: 'chat', id: 0, name: '', text: `Você agora é ${JOB_NAMES[job] ?? '#' + job}!` });
     void saveCombat(p.id, cb, p.level).catch((e) => console.error('realtime: salvar classe', e));
   }
@@ -413,12 +508,23 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   }
 
   // ---------- combate ----------
-  const connOf = (playerId: number) => { for (const c of conns) if (c.player?.id === playerId) return c; return null; };
+  const connOf = (playerId: number) => byId.get(playerId) ?? null;
   /** manda para quem está perto de (x, z) */
   /** para quem está perto de (x, z) no mundo `w` */
+  /** jogador citado por um evento de combate/movimento (ator do golpe, do efeito ou do emote), ou null */
+  const playerOf = (msg: unknown): number | null => {
+    const m = msg as { t?: string; id?: number; a?: number; d?: number; k?: string };
+    switch (m.t) {
+      case 'hit': return (m.k === 'p' ? m.a : m.d) ?? null;
+      case 'skillfx': return m.a ?? null;
+      case 'emote': case 'emo': return m.id ?? null;
+      default: return null;
+    }
+  };
   const sendNear = (w: string, x: number, z: number, msg: unknown) => {
-    const data = JSON.stringify(msg), actor = actorOf(msg);
-    for (const c of conns) if (c.player && c.player.w === w && c.ws.readyState === WebSocket.OPEN && Math.hypot(c.player.p[0] - x, c.player.p[2] - z) <= MOB_RADIUS && seesActor(c, actor)) { c.ws.send(data); counters.msgOut++; }
+    const data = JSON.stringify(msg), actor = actorOf(msg), who = playerOf(msg);
+    // interest management: quem recebe o evento precisa conhecer o jogador citado (ser ele ou tê-lo em `seen`), senão o id/nome vazaria
+    nearConns(w, x, z, MOB_RADIUS, (c) => { if (c.player && c.ws.readyState === WebSocket.OPEN && Math.hypot(c.player.p[0] - x, c.player.p[2] - z) <= MOB_RADIUS && seesActor(c, actor) && (who === null || c.player.id === who || c.seen.has(who))) { c.ws.send(data); counters.msgOut++; } });
   };
 
   /**
@@ -434,11 +540,11 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (on) fx(); // ainda visível: todos veem o efeito de sumir
     c.invis = on;
     if (on) { invisIds.add(p.id); p.iv = 1; } else { invisIds.delete(p.id); delete p.iv; }
-    for (const o of conns) {
-      if (o === c || !o.player || o.player.w !== p.w) continue;
+    for (const o of [...c.viewers]) {
       if (isStaff(o)) send(o.ws, { t: 'invis', id: p.id, on });
-      else send(o.ws, on ? { t: 'leave', id: p.id } : { t: 'enter', player: p });
+      else if (on) hideFrom(o, c);
     }
+    if (!on) introduce(c);
     send(c.ws, { t: 'invis', id: p.id, on });
     if (on) W(c).mobs?.forget(p.id); else fx();
   }
@@ -485,7 +591,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (!p || !!c.peace === peace) return;
     c.peace = peace;
     p.mt = peace ? 0 : c.weaponMt ?? p.mt;
-    broadcast({ t: 'look', id: p.id, eq: p.eq, mt: p.mt });
+    toWatchers(c, { t: 'look', id: p.id, eq: p.eq, mt: p.mt });
   }
 
   function refreshFighter(c: Conn, st: InvState) {
@@ -551,7 +657,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (p.level >= cap && cb.f.job < 6) cb.exp = 0; // no teto da Vagrant/1ª classe a exp não sobe até mudar de classe
     if (up) {
       recalcMax(c, true);
-      broadcast({ t: 'level', id: p.id, level: p.level });
+      toWatchers(c, { t: 'level', id: p.id, level: p.level });
       send(c.ws, skillsMsg(c));
       send(c.ws, { t: 'chat', id: 0, name: '', text: `Parabéns! ${p.name} chegou ao nível ${p.level}. Você tem ${cb.points} ponto(s) de atributo (tecla H).` });
       if (rules.jobOptions(cb.f.job, p.level).length) send(c.ws, { t: 'chat', id: 0, name: '', text: 'Você já pode mudar de classe! Escolha na janela que abriu.' });
@@ -569,18 +675,19 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   // ---------- party ----------
   const parties = new PartyManager();
   const PARTY_RANGE = 64, PARTY_INVITE_MS = 60_000;
-  const partyView = (p: Party) => ({
+  const partyView = (p: Party, to: Conn | null = null) => ({
     id: p.id, name: p.name, leader: p.leader, level: p.level, exp: p.exp, expNext: parties.expNext(p), points: p.points,
     members: p.members.map((id) => {
       const o = liveConn(id);
-      return o?.player ? { id, name: o.player.name, level: o.player.level, job: o.player.job, hp: o.cb ? Math.round((o.cb.hp / o.cb.maxHp) * 100) : 100, on: true }
+      return o?.player ? { id, name: o.player.name, level: o.player.level, job: o.player.job, hp: o.cb ? Math.round((o.cb.hp / o.cb.maxHp) * 100) : 100, on: true, ...(to && (to === o || to.seen.get(id) === o) ? { w: o.player.w, x: Math.round(o.player.p[0]), z: Math.round(o.player.p[2]) } : {}) }
         : { id, name: '?', level: 0, job: 0, hp: 0, on: false };
     }),
     skills: parties.activeSkills(p, Date.now()),
   });
   /** manda o estado da party a todos os membros online (e `null` a quem saiu) */
   function pushParty(p: Party | null, alsoNull: number[] = []) {
-    if (p) { const v = partyView(p); for (const id of p.members) { const o = liveConn(id); if (o) send(o.ws, { t: 'party', p: v }); } }
+    // posição/mundo de um membro só vai a quem o vê (interest management): fora da área de visão não vaza onde ele está
+    if (p) for (const id of p.members) { const o = liveConn(id); if (o) send(o.ws, { t: 'party', p: partyView(p, o) }); }
     for (const id of alsoNull) { const o = liveConn(id); if (o) send(o.ws, { t: 'party', p: null }); }
   }
   const partyNotice = (p: Party, text: string) => { for (const id of p.members) { const o = liveConn(id); if (o) send(o.ws, { t: 'chat', id: 0, name: '', text }); } };
@@ -843,7 +950,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (!o.player) return;
     if (g) o.player.guild = g.name; else delete o.player.guild;
     if (g?.rank === 0) o.player.gmaster = 1; else delete o.player.gmaster;
-    broadcast({ t: 'guildTag', id: o.player.id, g: g?.name ?? null, ...(g?.rank === 0 ? { m: 1 } : {}) });
+    toWatchers(o, { t: 'guildTag', id: o.player.id, g: g?.name ?? null, ...(g?.rank === 0 ? { m: 1 } : {}) });
   }
   const guildNotice = (guildId: number, text: string) => { for (const o of conns) if (o.guild?.id === guildId) send(o.ws, { t: 'chat', id: 0, name: '', text }); };
 
@@ -940,7 +1047,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
 
   // ---------- Mensageiro: amigos e mensagem privada ----------
   /** conexão de quem está jogando com o personagem `id` */
-  const liveConn = (id: number) => { for (const o of conns) if (o.player?.id === id && o.ws.readyState === WebSocket.OPEN) return o; return null; };
+  const liveConn = (id: number) => { const o = byId.get(id); return o && o.ws.readyState === WebSocket.OPEN ? o : null; };
   const FRIENDS_MAX = 200, FRIEND_REQ_MS = 60_000;
   interface FriendView { id: number; name: string; level: number; job: number; on: boolean }
   const friendView = (p: PlayerView): FriendView => ({ id: p.id, name: p.name, level: p.level, job: p.job, on: true });
@@ -1166,7 +1273,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (!p || !cb || !rules || !mobWorld || cb.dead) return;
     const m = mobWorld.byId.get(mobId);
     if (m && m.s !== 'dead') breakDark(c); // golpear desfaz a Dark Illusion
-    if (!m || m.s === 'dead' || !m.prop) return;
+    if (!m || m.s === 'dead' || !m.prop || !c.mobs.has(m.id)) return; // só mob que o cliente vê (interest set)
     const now = Date.now();
     if (now < cb.nextAtk - 120) return; // rápido demais (com folga de rede)
     if (Math.hypot(m.x - p.p[0], m.z - p.p[2]) > reachOf(rules.attackRange(cb.f))) return;
@@ -1223,7 +1330,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   function pickUp(c: Conn, id: number) {
     const p = c.player, g = ground.get(id);
     if (!p || !g || c.cb?.dead || g.w !== p.w) return;
-    if (Math.hypot(g.x - p.p[0], g.z - p.p[2]) > PICK_RANGE) return;
+    if (!c.ground.has(id) || Math.hypot(g.x - p.p[0], g.z - p.p[2]) > PICK_RANGE) return; // só item que o cliente vê
     if (g.owner !== p.id && Date.now() < g.ownerUntil) { send(c.ws, { t: 'chat', id: 0, name: '', text: 'Esse item ainda é de quem derrotou o monstro.' }); return; }
     ground.delete(id); // reservado enquanto grava (ninguém mais pega)
     c.invQueue = c.invQueue.then(async () => {
@@ -1320,7 +1427,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (attack) {
       if (now < cb.nextAtk - 120) return;
       m = mobWorld.byId.get(mobId);
-      if (!m || m.s === 'dead' || !m.prop) return;
+      if (!m || m.s === 'dead' || !m.prop || !c.mobs.has(m.id)) return; // só mob que o cliente vê (interest set)
       const reach = s.kind === 'magic' ? 24 : reachOf(rules.attackRange(cb.f)) + 1;
       if (Math.hypot(m.x - p.p[0], m.z - p.p[2]) > reach) return;
     }
@@ -1403,8 +1510,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     c.pet = same ? undefined : { item, mover, busy: 0, skip: new Set() };
     p.pet = same ? undefined : mover;
     const msg = { t: 'pet', a: p.id, m: same ? 0 : mover };
-    send(c.ws, msg);
-    broadcast(msg, c, p.w);
+    toWatchers(c, msg);
   }
   /** manda o filtro com nome e ícone dos itens das listas */
   function sendPetFilter(c: Conn) {
@@ -1601,7 +1707,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     expireBuffs(c, true);
     p.s = 'dead'; c.dirty = true;
     W(c).mobs?.forget(p.id);
-    broadcast({ t: 'pdie', id: p.id }, undefined, p.w);
+    toWatchers(c, { t: 'pdie', id: p.id });
     send(c.ws, { t: 'chat', id: 0, name: '', text: 'Você foi derrotado. Renasça na cidade ou espere um Assist usar Resurrection.' });
   }
 
@@ -1670,11 +1776,102 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       player: (id) => { const c = connOf(id); return c?.player && c.player.w === wr.name && c.cb && !c.cb.dead && !c.invis ? [c.player.p[0], c.player.p[2]] : null; },
       playersNear: (x, z, r) => {
         const out: { id: number; x: number; z: number }[] = [];
-        for (const c of conns) if (c.player && c.player.w === wr.name && c.cb && !c.cb.dead && !c.invis && Math.hypot(c.player.p[0] - x, c.player.p[2] - z) <= r) out.push({ id: c.player.id, x: c.player.p[0], z: c.player.p[2] });
+        nearConns(wr.name, x, z, r, (c) => { if (c.player && c.cb && !c.cb.dead && !c.invis && Math.hypot(c.player.p[0] - x, c.player.p[2] - z) <= r) out.push({ id: c.player.id, x: c.player.p[0], z: c.player.p[2] }); });
         return out;
       },
       attack: (m, id) => { if (connOf(id)?.player?.w === wr.name) mobAttack(m, id); },
     };
+  }
+
+  // ---------- motor Rust (GAME_ENGINE=rust): mobs, IA e área de visão no game-server/ ----------
+  // O Node continua dono de jogadores, fórmulas, skills, itens e banco. O Rust é dono do estado dos mobs (posição, IA, HP, respawn)
+  // e da área de visão de mobs de cada jogador (a ÚNICA fonte do `c.mobs`, que as ações conferem). Os `Mob` do Node viram
+  // espelho do que o Rust manda. Se o link cair, o Node volta a simular os mobs sozinho (rollback automático).
+  const rustWorld = process.env.GAME_ENGINE === 'rust' ? (worlds.get(process.env.GAME_ENGINE_WORLD ?? MAIN) ?? null) : null;
+  const rustMobs = rustWorld?.mobs ?? null;
+  let rust: RustLink | null = null;
+  /** personagens anexados ao Rust → último valor de "intocável" (morto/invisível) enviado */
+  const rustAttached = new Map<number, boolean>();
+  const rustOn = () => !!rust?.up;
+  const rustHere = (c: Conn) => !!rustMobs && rustOn() && c.player?.w === rustWorld!.name;
+  if (rustWorld && rustMobs) {
+    const mw = rustMobs, orig = { tick: mw.tick.bind(mw), damage: mw.damage.bind(mw), forget: mw.forget.bind(mw), summon: mw.summon.bind(mw) };
+    const hpOf = (m: Mob, milli: number) => Math.round((milli / 1000) * m.maxHp);
+    /** o Rust mandou o estado de um mob: espelha no Mob do Node (cria se for invocado) */
+    const mirror = (id: number, f: { model?: number; x: number; z: number; h: number; s: string; y?: number | null; hp: number }) => {
+      let m = mw.byId.get(id);
+      if (!m) {
+        if (f.model === undefined) return;
+        const prop = mw.terrain.moverProps.get(f.model) ?? null;
+        m = { id, modelId: f.model, x: f.x, z: f.z, y: f.y ?? 0, h: f.h, s: 'stand', area: null, origin: [f.x, f.z], target: null, wait: 0, speed: mw.terrain.moverSpeed.get(f.model) ?? 0,
+          flying: mw.terrain.flyingMovers.has(f.model), prop, hp: prop?.hp ?? 1, maxHp: prop?.hp ?? 1, aggressive: false, foe: 0, nextAtk: 0, nextScan: 0, dmgBy: new Map(),
+          diedAt: 0, respawnAt: 0, respawnMs: -1, dirty: false, cell: 0 } as Mob;
+        mw.mobs.push(m); mw.byId.set(id, m);
+      }
+      m.x = f.x; m.z = f.z; m.h = f.h;
+      if (f.y != null) m.y = f.y;
+      if (f.s === 'dead' && m.s !== 'dead') m.diedAt = Date.now();
+      m.s = f.s as Mob['s'];
+      m.hp = hpOf(m, f.hp);
+    };
+    mw.tick = (dt, now) => { if (!rustOn()) orig.tick(dt, now); };
+    mw.forget = (id) => { orig.forget(id); rust?.send({ k: 'forget', char: id }); };
+    mw.damage = (m, pid, dmg, peaceful, now) => {
+      const died = orig.damage(m, pid, dmg, peaceful, now); // espelho otimista; o Rust confere a visão e é quem vale
+      rust?.send({ k: 'damage', char: pid, mob: m.id, dmg, peaceful });
+      return died;
+    };
+    mw.summon = (modelId, x, z, y, n) => {
+      if (!rustOn()) return orig.summon(modelId, x, z, y, n);
+      const prop = mw.terrain.moverProps.get(modelId);
+      if (!prop) return 0;
+      rust!.send({ k: 'summon', x, z, y, n, spawn: { modelId, rect: null, pos: [x, y, z], count: 1, attackCount: 0, timeS: 30, speed: mw.terrain.moverSpeed.get(modelId) ?? 0, flying: mw.terrain.flyingMovers.has(modelId), boss: isBoss(prop),
+        prop: { level: prop.level, sta: prop.sta, dex: prop.dex, hr: prop.hr, er: prop.er, hp: prop.hp, naturalArmor: prop.naturalArmor, atkSpeed: prop.attackSpeed, atkMin: prop.atkMin, atkMax: prop.atkMax, exp: prop.exp, peaceful: prop.belligerence === 'BELLI_PEACEFUL' } } });
+      return n;
+    };
+    rust = new RustLink(process.env.RUST_LINK_HOST ?? '127.0.0.1', Number(process.env.RUST_LINK_PORT ?? 9201), process.env.GAME_LINK_SECRET ?? '', {
+      onUp: () => { rustAttached.clear(); console.log('rust-link: conectado — mobs de', rustWorld.name, 'agora são do Rust'); },
+      onDown: () => { rustAttached.clear(); },
+      onMessage: (m) => {
+        if (m.k === 's2c') {
+          const c = byId.get(m.conn);
+          if (!c || !c.player || c.ws.readyState !== WebSocket.OPEN) return;
+          const msg = m.msg;
+          if (msg.t === 'mobs') {
+            for (const e of msg.a ?? []) { mirror(e[0], { model: e[1], x: e[2], z: e[3], h: e[4], s: e[5], y: e[6], hp: e[7] }); c.mobs.add(e[0]); }
+            for (const e of msg.u ?? []) mirror(e[0], { x: e[1], z: e[2], h: e[3], s: e[4], hp: e[5] });
+            for (const id of msg.d ?? []) c.mobs.delete(id);
+          }
+          send(c.ws, msg);
+        } else if (m.k === 'mob_attack') {
+          const mob = mw.byId.get(m.mob), c = connOf(m.char);
+          if (mob && c?.player?.w === rustWorld.name) mobAttack(mob, m.char);
+        }
+      },
+    });
+  }
+  /** a cada tick: anexa ao Rust quem entrou no mundo dele, manda posições e "intocável", solta quem saiu */
+  function rustSync() {
+    if (!rust?.up || !rustWorld) return;
+    const here = new Set<number>(), pos: [number, number, number][] = [];
+    for (const c of byId.values()) {
+      const p = c.player;
+      if (!p || c.switching || p.w !== rustWorld.name) continue;
+      here.add(p.id);
+      const unt = !!(c.cb?.dead || c.invis);
+      if (!rustAttached.has(p.id)) {
+        // o Rust recomeça o conjunto de visão do zero: limpa no cliente o que ele conhecia por outro caminho
+        if (c.mobs.size) { send(c.ws, { t: 'mobs', a: [], u: [], d: [...c.mobs] }); c.mobs = new Set(); }
+        rust.send({ k: 'attach', conn: p.id, ch: { id: p.id, name: p.name, level: p.level, x: p.p[0], z: p.p[2], hp: Math.max(1, c.cb?.hp ?? 1), maxHp: Math.max(1, c.cb?.maxHp ?? 1) } });
+        rust.send({ k: 'flags', char: p.id, untargetable: unt });
+        rustAttached.set(p.id, unt);
+      } else {
+        if (c.dirty) pos.push([p.id, p.p[0], p.p[2]]);
+        if (rustAttached.get(p.id) !== unt) { rust.send({ k: 'flags', char: p.id, untargetable: unt }); rustAttached.set(p.id, unt); }
+      }
+    }
+    for (const id of [...rustAttached.keys()]) if (!here.has(id)) { rust.send({ k: 'detach', conn: id }); rustAttached.delete(id); }
+    if (pos.length) rust.send({ k: 'pos', list: pos });
   }
 
   // recuperação fora de combate (a cada 3 s, 5 s depois do último golpe recebido) e envio dos atributos que mudaram
@@ -1744,7 +1941,10 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     c.petFilter = cleanPetFilter(ch.pet_filter);
     sendPetFilter(c);
     send(c.ws, { t: 'clock', now: Date.now(), fixed: clockFixed });
-    send(c.ws, { t: 'welcome', id, w: me.w, p: me.p, eq: me.eq, mt: me.mt, players: [...conns].filter((o) => o !== c && o.player && o.player.w === me.w && seesActor(c, o.player.id)).map((o) => o.player) });
+    const old = byId.get(id);
+    if (old && old !== c) { for (const o of [...old.viewers]) hideFrom(o, old); for (const o of [...old.seen.values()]) hideFrom(old, o); }
+    byId.set(id, c);
+    send(c.ws, { t: 'welcome', id, w: me.w, p: me.p, eq: me.eq, mt: me.mt, players: [], online: byId.size });
     // GM/admin entra imortal (pode desligar com //god off ou no painel)
     if (isStaff(c)) { c.god = true; send(c.ws, { t: 'god', on: true }); }
     if (inv) send(c.ws, inventory!.view(inv));
@@ -1753,11 +1953,12 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     send(c.ws, { t: 'bar', slots: barView(cleanBar(ch.shortcuts)) });
     if (c.cb) send(c.ws, skillsMsg(c));
     if (c.cb?.buffs.size) send(c.ws, buffsMsg(c));
-    broadcast({ t: 'enter', player: c.player }, c, c.player.w);
+    refreshView(c);
+    introduce(c);
     void loadFriends(c);
     const pt = parties.of(id); // voltou de outro mundo: a party continua
     if (pt) pushParty(pt);
-    console.log(`realtime: ${c.player.name} entrou (${[...conns].filter((o) => o.player).length} online)`);
+    console.log(`realtime: ${c.player.name} entrou (${byId.size} online)`);
   }
 
   // inventário mudado fora do jogo (npm run account -- give-item/give-penya): o PostgreSQL avisa por NOTIFY e quem está
@@ -1773,7 +1974,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         send(ws, inventory.view(st));
         refreshFighter(c, st);
         const eq = inventory.looks(st, c.hide), mt = stanceOf(c, inventory.combatMotion(st, player.job));
-        if (eq.join() !== player.eq.join() || mt !== player.mt) { player.eq = eq; player.mt = mt; broadcast({ t: 'look', id, eq, mt }); }
+        if (eq.join() !== player.eq.join() || mt !== player.mt) { player.eq = eq; player.mt = mt; toWatchers(c, { t: 'look', id, eq, mt }); }
       }).catch((e) => console.error('realtime: inventário (aviso)', e));
     }
   }
@@ -1797,7 +1998,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   }
 
   wss.on('connection', (ws: WebSocket) => {
-    const c: Conn = { ws, player: null, accountId: 0, dirty: false, alive: true, mobs: new Set(), chatAt: [], invQueue: Promise.resolve(), cb: null, ground: new Set(), hide: 0, joinedAt: Date.now() };
+    const c: Conn = { ws, player: null, accountId: 0, dirty: false, alive: true, mobs: new Set(), chatAt: [], invQueue: Promise.resolve(), cb: null, ground: new Set(), hide: 0, joinedAt: Date.now(), seen: new Map(), viewers: new Set(), seq: connSeq++ };
     conns.add(c);
     counters.connections++;
     ws.on('pong', () => { c.alive = true; });
@@ -1918,7 +2119,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
                 o.player.job = job;
                 if (o.cb) { o.cb.f.job = job; recalcMax(o); send(o.ws, skillsMsg(o)); }
                 const mt = stanceOf(o, inventory.combatMotion(await inventory.state(id), job));
-                if (mt !== o.player.mt) { o.player.mt = mt; broadcast({ t: 'look', id, eq: o.player.eq, mt }); }
+                if (mt !== o.player.mt) { o.player.mt = mt; toWatchers(o, { t: 'look', id, eq: o.player.eq, mt }); }
               }
             },
             resetStatsLive: (id) => {
@@ -1943,18 +2144,18 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
                     o.player.job = okJob; o.cb.f.job = okJob; o.cb.buffs.clear();
                     void query('UPDATE characters SET job = $2, updated_at = now() WHERE id = $1', [id, okJob]).catch(() => {});
                     send(o.ws, { t: 'chat', id: 0, name: '', text: `Você voltou a ser ${okJob === 0 ? 'Vagrant' : JOB_NAMES[okJob] ?? '#' + okJob}.` });
-                    broadcast({ t: 'job', id, job: okJob });
+                    toWatchers(o, { t: 'job', id, job: okJob });
                   }
                   o.cb.skills.clear();
                   reconcilePoints(o.cb, level);
                   send(o.ws, skillsMsg(o));
                   send(o.ws, buffsMsg(o));
-                  void inventory?.state(id).then((st) => { refreshFighter(o, st); const mt = stanceOf(o, inventory!.combatMotion(st, o.player!.job)); if (o.player && mt !== o.player.mt) { o.player.mt = mt; broadcast({ t: 'look', id, eq: o.player.eq, mt }); } });
+                  void inventory?.state(id).then((st) => { refreshFighter(o, st); const mt = stanceOf(o, inventory!.combatMotion(st, o.player!.job)); if (o.player && mt !== o.player.mt) { o.player.mt = mt; toWatchers(o, { t: 'look', id, eq: o.player.eq, mt }); } });
                   recalcMax(o, true);
                   void saveCombat(id, o.cb, level).catch((e) => console.error('realtime: salvar nível (GM)', e));
                 }
               }
-              broadcast({ t: 'level', id, level });
+              toWatchers(connOf(id), { t: 'level', id, level });
             },
           }, text).catch((e) => { console.error('comando de GM', e); reply('Erro ao executar o comando.'); });
           return;
@@ -2014,7 +2215,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         const player = c.player;
         c.invQueue = c.invQueue.then(async () => {
           const eq = inventory.looks(await inventory.state(player.id), c.hide);
-          if (eq.join() !== player.eq.join()) { player.eq = eq; broadcast({ t: 'look', id: player.id, eq, mt: player.mt }); }
+          if (eq.join() !== player.eq.join()) { player.eq = eq; toWatchers(c, { t: 'look', id: player.id, eq, mt: player.mt }); }
         }).catch((e) => console.error('realtime: esconder visual', e));
       } else if (msg.t === 'bar' && c.player) {
         const bar = cleanBar(msg.slots);
@@ -2136,7 +2337,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
           send(ws, inv.view(r.state));
           refreshFighter(c, r.state);
           const eq = inv.looks(r.state, c.hide), mt = stanceOf(c, inv.combatMotion(r.state, player.job));
-          if (eq.join() !== player.eq.join() || mt !== player.mt) { player.eq = eq; player.mt = mt; broadcast({ t: 'look', id: player.id, eq, mt }); }
+          if (eq.join() !== player.eq.join() || mt !== player.mt) { player.eq = eq; player.mt = mt; toWatchers(c, { t: 'look', id: player.id, eq, mt }); }
         }).catch((e) => { console.error('realtime inventário', e); send(ws, { t: 'invError', error: 'Servidor indisponível.' }); });
       }
     });
@@ -2144,8 +2345,11 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       conns.delete(c);
       if (c.trade) tradeClose(c.trade, `${c.player?.name ?? 'O outro jogador'} saiu. A troca foi cancelada.`);
       if (c.player && !liveConn(c.player.id)) invisIds.delete(c.player.id);
+      for (const o of [...c.viewers]) hideFrom(o, c);
+      for (const o of c.seen.values()) o.viewers.delete(c);
+      c.seen.clear();
+      if (c.player && byId.get(c.player.id) === c) byId.delete(c.player.id);
       if (c.player) {
-        broadcast({ t: 'leave', id: c.player.id });
         if (!c.switching && !liveConn(c.player.id)) leaveParty(c.player.id, 'saiu do jogo');
         if (!c.switching && !liveConn(c.player.id)) for (const f of c.friends ?? []) { const o = liveConn(f); if (o) send(o.ws, { t: 'friendOn', id: c.player.id, on: false }); }
         for (const wr of worlds.values()) wr.mobs?.forget(c.player.id);
@@ -2153,47 +2357,61 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         lastSaved.delete(p.id);
         const played = Date.now() - c.joinedAt;
         void (c.onlineSet ?? Promise.resolve()).then(() => savePosition(p, cb, played)).then(() => (conns.size && [...conns].some((o) => o.player?.id === p.id) ? inventory?.flush(p.id) : inventory?.detach(p.id))); // espera o 'online = true' para o 'false' ser o último
-        console.log(`realtime: ${c.player.name} saiu (${[...conns].filter((o) => o.player).length} online)`);
+        console.log(`realtime: ${c.player.name} saiu (${byId.size} online)`);
       }
     });
   });
 
-  // 10×/s: manda as mudanças agrupadas (cada mundo recebe só os seus) e anda a IA dos mobs de cada mundo
+  // 10×/s: refaz a grade, revê a área de visão de parte dos clientes, manda a cada um os movimentos de quem ele vê e anda a IA
+  // dos mobs de cada mundo
   const tick = setInterval(() => {
-    const lists = new Map<string, (number | string)[][]>();
-    for (const c of conns) {
-      if (!c.player || !c.dirty) continue;
+    // tudo o que sai neste tick (visão, 'states', mobs, itens no chão) vai para o socket numa escrita só por conexão: cada
+    // mensagem era uma chamada ao sistema e, com muitos jogadores, isso pesava mais que o próprio jogo
+    const corked: Duplex[] = [];
+    for (const c of byId.values()) { const s = socketOf(c); if (s && !s.destroyed) { s.cork(); corked.push(s); } }
+    try { worldTick(); } finally { for (const s of corked) s.uncork(); }
+  }, TICK_MS);
+  function worldTick() {
+    rebuildGrid();
+    rustSync();
+    for (const c of byId.values()) if ((c.seq + tickN) % VIEW_EVERY === 0) refreshView(c);
+    // cada movimento vira texto uma vez só; cada cliente recebe a lista dos que ele vê
+    const moved = new Map<Conn, string>();
+    for (const c of byId.values()) {
+      if (!c.dirty || !c.player) continue;
       c.dirty = false;
       const p = c.player;
-      let l = lists.get(p.w);
-      if (!l) lists.set(p.w, (l = []));
-      l.push([p.id, +p.p[0].toFixed(2), +p.p[1].toFixed(2), +p.p[2].toFixed(2), Math.round(p.h), p.s]);
+      moved.set(c, JSON.stringify([p.id, +p.p[0].toFixed(2), +p.p[1].toFixed(2), +p.p[2].toFixed(2), Math.round(p.h), p.s]));
     }
-    for (const [w, list] of lists) {
-      const vis = invisIds.size ? list.filter((e) => !invisIds.has(e[0] as number)) : list;
-      if (vis.length === list.length) { broadcast({ t: 'states', list }, undefined, w); continue; }
-      // tem GM invisível: quem não é GM recebe a lista sem ele
-      const all = JSON.stringify({ t: 'states', list }), some = vis.length ? JSON.stringify({ t: 'states', list: vis }) : null;
-      for (const o of conns) {
-        if (!o.player || o.player.w !== w || o.ws.readyState !== WebSocket.OPEN) continue;
-        const data = isStaff(o) || invisIds.has(o.player.id) ? all : some;
-        if (data) { o.ws.send(data); counters.msgOut++; }
-      }
+    if (moved.size) for (const c of byId.values()) {
+      if (!c.seen.size || c.ws.readyState !== WebSocket.OPEN) continue;
+      const parts: string[] = [];
+      for (const o of c.seen.values()) { const e = moved.get(o); if (e) parts.push(e); }
+      if (parts.length) { c.ws.send(`{"t":"states","list":[${parts.join(',')}]}`); counters.msgOut++; }
     }
     for (const wr of worlds.values()) wr.mobs?.tick(TICK_MS / 1000);
     if (++tickN % 2 === 0) { sendMobs(); for (const wr of worlds.values()) wr.mobs?.clearDirty(); }
-  }, TICK_MS);
+  }
+  /** o socket TCP por baixo do WebSocket (a biblioteca `ws` não expõe outro jeito de juntar as escritas) */
+  const socketOf = (c: Conn) => (c.ws as unknown as { _socket?: Duplex })._socket;
 
   /** a cada 200 ms: para cada jogador, mobs que entraram no raio, que se mexeram e que saíram */
   let tickN = 0;
   function sendMobs() {
     const now = Date.now();
     for (const [id, g] of ground) if (now >= g.expires) ground.delete(id);
+    const groundCells = new Map<string, GroundItem[]>();
+    for (const g of ground.values()) {
+      const k = g.w + ':' + cellOf(g.x, g.z), l = groundCells.get(k);
+      if (l) l.push(g); else groundCells.set(k, [g]);
+    }
     for (const c of conns) {
       if (!c.player || c.ws.readyState !== WebSocket.OPEN) continue;
-      const near = W(c).mobs?.near(c.player.p[0], c.player.p[2], MOB_RADIUS, MOB_MAX) ?? [];
+      // mobs desse mundo vêm do Rust (relay em onMessage); o resto do laço (itens no chão) vale para todos
+      const near = rustHere(c) ? null : (W(c).mobs?.near(c.player.p[0], c.player.p[2], MOB_RADIUS, MOB_MAX) ?? []);
       const seen = new Set<number>();
       const a: (number | string | null)[][] = [], u: (number | string)[][] = [], d: number[] = [];
+      if (near) {
       for (const m of near) {
         seen.add(m.id);
         if (!c.mobs.has(m.id)) {
@@ -2203,10 +2421,14 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       for (const id of c.mobs) if (!seen.has(id)) d.push(id);
       c.mobs = seen;
       if (a.length || u.length || d.length) send(c.ws, { t: 'mobs', a, u, d });
+      }
       // itens no chão perto
       const ga: (number | string)[][] = [], gd: number[] = [], gseen = new Set<number>();
-      for (const g of ground.values()) {
-        if (g.w !== c.player.w || Math.hypot(g.x - c.player.p[0], g.z - c.player.p[2]) > GROUND_RADIUS) continue;
+      const [px, , pz] = c.player.p, gx0 = Math.floor((px - GROUND_RADIUS) / GRID), gx1 = Math.floor((px + GROUND_RADIUS) / GRID), gz0 = Math.floor((pz - GROUND_RADIUS) / GRID), gz1 = Math.floor((pz + GROUND_RADIUS) / GRID);
+      const nearGround: GroundItem[] = [];
+      for (let cx = gx0; cx <= gx1; cx++) for (let cz = gz0; cz <= gz1; cz++) { const l = groundCells.get(c.player.w + ':' + (cx * 65536 + cz)); if (l) nearGround.push(...l); }
+      for (const g of nearGround) {
+        if (Math.hypot(g.x - px, g.z - pz) > GROUND_RADIUS) continue;
         gseen.add(g.id);
         if (!c.ground.has(g.id)) ga.push([g.id, g.itemId, +g.x.toFixed(2), +g.z.toFixed(2), g.count, g.gold, g.upgrade, inventory?.catalog.byId.get(g.itemId)?.name ?? '']);
       }
@@ -2215,6 +2437,12 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       if (ga.length || gd.length) send(c.ws, { t: 'ground', a: ga, d: gd });
     }
   }
+
+  // quantos estão online (rodapé do cliente): a cada 5 s, um texto só para todos
+  const onlineTick = setInterval(() => {
+    const data = JSON.stringify({ t: 'online', n: byId.size });
+    for (const c of byId.values()) if (c.ws.readyState === WebSocket.OPEN) c.ws.send(data);
+  }, 5000);
 
   // conexões mortas (Wi-Fi caiu, aba fechada sem aviso) saem em até ~30 s
   const ping = setInterval(() => {
@@ -2225,7 +2453,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     }
   }, 15000);
 
-  http.on('close', () => { clearInterval(tick); clearInterval(ping); clearInterval(petTick); clearInterval(partyTick); wss.close(); });
+  http.on('close', () => { clearInterval(tick); rust?.close(); clearInterval(ping); clearInterval(onlineTick); clearInterval(petTick); clearInterval(partyTick); wss.close(); });
   return {
     online: () => [...conns].filter((c) => c.player).length,
     /** retrato para o painel admin */

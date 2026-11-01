@@ -49,3 +49,9 @@ graphify-out/cache/
 
 # conexão do banco salva pelo painel admin (Database → Conexão)
 data/database.json
+
+# resultados do teste de carga (painel admin → Teste de carga), desta máquina
+data/loadtests/
+
+# pacote do mapa gerado por tools/export-mappack.ts
+data/mappack/
