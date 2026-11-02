@@ -1,11 +1,11 @@
-import { skillIcon } from '../shared/tga';
+import { itemIcon, skillIcon } from '../shared/tga';
 
 /**
  * Barra de buffs: um ícone por buff ativo (o da skill) com o tempo que falta, sob a janela de status. O servidor manda a lista
  * (`buffs`: id, nome, ícone, nível, ms restantes) a cada mudança; o relógio corre aqui no cliente. Botão direito no ícone tira o buff;
  * clique (sem arrastar) alterna a barra entre horizontal e vertical (lembrado neste navegador).
  */
-export interface BuffView { id: number; name: string; icon: string; lv: number; left: number }
+export interface BuffView { id: number; name: string; icon: string; lv: number; left: number; /** buff de item (pergaminho): o ícone vem dos itens */ item?: number }
 
 export class BuffBar {
   private el = document.createElement('div');
@@ -90,10 +90,10 @@ export class BuffBar {
       const d = document.createElement('div');
       d.className = 'buff';
       d.dataset.id = String(b.id);
-      d.title = `${b.name} nv ${b.lv} — clique: vertical/horizontal · botão direito remove`;
+      d.title = `${b.name}${b.item ? '' : ` nv ${b.lv}`} — clique: vertical/horizontal · botão direito remove`;
       const img = document.createElement('img');
       img.alt = b.name;
-      void skillIcon(b.icon).then((u) => { if (u) img.src = u; });
+      void (b.item ? itemIcon(b.icon) : skillIcon(b.icon)).then((u) => { if (u) img.src = u; });
       const time = document.createElement('span');
       d.append(img, time);
       this.el.appendChild(d);

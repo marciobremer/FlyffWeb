@@ -500,6 +500,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     await saveBuffs(id, cb);
   }
 
+  /** buff de item (pergaminho): chave no mapa de buffs = ITEM_BUFF + id do item (skills ficam abaixo disso) */
+  const ITEM_BUFF = 1_000_000;
   // ---------- buffs guardados (characters.buffs, migração 013) ----------
   /** sem a coluna (migração não aplicada) os buffs só não ficam guardados; o resto grava normal */
   let buffsColumn = true;
@@ -520,7 +522,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       for (const b of Array.isArray(r.rows[0]?.buffs) ? r.rows[0].buffs as Record<string, unknown>[] : []) {
         const skill = Number(b.id), lv = Number(b.lv), left = Number(b.left);
         const dst = Array.isArray(b.dst) ? (b.dst as unknown[]).filter((d): d is [number, number] => Array.isArray(d) && d.length === 2 && d.every(Number.isFinite)) : [];
-        if (!Number.isInteger(skill) || !(left > 0) || !dst.length || !skillCat?.byId.has(skill)) continue;
+        if (!Number.isInteger(skill) || !(left > 0) || !dst.length || !(skillCat?.byId.has(skill) || (skill >= ITEM_BUFF && inventory?.catalog.byId.has(skill - ITEM_BUFF)))) continue;
         out.set(skill, { lv: Number.isFinite(lv) ? lv : 1, until: now + Math.min(left, 24 * 3600_000), dst });
       }
     } catch (e) { if (/column "buffs"/.test((e as Error).message)) buffsColumn = false; else console.error('realtime: ler buffs', (e as Error).message); }
@@ -1419,7 +1421,11 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   /** lista de buffs para o cliente: ícone, nome e quanto falta (ms) */
   function buffsMsg(c: Conn) {
     const now = Date.now();
-    return { t: 'buffs', list: [...(c.cb?.buffs.entries() ?? [])].map(([id, b]) => { const s = skillCat?.byId.get(id); return { id, name: s?.name ?? '', icon: s?.icon ?? '', lv: b.lv, left: Math.max(0, b.until - now) }; }) };
+    return { t: 'buffs', list: [...(c.cb?.buffs.entries() ?? [])].map(([id, b]) => {
+      if (id >= ITEM_BUFF) { const d = inventory?.catalog.byId.get(id - ITEM_BUFF); return { id, name: d?.name ?? '', icon: d?.icon ?? '', lv: 0, item: 1, left: Math.max(0, b.until - now) }; }
+      const s = skillCat?.byId.get(id);
+      return { id, name: s?.name ?? '', icon: s?.icon ?? '', lv: b.lv, left: Math.max(0, b.until - now) };
+    }) };
   }
   /** buffs vencidos saem e os atributos de luta voltam ao normal */
   function expireBuffs(c: Conn, force = false) {
@@ -1639,6 +1645,10 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
    * Usa o item do espaço `slot` da bolsa (CMover::DoUseItem / DoUseItemFood): poção, comida e refresher curam HP/MP/FP
    * pelo dwDestParam/nAdjParamVal; acima do limite dwAbilityMin a cura cai para 30 %; espera dwSkillReady (mín. 1 s) por grupo.
    */
+  /** pergaminhos que dão um buff (símbolo II_* → DST_* com valor e duração em ms) */
+  const ITEM_BUFFS: Record<string, { dst: [string, number][]; ms: number }> = {
+    II_CHR_SYS_SCR_UPCUTSTONE: { dst: [['DST_ATKPOWER_RATE', 20]], ms: 1800_000 }, // Upcut Stone: +20% de ATK por 30 min
+  };
   function useItem(c: Conn, slot: number) {
     const p = c.player, cb = c.cb;
     if (!p || !cb || !inventory || cb.dead) return;
@@ -1656,6 +1666,21 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         if ('error' in r) { send(c.ws, { t: 'invError', error: r.error }); return; }
         send(c.ws, inventory.view(r.state));
         for (const n of r.names) reply(c, `Você recebeu ${n}.`);
+        return;
+      }
+      // pergaminho de buff (Upcut Stone…): gasta o item e vira um buff com tempo, que aparece na barra de buffs junto com os das skills
+      const ib = ITEM_BUFFS[d.symbol];
+      if (ib) {
+        const dst = ib.dst.map(([name, v]) => [D(name), v] as [number, number]);
+        const after = await inventory.consume(p.id, slot);
+        if (!after) return;
+        cb.buffs.set(ITEM_BUFF + d.id, { lv: 0, until: Date.now() + ib.ms, dst });
+        send(c.ws, inventory.view(after));
+        refreshFighter(c, after);
+        send(c.ws, buffsMsg(c));
+        send(c.ws, statsMsg(c));
+        reply(c, `${d.name}: efeito ativo por ${Math.round(ib.ms / 60000)} minutos.`);
+        void saveBuffs(p.id, cb).catch(() => {});
         return;
       }
       if (!USE_KINDS.has(d.kind2)) { send(c.ws, { t: 'invError', error: `${d.name} ainda não pode ser usado.` }); return; }
