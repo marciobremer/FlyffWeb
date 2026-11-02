@@ -1,5 +1,12 @@
 import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
 import WebSocket from 'ws';
+import { RES_DIR } from '../servers/common/config';
+import { parseLnd } from '../shared/formats/lnd';
+import { parseWld, tileFileName } from '../shared/formats/wld';
+import { decodeText } from '../shared/formats/rgn';
+import { MAP_SIZE } from '../shared/formats/types';
 
 /**
  * Bot de chat de desenvolvimento: entra no jogo como um jogador comum (mesmo WebSocket do cliente, segue o redirect para o
@@ -17,6 +24,32 @@ const [user, pass, wanted, base = 'localhost:8080', ctlPort = '9199'] = process.
 if (!pass) { console.error('uso: chat-bot.ts <usuário> <senha> [personagem] [servidor] [porta-de-controle]'); process.exit(2); }
 
 const out = (s: string) => console.log(s);
+
+/**
+ * Altura do terreno no ponto (x, z): o bot não tem terreno, e o cliente de verdade calcula o próprio Y e manda no `state`.
+ * Lê os .lnd do cliente FlyFF (mesmos dados do jogo) e interpola entre os vértices; não conhece pontes/objetos.
+ */
+const WORLD = 'WdMadrigal';
+const worldDir = path.join(RES_DIR, 'World', WORLD);
+const fileOf = new Map(fs.readdirSync(worldDir).map((f) => [f.toLowerCase(), f]));
+const readAb = (f: string) => { const b = fs.readFileSync(path.join(worldDir, fileOf.get(f.toLowerCase()) ?? f)); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer; };
+const wld = parseWld(decodeText(readAb(`${WORLD}.wld`)));
+const tileSize = MAP_SIZE * wld.mpu;
+const tiles = new Map<string, Float32Array | null>();
+function tileHeights(tx: number, tz: number) {
+  const k = `${tx},${tz}`;
+  let h = tiles.get(k);
+  if (h === undefined) { try { h = parseLnd(readAb(tileFileName(WORLD, tx, tz)), tx, tz, wld.mpu).heights; } catch { h = null; } tiles.set(k, h); }
+  return h;
+}
+function groundY(x: number, z: number, fallback: number) {
+  const tx = Math.floor(x / tileSize), tz = Math.floor(z / tileSize), h = tileHeights(tx, tz);
+  if (!h) return fallback;
+  const S = MAP_SIZE + 1, fx = (x - tx * tileSize) / wld.mpu, fz = (z - tz * tileSize) / wld.mpu;
+  const i = Math.min(MAP_SIZE - 1, Math.max(0, Math.floor(fx))), j = Math.min(MAP_SIZE - 1, Math.max(0, Math.floor(fz))), u = fx - i, v = fz - j;
+  const a = h[j * S + i], b = h[j * S + i + 1], c = h[(j + 1) * S + i], d = h[(j + 1) * S + i + 1];
+  return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v;
+}
 const r = await fetch(`http://${base}/gapi/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: user, password: pass }) });
 if (!r.ok) { console.error('login recusado', r.status); process.exit(1); }
 const acc: any = await r.json();
@@ -71,17 +104,29 @@ setInterval(() => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringif
 /** o mob vivo mais perto do bot */
 const nearest = () => [...mobs.entries()].filter(([, v]) => v[3] !== 'dead').map(([id, v]) => ({ id, x: v[1], z: v[2], d: Math.hypot(v[1] - myPos[0], v[2] - myPos[2]) })).sort((a, b) => a.d - b.d)[0];
 let lastTp = 0;
-/** o bot não tem terreno: quem anda de verdade é o cliente, que calcula a altura. Para ficar no chão, copia a posição (e a altura) de quem segue. */
+/**
+ * Seguir um jogador como um cliente de verdade: anda até perto dele a ~6 u/s mandando `state` a cada 100 ms com o estado
+ * 'run' (é ele que faz o cliente tocar a animação de correr) e 'stand' ao parar, com a altura do terreno.
+ */
+let lastS = 'stand';
+const RUN = 6;
 setInterval(() => {
   if (!follow || ws?.readyState !== WebSocket.OPEN) return;
   const id = [...names.entries()].find(([, n]) => n === follow)?.[0];
-  const p = id !== undefined ? others.get(id) : undefined;
-  if (!p) return;
-  const to = [p[0] + 1.5, p[1], p[2] + 1.5];
-  if (Math.hypot(to[0] - myPos[0], to[2] - myPos[2]) < 0.3 && Math.abs(to[1] - myPos[1]) < 0.3) return;
-  ws.send(JSON.stringify({ t: 'state', p: to, h: 0, s: 'stand' }));
-  myPos = to;
-}, 500);
+  const t = id !== undefined ? others.get(id) : undefined;
+  if (!t) return;
+  const dx = t[0] - myPos[0], dz = t[2] - myPos[2], dist = Math.hypot(dx, dz);
+  if (dist > 2.5) {
+    const step = Math.min(dist - 2, RUN * 0.1);
+    const x = myPos[0] + (dx / dist) * step, z = myPos[2] + (dz / dist) * step;
+    myPos = [x, groundY(x, z, t[1]), z];
+    ws.send(JSON.stringify({ t: 'state', p: myPos, h: (Math.atan2(dx, -dz) * 180) / Math.PI, s: 'run' }));
+    lastS = 'run';
+  } else if (lastS !== 'stand') {
+    ws.send(JSON.stringify({ t: 'state', p: myPos, h: 0, s: 'stand' }));
+    lastS = 'stand';
+  }
+}, 100);
 setInterval(() => {
   if (!auto || ws?.readyState !== WebSocket.OPEN) return;
   const t = nearest();
@@ -91,12 +136,15 @@ setInterval(() => {
 }, 700);
 
 http.createServer((req, res) => {
-  let body = '';
-  req.on('data', (d) => { body += d; if (body.length > 2000) req.destroy(); });
+  const chunks: Buffer[] = [];
+  req.on('data', (d: Buffer) => { chunks.push(d); if (chunks.reduce((n, c) => n + c.length, 0) > 2000) req.destroy(); });
   req.on('end', () => {
-    const text = body.trim();
+    const bytes = Buffer.concat(chunks);
+    let text: string;
+    try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch { text = new TextDecoder('windows-1252').decode(bytes); }
+    text = text.trim();
     if (req.url === '/say' && text && ws?.readyState === WebSocket.OPEN) { ws.send(JSON.stringify({ t: 'chat', text })); res.end('ok'); }
-    else if (req.url === '/move' && ws?.readyState === WebSocket.OPEN) { const q = text.split(/\s+/).map(Number); follow = ''; ws.send(JSON.stringify({ t: 'state', p: q.slice(0, 3), h: q[3] ?? 0, s: 'stand' })); myPos = q.slice(0, 3); res.end('ok'); }
+    else if (req.url === '/move' && ws?.readyState === WebSocket.OPEN) { const q = text.split(/\s+/).map(Number); follow = ''; if (q.length === 2) q.splice(1, 0, groundY(q[0], q[1], myPos[1])); ws.send(JSON.stringify({ t: 'state', p: q.slice(0, 3), h: q[3] ?? 0, s: 'stand' })); myPos = q.slice(0, 3); res.end('ok'); }
     else if (req.url === '/follow') { follow = text === 'off' ? '' : text; res.end(`follow ${follow || 'off'}`); }
     else if (req.url === '/auto') { auto = text !== 'off'; res.end(`auto ${auto}`); }
     else if (req.url === '/mobs') res.end(JSON.stringify([...mobs.entries()].slice(0, 15).map(([id, v]) => ({ id, model: v[0], x: v[1], z: v[2], s: v[3], hp: v[4] }))));
