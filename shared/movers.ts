@@ -196,8 +196,10 @@ export async function loadTemplate(entry: ModelEntry, o3dFiles: string[], base: 
     if (!parts.length) return null;
     let height = 0;
     let radius = 0;
+    // com corpo animado (skinned), as peças soltas não contam: algumas (o Demian) trazem uma malha auxiliar enorme (±18 u) que esticava a caixa de seleção
+    const hasSkinned = parts.some((p) => p.part.skinned);
     for (const p of parts) {
-      if (handParts.has(p.part)) continue;
+      if (handParts.has(p.part) || (hasSkinned && !p.part.skinned)) continue;
       p.geometry.computeBoundingBox();
       const b = p.geometry.boundingBox!;
       height = Math.max(height, b.max.y);
@@ -436,7 +438,7 @@ export class MoverInstance {
   private bubble: CSS2DObject | null = null;
   private bubbleTimer = 0;
   /** balão de fala acima do nome (chat), some sozinho; texto longo é cortado */
-  say(text: string | HTMLElement, maxChars = 60, ms = 6000) {
+  say(text: string | HTMLElement, maxChars = 60, ms = 6000, shout = false) {
     const t = typeof text !== 'string' || text.length <= maxChars ? text : text.slice(0, maxChars - 1) + '…';
     if (!this.bubble) {
       const el = document.createElement('div');
@@ -449,6 +451,7 @@ export class MoverInstance {
     }
     // texto, ou um elemento pronto (emoticon da janela de movimentos)
     this.bubble.element.classList.toggle('emo', typeof t !== 'string');
+    this.bubble.element.classList.toggle('shout', shout); // grito (/shout): balão de outro tipo
     if (typeof t === 'string') this.bubble.element.textContent = t; else this.bubble.element.replaceChildren(t);
     clearTimeout(this.bubbleTimer);
     this.bubbleTimer = window.setTimeout(() => { this.bubble?.removeFromParent(); this.bubble = null; }, ms);
