@@ -125,6 +125,7 @@ struct Fight {
     interval_ms: u64,
     snd: [i64; 2],
     god: bool,
+    skills: IdMap<SkillIn>,
 }
 
 struct Player {
@@ -152,6 +153,10 @@ struct Player {
     untargetable: bool,
     /// None até o Node mandar o `fighter`: sem ele os golpes continuam sendo resolvidos pelo Node
     fight: Option<Fight>,
+    mp: i64,
+    fp: i64,
+    /// quando cada skill (id) pode ser lançada de novo (ms)
+    skill_ready: IdMap<u64>,
     next_atk: u64,
 }
 
@@ -253,6 +258,19 @@ impl<T: Terrain> MapState<T> {
             },
             Inbound::Ws(WsEvent::Msg { ws, payload }) => {
                 // `atk` de quem já tem estado de luta no Rust: resolvido aqui, o Node nem vê a mensagem
+                // `skill` de ataque (melee/magic) de quem tem a skill na tabela do `fighter`: também resolvido aqui
+                if payload.starts_with(b"{\"t\":\"skill\"") {
+                    if let Some(&ent) = self.ws_ent.get(&ws) {
+                        let v = serde_json::from_slice::<Value>(&payload).ok();
+                        let (sid, target) = v.as_ref().map_or((None, None), |v| (v.get("id").and_then(Value::as_u64), v.get("target").and_then(Value::as_u64)));
+                        if let (Some(sid), Some(target)) = (sid, target) {
+                            if self.players.get(&ent).and_then(|p| p.fight.as_ref()).is_some_and(|f| f.skills.contains_key(&(sid as u32))) {
+                                self.on_skill(now, ent, sid as u32, target as u32);
+                                return;
+                            }
+                        }
+                    }
+                }
                 if payload.starts_with(b"{\"t\":\"atk\"") {
                     if let Some(&ent) = self.ws_ent.get(&ws) {
                         if self.players.get(&ent).is_some_and(|p| p.fight.is_some()) {
@@ -319,7 +337,7 @@ impl<T: Terrain> MapState<T> {
                 self.by_conn.insert((link, conn), ent);
                 self.players.insert(ent, Player {
                     link, ws: ch.ws, conn, ent, name: ch.name, level: ch.level, x: ch.x, z: ch.z, y: 0.0, h: 0.0, st: "stand".into(), invis: false, staff: false, moved: false, hp: ch.hp, max_hp: ch.max_hp.max(1), dead: ch.hp <= 0,
-                    untargetable: false, fight: None, next_atk: 0,
+                    untargetable: false, fight: None, mp: 0, fp: 0, skill_ready: IdMap::default(), next_atk: 0,
                 });
                 if let Some(w) = ch.ws { self.ws_ent.insert(w, ent); }
             }
@@ -361,9 +379,12 @@ impl<T: Terrain> MapState<T> {
                     p.hp = f.hp;
                     p.max_hp = f.max_hp.max(1);
                     p.dead = f.dead;
+                    p.mp = f.mp;
+                    p.fp = f.fp;
                     p.fight = Some(Fight {
                         attacker: (&f.attacker).into(), defender: (&f.defender).into(), w_elem: (f.w_elem[0], f.w_elem[1]), s_elem: (f.s_elem[0], f.s_elem[1]),
                         reach: f.reach, interval_ms: f.interval_ms, snd: f.snd, god: f.god,
+                        skills: f.skills.into_iter().map(|s| (s.id, s)).collect(),
                     });
                 }
             }
@@ -423,16 +444,63 @@ impl<T: Terrain> MapState<T> {
         self.to_watchers_of(mob_id, Some(ent), &hit);
         // o Node desfaz Dark Illusion/modo de batalha e guarda a espera do golpe (as skills respeitam a mesma espera)
         self.send(link, &LinkOut::Attacked { char: char_id, cooldown_ms: interval });
-        if died {
-            self.stats.kills += 1;
-            // exp para quem causou mais dano (entre os jogadores que ainda estão aqui); o Node dá exp e solta os itens
-            let best = self.mobs.get(mob_id).and_then(|m| m.dmg_by.iter().filter(|(id, _)| self.players.contains_key(id)).max_by_key(|(_, d)| **d).map(|(id, _)| *id)).unwrap_or(pid);
-            let best_char = best - PLAYER_BASE;
-            let die = json!({ "t": "mdie", "id": mob_id, "k": best_char, "exp": combat::exp_for(&prop, plevel) });
-            self.to_watchers_of(mob_id, Some(ent), &die);
-            let link = self.players.get(&best).map_or(link, |p| p.link);
+        if died { self.mob_died(ent, mob_id, &prop, plevel, mx, mz); }
+    }
+
+    /// o mob morreu: `mdie` a quem o conhece e, para quem causou mais dano (entre os jogadores que ainda estão aqui), a exp/itens no Node
+    fn mob_died(&mut self, ent: EntityId, mob_id: u32, prop: &combat::MobProp, plevel: i64, mx: f64, mz: f64) {
+        self.stats.kills += 1;
+        let best = self.mobs.get(mob_id).and_then(|m| m.dmg_by.iter().filter(|(id, _)| self.players.contains_key(id)).max_by_key(|(_, d)| **d).map(|(id, _)| *id)).unwrap_or(ent);
+        let best_char = best - PLAYER_BASE;
+        let die = json!({ "t": "mdie", "id": mob_id, "k": best_char, "exp": combat::exp_for(prop, plevel) });
+        self.to_watchers_of(mob_id, Some(ent), &die);
+        if let Some(link) = self.players.get(&best).or_else(|| self.players.get(&ent)).map(|p| p.link) {
             self.send(link, &LinkOut::Kill { char: best_char, mob: mob_id, x: mx, z: mz });
         }
+    }
+
+    /// skill de ataque (melee/magic) do jogador no mob — as mesmas conferências do `castSkill` do Node: skill conhecida e fora da
+    /// espera, alvo na visão e no alcance (magia 24 u; corpo a corpo = alcance da arma + 1), espera do golpe, MP/FP; gasta MP/FP,
+    /// manda `skillUsed`, calcula o dano (`combat::skill_damage`) e aplica
+    fn on_skill(&mut self, now: u64, ent: EntityId, skill_id: u32, mob_id: u32) {
+        let Some(pl) = self.players.get(&ent) else { return };
+        let Some(fight) = pl.fight.as_ref() else { return };
+        let Some(sk) = fight.skills.get(&skill_id) else { return };
+        if pl.dead { self.stats.rejects_dead += 1; return; }
+        if pl.skill_ready.get(&skill_id).is_some_and(|t| *t > now) { return; }
+        if now + 120 < pl.next_atk { self.stats.rejects_cooldown += 1; return; }
+        if mob_id >= PLAYER_BASE || !self.aoi.knows(ent, mob_id) { self.stats.rejects_not_visible += 1; return; }
+        let Some(m) = self.mobs.get(mob_id) else { self.stats.rejects_not_visible += 1; return };
+        let Some(prop) = m.prop.clone() else { return };
+        if m.s == MobState::Dead { self.stats.rejects_dead += 1; return; }
+        let reach = if sk.magic { 24.0 } else { fight.reach + 1.0 };
+        if (m.x - pl.x).hypot(m.z - pl.z) > reach { self.stats.rejects_range += 1; return; }
+        let (link, char_id, plevel, link_conn) = (pl.link, ent - PLAYER_BASE, pl.level, pl.conn);
+        if pl.mp < sk.mp || pl.fp < sk.fp {
+            let text = if sk.mp > pl.mp { "MP insuficiente." } else { "FP insuficiente." };
+            self.to_player(ent, json!({ "t": "chat", "id": 0, "name": "", "text": text }));
+            return;
+        }
+        let (min, max, cd, magic, mp_cost, fp_cost, template) = (sk.min, sk.max, sk.cd, sk.magic, sk.mp, sk.fp, sk.hit.clone());
+        let dmg = combat::skill_damage(&mut self.rng, min, max, &prop);
+        let _ = link_conn;
+        let pl = self.players.get_mut(&ent).unwrap();
+        pl.mp -= mp_cost;
+        pl.fp -= fp_cost;
+        pl.skill_ready.insert(skill_id, now + cd);
+        let lock = if magic { 1500 } else { 1200 }; // a animação da skill segura o próximo golpe
+        pl.next_atk = now + lock;
+        let (mp, fp) = (pl.mp, pl.fp);
+        self.stats.skill_casts += 1;
+        self.send(link, &LinkOut::Spent { char: char_id, mp, fp });
+        self.send(link, &LinkOut::Attacked { char: char_id, cooldown_ms: lock });
+        self.to_player(ent, json!({ "t": "skillUsed", "id": skill_id, "cd": cd }));
+        let died = self.mobs.damage(mob_id, ent, dmg, prop.peaceful, now);
+        let (hp, mx, mz) = self.mobs.get(mob_id).map_or((0, 0.0, 0.0), |m| (mob_hp(m), m.x, m.z));
+        let mut hit = json!({ "t": "hit", "k": "p", "a": char_id, "d": mob_id, "dmg": dmg, "f": 4, "hp": hp });
+        if let (Some(o), Some(t)) = (hit.as_object_mut(), template.as_object()) { for (k, v) in t { o.insert(k.clone(), v.clone()); } }
+        self.to_watchers_of(mob_id, Some(ent), &hit);
+        if died { self.mob_died(ent, mob_id, &prop, plevel, mx, mz); }
     }
 
     /// golpes dos mobs anotados no tick: quem tem estado de luta no Rust é resolvido aqui; os outros vão para o Node

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { CombatRules } from '../servers/world/combat';
 import { UpgradeRules } from '../servers/world/upgrade';
+import { SkillCatalog } from '../servers/world/skills';
 
 /**
  * Gera os vetores de equivalência Node ↔ Rust: casos de golpe jogador→mob e mob→jogador calculados pelo `CombatRules` e
@@ -33,7 +34,11 @@ function withRolls<T>(seq: number[], fn: () => T): T {
 }
 
 const RARE = [1, 1.1, 1.3, 0.9, 1.5];
-const players: unknown[] = [], mobsHit: unknown[] = [], elements: unknown[] = [];
+const players: unknown[] = [], mobsHit: unknown[] = [], elements: unknown[] = [], skillCases: unknown[] = [];
+// skills: o Node sorteia na faixa de `powerRange`; o Rust refaz o sorteio
+const skillCat = Object.create(SkillCatalog.prototype) as any;
+const SK_D: Record<string, number> = { DST_STR: 1, DST_DEX: 2, DST_INT: 3, DST_STA: 4, RT_ATTACK: 9 };
+skillCat.D = (n: string) => SK_D[n] ?? -999;
 for (let n = 0; n < 400; n++) {
   // tabela de elementos aleatória (a de verdade vem do Lua do servidor)
   const attribute = Array.from({ length: int(2, 16) }, () => ({ prob: 0, dmg: int(0, 3000), def: int(0, 3000), addAtk: int(0, 2000) }));
@@ -70,6 +75,20 @@ for (let n = 0; n < 400; n++) {
   const r2 = withRolls(seq, () => rules.mobHitsPlayer(mob, g));
   mobsHit.push({ defender: snapD, sElem, table, m: mob, seq, expected: r2 });
 
+  // skill de ataque: faixa do poder (powerRange) e dano final (meleePower − defesa do mob) com o sorteio forçado
+  {
+    const lv = int(1, 10), levels = Array.from({ length: 10 }, () => { const mn = int(1, 60); return { min: mn, max: mn + int(0, 60) }; });
+    const sd = { refer: [{ stat: SK_D.DST_STR, target: SK_D.RT_ATTACK, value: int(0, 20) }, { stat: SK_D.DST_DEX, target: 0, value: 0 }].slice(0, int(1, 2)), levels };
+    const wp = lcg() < 0.7 ? { abilityMin: int(5, 300), abilityMax: 0 } : null;
+    if (wp) wp.abilityMax = wp.abilityMin + int(0, 200);
+    const sf = { weapon: wp, weaponUpgrade: int(0, 10), str: int(15, 300), dex: int(15, 300), int: int(15, 300), sta: int(15, 300) };
+    const hand = { abilityMin: 1, abilityMax: 2 };
+    const range = skillCat.powerRange(sf, sd, lv, hand);
+    const roll = lcg();
+    const dmg = withRolls([roll], () => Math.max(1, skillCat.meleePower(sf, sd, lv, hand) - skillCat.mobSkillDefense(mob)));
+    skillCases.push({ range, roll, naturalArmor: mob.naturalArmor, expected: dmg });
+  }
+
   // o fator do elemento sozinho (inclui níveis fora da tabela e negativos)
   for (let k = 0; k < 4; k++) {
     const q = [int(0, 5), int(-1, 22), int(0, 5), int(-1, 22)];
@@ -79,6 +98,6 @@ for (let n = 0; n < 400; n++) {
 
 const out = path.join(import.meta.dirname, '..', 'game-server', 'tests', 'vectors.json');
 fs.mkdirSync(path.dirname(out), { recursive: true });
-fs.writeFileSync(out, JSON.stringify({ playerHitsMob: players, mobHitsPlayer: mobsHit, elementFactor: elements }));
+fs.writeFileSync(out, JSON.stringify({ playerHitsMob: players, mobHitsPlayer: mobsHit, elementFactor: elements, skillDamage: skillCases }));
 const hits = (players as { expected: { hit: boolean } }[]).filter((p) => p.expected.hit).length;
-console.log(`${players.length + mobsHit.length + elements.length} casos em ${out} (jogador acertou em ${hits}/${players.length})`);
+console.log(`${players.length + mobsHit.length + elements.length + skillCases.length} casos em ${out} (jogador acertou em ${hits}/${players.length})`);

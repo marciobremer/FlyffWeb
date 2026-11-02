@@ -76,3 +76,16 @@ fn mob_hits_player_matches_node() {
     }
     assert!(hits > 50, "poucos acertos para o teste ser útil: {hits}");
 }
+
+#[test]
+fn skill_damage_matches_node() {
+    let all = load();
+    let cases = all["skillDamage"].as_array().unwrap();
+    assert!(!cases.is_empty());
+    for (n, c) in cases.iter().enumerate() {
+        let (min, max) = (c["range"][0].as_i64().unwrap(), c["range"][1].as_i64().unwrap());
+        let m = MobProp { natural_armor: i(c, "naturalArmor"), ..Default::default() };
+        let mut rng = SeqRng::new(vec![c["roll"].as_f64().unwrap()]);
+        assert_eq!(skill_damage(&mut rng, min, max, &m), c["expected"].as_i64().unwrap(), "caso {n}: {c}");
+    }
+}

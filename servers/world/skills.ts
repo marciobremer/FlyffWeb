@@ -149,10 +149,18 @@ export class SkillCatalog {
     return cost;
   }
 
-  /** GetMeleeSkillPower: dano de uma skill corpo a corpo antes da defesa */
+  /** GetMeleeSkillPower: dano de uma skill corpo a corpo antes da defesa (sorteio entre `powerRange`) */
   meleePower(f: Fighter, s: SkillDef, lv: number, hand: ItemDef | null): number {
+    const r = this.powerRange(f, s, lv, hand);
+    if (!r) return 1;
+    const [min, max] = r;
+    return Math.max(1, min + Math.floor(Math.random() * Math.max(1, max - min + 1)));
+  }
+
+  /** faixa [mínimo, máximo] do poder da skill (o game-server em Rust sorteia dentro dela); null = sem o nível */
+  powerRange(f: Fighter, s: SkillDef, lv: number, hand: ItemDef | null): [number, number] | null {
     const L = s.levels[lv - 1];
-    if (!L) return 1;
+    if (!L) return null;
     const w = f.weapon ?? hand;
     const add = f.weapon && f.weaponUpgrade > 0 ? Math.floor(Math.pow(f.weaponUpgrade, 1.5)) : 0;
     const wMin = (w?.abilityMin ?? 1) + add, wMax = (w?.abilityMax ?? 2) + add;
@@ -164,7 +172,7 @@ export class SkillCatalog {
     }
     const min = Math.floor(((wMin + L.min * 5 + refer - 20) * (16 + lv)) / 13);
     const max = Math.floor(((wMax + L.max * 5 + refer - 20) * (16 + lv)) / 13);
-    return Math.max(1, min + Math.floor(Math.random() * Math.max(1, max - min + 1)));
+    return [min, max];
   }
 
   /** CalcDefenseNPC para golpe de skill: armadura natural / 7 + 1 */

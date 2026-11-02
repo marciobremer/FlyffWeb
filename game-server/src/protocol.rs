@@ -73,6 +73,28 @@ pub struct FighterIn {
     /// GM/admin imortal: o golpe acontece e o dano aparece, o HP não cai
     #[serde(default)]
     pub god: bool,
+    /// MP/FP e as skills de ataque que o personagem sabe (o Rust resolve o `skill` delas)
+    #[serde(default)]
+    pub mp: i64,
+    #[serde(default)]
+    pub fp: i64,
+    #[serde(default)]
+    pub skills: Vec<SkillIn>,
+}
+
+/// uma skill de ataque (melee ou magic) pronta para lançar: custos, espera, faixa do poder (já com os atributos) e o que vai no `hit`
+#[derive(Debug, Clone, Deserialize)]
+pub struct SkillIn {
+    pub id: u32,
+    pub magic: bool,
+    pub mp: i64,
+    pub fp: i64,
+    /// espera até lançar de novo (ms)
+    pub cd: u64,
+    pub min: i64,
+    pub max: i64,
+    /// campos extras do `hit` (sk e fx) como o Node monta
+    pub hit: Value,
 }
 
 /// movimento de um personagem (mesmo formato do `states` do cliente: id, x, y, z, rumo em graus, estado)
@@ -119,6 +141,8 @@ pub enum LinkOut {
     Error { error: String },
     /// o jogador golpeou (o Rust resolveu o golpe): o Node desfaz Dark Illusion/modo de batalha e reinicia a espera dele
     Attacked { char: u32, cooldown_ms: u64 },
+    /// MP/FP gastos numa skill que o Rust lançou (valor absoluto)
+    Spent { char: u32, mp: i64, fp: i64 },
     /// HP do jogador mudou por golpe de mob (valor absoluto, `dmg` do golpe) e se morreu
     Hurt { char: u32, hp: i64, dmg: i64, dead: bool },
     /// o jogador matou o mob (quem causou mais dano): o Node dá exp e solta os itens
@@ -158,6 +182,8 @@ pub struct Stats {
     pub kills: u64,
     /// golpes de jogador resolvidos no Rust (o `atk` não passou pelo Node)
     pub direct_atk: u64,
+    /// skills de ataque lançadas e resolvidas no Rust
+    pub skill_casts: u64,
     /// ações recusadas por motivo (AOI = o alvo não está no conjunto de visão do jogador)
     pub rejects_not_visible: u64,
     pub rejects_range: u64,

@@ -237,3 +237,12 @@ Com `GAME_ENGINE=rust` (e `RUST_COMBAT` diferente de `0`), quem já mandou o est
 - `RUST_COMBAT=0` devolve o cálculo de dano ao Node sem trocar o resto. Conexões de consulta (`hello{probe:true}`) não recebem eventos de navegador.
 
 Limites: PvP não existe em nenhum dos lados; a espera entre golpe do jogador e skill é compartilhada só no sentido Rust→Node (a skill do Node não adia o golpe do Rust); HP alterado pelo Node (poção, regen) volta ao Rust no próximo envio do `fighter` (janela de até ~100 ms em que um golpe pode usar o HP antigo); sem `fighter` (ex.: Node WebSocket) o golpe do jogador continua no Node.
+
+### 11.7 Skills de ataque no Rust (2026-11-02)
+
+- O `fighter` agora leva **MP/FP** e a **tabela das skills de ataque** (`melee`/`magic`) que o personagem sabe: custos, espera, faixa do poder (`SkillCatalog.powerRange`, já com arma e atributos) e o que vai no `hit` (`sk`, `fx`). O `skill` do navegador (`{t:'skill', id, target}`) chega ao Rust pelo WebSocket e, se a skill está na tabela, **nem passa pelo Node**.
+- O Rust confere as mesmas coisas do `castSkill`: skill fora da espera, espera do golpe, alvo na visão (AOI), alcance (magia 24 u; corpo a corpo = alcance da arma + 1), MP/FP. Gasta MP/FP, manda `skillUsed`, sorteia o dano na faixa e subtrai a defesa natural do mob (`combat::skill_damage`), aplica no mob e manda `hit` (`f: 4`) e `mdie` a quem o vê; o Node recebe `spent` (MP/FP novos), `attacked` (Dark Illusion/modo de batalha/espera compartilhada) e `kill` (exp e itens).
+- Buffs, curas e skills de suporte continuam no Node (mexem em buffs, inventário e atributos dele).
+- Equivalência: 400 casos de `skill_damage` iguais ao `meleePower − mobSkillDefense` do Node (`tools/combat-vectors.ts`).
+
+**Persistência e segundo mapa — decidido não fazer agora.** Posição, HP e exp já nascem no Node (o cliente manda a posição ao Node; o Rust só espelha; o Node recebe `hurt`/`kill` e grava): gravar do Rust duplicaria escritas e criaria dois donos das mesmas colunas, sem ganho. Azria em outro processo Rust obrigaria o WebSocket de cada jogador a viver em um processo diferente do mapa dele (o navegador abre um só WebSocket) e ainda precisaria generalizar a ponte do Node, para um mapa de pouca carga (1873 mobs); o Node continua cuidando de Azria.

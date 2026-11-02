@@ -1799,7 +1799,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   const rustAttached = new Map<number, string>();
   const rustOn = () => !!rust?.up;
   /** último estado de luta enviado ao Rust por personagem: só manda de novo quando algo muda */
-  const rustFight = new Map<number, { f: unknown; mt: number; hp: number; maxHp: number; dead: boolean; god: boolean; level: number }>();
+  const rustFight = new Map<number, { f: unknown; mt: number; hp: number; maxHp: number; dead: boolean; god: boolean; level: number; mp: number; fp: number; sk: string }>();
   /** RUST_COMBAT=0 mantém o cálculo de dano no Node (o Rust só cuida de mobs, visão e rede) */
   const rustCombat = process.env.RUST_COMBAT !== '0';
   /** navegadores conectados direto no servidor WebSocket do Rust (RUST_WS_PORT): id do Rust → socket virtual */
@@ -1892,6 +1892,13 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
           if (c.peace) setPeace(c, false);
           breakDark(c);
           if (c.cb) c.cb.nextAtk = Date.now() + (m.cooldown_ms ?? 0);
+        } else if (m.k === 'spent') {
+          // o Rust lançou uma skill de ataque: MP/FP novos (a janela de status mostra)
+          const c = connOf(m.char), cb = c?.cb;
+          if (!c?.player || !cb) return;
+          cb.mp = m.mp; cb.fp = m.fp; cb.dirty = true;
+          const sent = rustFight.get(m.char);
+          if (sent) { sent.mp = m.mp; sent.fp = m.fp; }
         } else if (m.k === 'hurt') {
           // golpe de mob resolvido no Rust: HP novo (o Node cuida da morte, dos buffs e da janela de status)
           const c = connOf(m.char), cb = c?.cb;
@@ -1939,11 +1946,24 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       const cb = c.cb;
       if (rustCombat && rules && cb) {
         const last = rustFight.get(p.id), god = !!c.god;
-        if (!last || last.f !== cb.f || last.mt !== p.mt || last.hp !== cb.hp || last.maxHp !== cb.maxHp || last.dead !== cb.dead || last.god !== god || last.level !== p.level) {
+        let skKey = '';
+        for (const [id, lv] of cb.skills) skKey += `${id}:${lv},`;
+        if (!last || last.f !== cb.f || last.mt !== p.mt || last.hp !== cb.hp || last.maxHp !== cb.maxHp || last.dead !== cb.dead || last.god !== god || last.level !== p.level || last.mp !== cb.mp || last.fp !== cb.fp || last.sk !== skKey) {
           const snap = rules.fightSnapshot(cb.f);
+          // skills de ataque (melee/magic) que ele sabe: o Rust lança e calcula o dano (custos, espera, faixa do poder e o que vai no `hit`)
+          const skills: unknown[] = [], hand = inventory?.catalog.bySymbol.get('II_WEA_HAN_HAND') ?? null;
+          if (skillCat) for (const [id, lv] of cb.skills) {
+            const sd = skillCat.byId.get(id), L = sd?.levels[lv - 1];
+            if (!sd || !L || lv <= 0 || (sd.kind !== 'melee' && sd.kind !== 'magic') || !skillCat.lineage(p.job).has(sd.job)) continue;
+            const pr = skillCat.powerRange(cb.f, sd, lv, hand);
+            if (!pr) continue;
+            const magic = sd.kind === 'magic';
+            skills.push({ id, magic, mp: L.mp, fp: L.fp, cd: Math.max(L.cooldown || 0, 1500), min: pr[0], max: pr[1],
+              hit: { sk: sd.symbol, fx: { c: sd.sfx[0], p: magic ? sd.sfx[1] : -1, h: sd.sfx[2], s: sd.sfx[4], mo: magic ? sd.motion : '', sn: sd.snd[0], sh: sd.snd[1] } } });
+          }
           rust.send({ k: 'fighter', char: p.id, f: { attacker: snap.attacker, defender: snap.defender, wElem: snap.wElem, sElem: snap.sElem, reach: reachOf(snap.range),
-            intervalMs: rules.attackInterval(cb.f, p.mt), snd: snap.snd, hp: cb.hp, maxHp: cb.maxHp, dead: cb.dead, god } });
-          rustFight.set(p.id, { f: cb.f, mt: p.mt, hp: cb.hp, maxHp: cb.maxHp, dead: cb.dead, god, level: p.level });
+            intervalMs: rules.attackInterval(cb.f, p.mt), snd: snap.snd, hp: cb.hp, maxHp: cb.maxHp, dead: cb.dead, god, mp: cb.mp, fp: cb.fp, skills } });
+          rustFight.set(p.id, { f: cb.f, mt: p.mt, hp: cb.hp, maxHp: cb.maxHp, dead: cb.dead, god, level: p.level, mp: cb.mp, fp: cb.fp, sk: skKey });
         }
       }
     }

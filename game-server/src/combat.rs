@@ -118,6 +118,14 @@ pub fn mob_hits_player(rng: &mut impl Rng, m: &MobProp, d: &Defender, elem: i64)
     HitResult { hit: true, dmg: 1.max(atk - def).max((atk as f64 * 0.1).floor() as i64), crit }
 }
 
+/// dano de uma skill de ataque (`SkillCatalog.meleePower` − `mobSkillDefense`): sorteio na faixa [min, max] do poder e a defesa
+/// natural do mob / 7 + 1 (um sorteio só, como o `Math.random()` do Node)
+pub fn skill_damage(rng: &mut impl Rng, min: i64, max: i64, m: &MobProp) -> i64 {
+    let span = 1.max(max - min + 1);
+    let power = 1.max(min + (rng.next_f64() * span as f64).floor() as i64);
+    1.max(power - ((m.natural_armor as f64 / 7.0 + 1.0).floor() as i64))
+}
+
 /// exp por matar o mob (penalidade por diferença de nível)
 pub fn exp_for(m: &MobProp, player_level: i64) -> i64 {
     let diff = player_level - m.level;
