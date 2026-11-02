@@ -228,6 +228,8 @@ actionBar.onUseSkill = (id) => {
     net.castSkill(id, 0);
     return;
   }
+  const why = combat.skillBlock(id);
+  if (why) { chat.system(why); return; } // sem MP/FP: só avisa, não anda nem ataca
   if (!combat.attacking) {
     const t = view.target;
     if (!t || t.owner !== 'spawns') { chat.system('Selecione um monstro primeiro.'); return; }

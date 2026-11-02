@@ -86,7 +86,7 @@ export class Combat {
       if (q) {
         this.nextAtk = now + Math.max(this.interval, 1200);
         const why = q.buff ? null : this.skillBlock(q.id);
-        if (why) { this.onBlocked(why); this.endChain(); this.queued = null; this.nextAtk = now + 400; }
+        if (why) { this.onBlocked(why); this.stop(); return; } // como o DoUseSkill do original: avisa e não faz nada
         else if (q.buff) this.sendSkill(q.id, 0); // buff da sequência vale em quem lança (o movimento toca quando o servidor aceita)
         else { p.cast(q.motion); this.sendSkill(q.id, id); if (q.once) { this.endChain(); this.targetId = null; } }
       } else {
