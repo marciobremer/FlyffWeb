@@ -3,7 +3,7 @@ import type { WorldData } from './data';
 import type { ModelLibrary } from './models';
 import { MoverInstance, preloadMotions } from './movers';
 import { hairRgb, loadHumanTemplate, type Sex } from './humans';
-import { motionOf, motionsFor } from './motions';
+import { motionOf, motionsFor, nextHit } from './motions';
 import { objectMatrix, TICKS_PER_SEC } from './math';
 import { OT, type WorldObject } from './formats/types';
 import { applyEnchantGlow } from './enchantGlow';
@@ -96,15 +96,20 @@ export class Player {
   }
   /** próximo golpe da sequência (MTI_ATK1…4) */
   private hit = 0;
+  private lastHit = 0;
+  /** nível do personagem (do servidor): decide quantos golpes tem a sequência de ataque */
+  level = 1;
 
   /** golpe corpo a corpo: toca MTI_ATK1…4 (alternando) uma vez; andar interrompe */
   attack() {
     const inst = this.inst;
     if (!inst || this.ride || !this.grounded || this.state === 'dead' || this.state.startsWith('jump')) return;
     this.target = null;
-    this.hit = (this.hit % 2) + 1;
+    const now = performance.now();
+    this.hit = nextHit(now - this.lastHit > 2500 ? 0 : this.hit, this.level, this.combat); // sequência por nível; depois de uma pausa recomeça no 1º golpe
+    this.lastHit = now;
     this.state = 'atk';
-    inst.play(motionOf('atk', this.combat, this.hit)[0], false, this.attackRate);
+    inst.restart(motionOf('atk', this.combat, this.hit)[0], false, this.attackRate); // restart: o mesmo golpe repetido (nível 1) toca de novo
   }
   /** velocidade de ataque (do servidor): o golpe toca nessa velocidade, no mesmo ritmo que o servidor aceita os golpes */
   attackRate = 1;

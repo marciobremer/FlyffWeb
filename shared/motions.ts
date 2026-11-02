@@ -30,6 +30,18 @@ export function motionOf(state: string, combat = 0, hit = 1): [symbol: string, l
   return [BASE[st], loop];
 }
 
+/**
+ * Golpe seguinte da sequência do jogador (CActionMover::_ProcessStateAttack): ATK1→ATK2 a partir do nível 2, ATK2→ATK3 do 8 e
+ * ATK3→ATK4 do 12; abaixo do nível pedido (ou depois do 4º, ou de uma pausa) recomeça no ATK1 — então no nível 1 é um golpe só.
+ * Ioiô (14) e besta (15) só têm os golpes 1 e 2. `prev` = golpe anterior (0 = nenhum).
+ */
+export function nextHit(prev: number, level: number, combat = 0): number {
+  const need = [2, 8, 12];
+  const max = combat >= 14 ? 2 : 4;
+  if (prev < 1 || prev >= max || level < need[prev - 1]) return 1;
+  return prev + 1;
+}
+
 /** todos os movimentos que o personagem pode usar com a postura `combat` (para baixar antes e trocar sem atraso) */
 export function motionsFor(combat = 0) {
   const out = new Set<string>(Object.values(BASE));

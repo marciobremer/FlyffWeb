@@ -361,7 +361,7 @@ export class MoverInstance {
    * `loop = false` toca uma vez e para no último quadro (ANILOOP_1PLAY); `finished` indica o fim (ou que o arquivo não existe).
    */
   /** toca do começo mesmo se já é o movimento atual (ex.: repetir um emote) */
-  restart(symbol: string, loop = true) { this.motionSymbol = ''; this.play(symbol, loop); }
+  restart(symbol: string, loop = true, rate = 1) { this.motionSymbol = ''; this.play(symbol, loop, rate); }
 
   /** `rate`: velocidade do movimento (1 = normal; o golpe do jogador toca na velocidade de ataque, como no original) */
   play(symbol: string, loop = true, rate = 1) {
