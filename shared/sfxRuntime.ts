@@ -479,6 +479,17 @@ export class SfxManager {
       return false;
     });
   }
+  /** efeito de uma vez só que acompanha `getPos()` até acabar (level up, buff de NPC: anda junto com o personagem) */
+  playFollowOnce(file: string, getPos: () => V3 | null, rotY = 0) {
+    const p0 = getPos();
+    if (!p0) return;
+    this.spawn(file, p0, rotY, (inst) => {
+      inst.once = true;
+      const p = getPos();
+      if (p) inst.place(p[0], p[1], p[2]);
+      return inst.done || !p;
+    });
+  }
   /** efeito que acompanha `getPos()` por `secs` segundos (buff) */
   playFollow(file: string, getPos: () => V3 | null, secs: number, rotY = 0) {
     let t = 0;
