@@ -9,6 +9,8 @@ export interface BuffView { id: number; name: string; icon: string; lv: number; 
 
 export class BuffBar {
   private el = document.createElement('div');
+  /** buffs de item (pergaminhos): barra própria no alto da tela, da esquerda para a direita */
+  private itemEl = document.createElement('div');
   private items: { b: BuffView; end: number; time: HTMLElement }[] = [];
   private timer = 0;
 
@@ -16,6 +18,13 @@ export class BuffBar {
     this.el.className = 'buff-bar';
     this.el.setAttribute('aria-label', 'Buffs ativos (arraste para mover)');
     parent.appendChild(this.el);
+    this.itemEl.className = 'item-buff-bar';
+    parent.appendChild(this.itemEl);
+    this.itemEl.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const id = Number((e.target as HTMLElement).closest<HTMLElement>('.buff')?.dataset.id);
+      if (Number.isInteger(id)) this.onRemove(id);
+    });
     this.restore();
     this.el.addEventListener('pointerdown', (e) => this.dragStart(e));
     // botão direito no ícone: tira o buff
@@ -86,17 +95,18 @@ export class BuffBar {
   set(list: BuffView[]) {
     const now = performance.now();
     this.el.replaceChildren();
+    this.itemEl.replaceChildren();
     this.items = list.map((b) => {
       const d = document.createElement('div');
       d.className = 'buff';
       d.dataset.id = String(b.id);
-      d.title = `${b.name}${b.item ? '' : ` nv ${b.lv}`} — clique: vertical/horizontal · botão direito remove`;
+      d.title = b.item ? `${b.name} — botão direito remove` : `${b.name} nv ${b.lv} — clique: vertical/horizontal · botão direito remove`;
       const img = document.createElement('img');
       img.alt = b.name;
       void (b.item ? itemIcon(b.icon) : skillIcon(b.icon)).then((u) => { if (u) img.src = u; });
       const time = document.createElement('span');
       d.append(img, time);
-      this.el.appendChild(d);
+      (b.item ? this.itemEl : this.el).appendChild(d);
       return { b, end: now + b.left, time };
     });
     this.tick();
