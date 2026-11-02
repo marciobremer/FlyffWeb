@@ -146,6 +146,7 @@ interface Conn { ws: WebSocket; player: PlayerView | null; accountId: number; di
   /** de onde veio ao entrar num mapa de ticket (usar o ticket de novo volta para cá) */ ticketFrom?: { w: string; p: [number, number, number] };
   /** guild do personagem (cargo: 0 mestre … 4 rookie) e convites de guild recebidos */ guild?: { id: number; name: string; rank: number } | null; guildReqs?: Map<number, number>;
   /** último emote/emoticon (ms) — no máximo 3 por segundo */ emoteAt?: number;
+  /** último grito (/shout), ms */ shoutAt?: number;
   /** anti-speedhack: última mensagem de posição (ms), reserva de deslocamento (u), último puxão de volta e quantos já levou */
   move?: { at: number; budget: number; pulledAt: number; pulls: number };
   /** área de visão: jogadores que este cliente conhece (id → conexão) e conexões que conhecem este jogador */
@@ -200,6 +201,8 @@ const SPEED_SLACK = 1.25, SPEED_BURST_S = 3, SPEED_EXTRA = 2, PULLBACK_MS = 1000
 const FLY_MAX_SPEED = 0.33 * TICKS_PER_SEC;
 /** chat: tamanho máximo da mensagem e limite de 5 mensagens a cada 5 s por conexão */
 const CHAT_MAX = 200, CHAT_BURST = 5, CHAT_WINDOW_MS = 5000;
+/** espera entre dois gritos (/shout) do mesmo jogador */
+const SHOUT_MS = 10_000;
 
 /** um mundo carregado no servidor: mobs, NPCs/lojas, id do mundo (WI_WORLD_*) e onde se chega/renasce */
 export interface WorldRuntime { name: string; id: number; define: string; mobs: MobWorld | null; shops: ShopCatalog | null; start: [number, number, number] }
@@ -2236,7 +2239,17 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
           }, text).catch((e) => { console.error('comando de GM', e); reply('Erro ao executar o comando.'); });
           return;
         }
-        broadcast({ t: 'chat', id: c.player.id, name: c.player.name, text });
+        // /shout (ou /sh) texto: grito para o mapa inteiro, no máximo 1 a cada SHOUT_MS; o chat normal só chega a quem está perto
+        const shout = /^\/(?:shout|sh)(?:\s+(.+))?$/i.exec(text);
+        if (shout) {
+          if (!shout[1]) { send(ws, { t: 'chat', id: 0, name: '', text: 'Uso: /shout mensagem (ou /sh mensagem) — grita para o mapa inteiro.' }); return; }
+          if (now - (c.shoutAt ?? 0) < SHOUT_MS) { send(ws, { t: 'chat', id: 0, name: '', text: `Aguarde ${Math.ceil((SHOUT_MS - (now - (c.shoutAt ?? 0))) / 1000)} s para gritar de novo.` }); return; }
+          c.shoutAt = now;
+          broadcast({ t: 'chat', id: c.player.id, name: c.player.name, text: `[Grito] ${shout[1]}` }, undefined, c.player.w);
+          return;
+        }
+        // chat normal: você e quem vê você (a área de visão — o mesmo conjunto que decide quem aparece na tela de quem)
+        toWatchers(c, { t: 'chat', id: c.player.id, name: c.player.name, text });
       } else if (msg.t === 'skillUp' && c.player) {
         skillUp(c, msg.levels);
       } else if (msg.t === 'skill' && c.player && Number.isInteger(msg.id) && Number.isInteger(msg.target)) {
