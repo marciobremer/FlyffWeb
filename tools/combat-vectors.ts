@@ -1,11 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { CombatRules } from '../servers/world/combat';
+import { UpgradeRules } from '../servers/world/upgrade';
 
 /**
- * Gera os vetores de equivalência Node ↔ Rust: casos de golpe jogador→mob e mob→jogador calculados pelo
- * `CombatRules` de verdade, com `Math.random` trocado por uma sequência fixa (guardada no caso). O Rust
- * (game-server/tests/equivalence.rs) refaz cada caso com a mesma sequência e precisa dar o mesmo resultado.
+ * Gera os vetores de equivalência Node ↔ Rust: casos de golpe jogador→mob e mob→jogador calculados pelo `CombatRules` e
+ * pelo `UpgradeRules.elementFactor` de verdade, com `Math.random` trocado por uma sequência fixa (guardada no caso). As
+ * entradas do Rust vêm do `fightSnapshot` (o mesmo que o Node manda ao game-server), então o teste cobre também o formato
+ * do snapshot. O Rust (game-server/tests/equivalence.rs) refaz cada caso e precisa dar o mesmo resultado.
  *
  *   npx tsx tools/combat-vectors.ts      → game-server/tests/vectors.json
  */
@@ -13,10 +15,15 @@ let seed = 20261101;
 const lcg = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
 const int = (a: number, b: number) => a + Math.floor(lcg() * (b - a + 1));
 
+// DST_* usados (o id é só o número de cada chave neste teste)
+const D = { ADJ_HITRATE: 1, CRITICAL_BONUS: 2, ATKPOWER_RATE: 3, MONSTER_DMG: 4, ATKPOWER: 5, PARRY: 6, ADJDEF: 7, ADJDEF_RATE: 8, CHR_CHANCECRITICAL: 9 };
 const rules = Object.create(CombatRules.prototype) as any;
-rules.D = { ADJ_HITRATE: 1, CRITICAL_BONUS: 2, ATKPOWER_RATE: 3, MONSTER_DMG: 4, ATKPOWER: 5, PARRY: 6 };
+rules.D = D;
 rules.items = { bySymbol: new Map() };
 rules.hand = null;
+rules.ar = [];
+const JOB = { atkSpeed: 75, maxHp: 1, maxMp: 1, maxFp: 1, def: 1.3, hpRec: 1, swd: 4, axe: 5, staff: 1, stick: 3, knuckle: 5, wand: 6, blocking: 0.2, yoyo: 4, critical: 1.5, bow: 1 };
+rules.jobs = new Map([[0, JOB]]);
 
 const realRandom = Math.random;
 function withRolls<T>(seq: number[], fn: () => T): T {
@@ -26,35 +33,52 @@ function withRolls<T>(seq: number[], fn: () => T): T {
 }
 
 const RARE = [1, 1.1, 1.3, 0.9, 1.5];
-const players: unknown[] = [], mobsHit: unknown[] = [];
+const players: unknown[] = [], mobsHit: unknown[] = [], elements: unknown[] = [];
 for (let n = 0; n < 400; n++) {
-  const mob = { symbol: 'MI_X', level: int(1, 130), sta: int(10, 200), dex: int(10, 200), hr: int(5, 300), er: int(1, 200), hp: 1000, naturalArmor: int(0, 120), atkMin: int(1, 400), atkMax: 0, atk1: '', exp: 0, element: 0, elementLevel: 0 };
+  // tabela de elementos aleatória (a de verdade vem do Lua do servidor)
+  const attribute = Array.from({ length: int(2, 16) }, () => ({ prob: 0, dmg: int(0, 3000), def: int(0, 3000), addAtk: int(0, 2000) }));
+  const up = Object.create(UpgradeRules.prototype) as any;
+  up.attribute = attribute;
+  const table = attribute.map((a) => [a.dmg, a.def, a.addAtk]);
+  rules.upgrade = up;
+
+  const mob = { symbol: 'MI_X', level: int(1, 130), sta: int(10, 200), dex: int(10, 200), hr: int(5, 300), er: int(1, 200), hp: 1000, naturalArmor: int(0, 120), atkMin: int(1, 400), atkMax: 0, atk1: '', exp: 0,
+    element: int(0, 5), elementLevel: int(0, 20), attackSpeed: 1000 };
   mob.atkMax = mob.atkMin + int(0, 300);
-  const elem = int(-3000, 6000);
-  const seq = [lcg(), lcg(), lcg(), lcg(), lcg()];
+  const seq = [lcg(), lcg(), lcg(), lcg(), lcg(), lcg()];
+  const wElem = [int(0, 5), int(0, 20)], sElem = [int(0, 5), int(0, 20)];
 
   // jogador → mob
   const a = { level: int(1, 130), dex: int(15, 400), hitBonus: int(-20, 40), atkMin: int(1, 3000), atkMax: 0, crit: int(0, 60), critBonus: int(0, 80), atkRate: int(-10, 80), monsterDmg: int(0, 60), atkPower: int(0, 500), wRare: RARE[int(0, RARE.length - 1)] };
   a.atkMax = a.atkMin + int(0, 2000);
-  const f = { level: a.level, dex: a.dex, adjHit: 0, parry: 0, weapon: null, wRare: a.wRare, wElem: [0, 0], sElem: [0, 0],
-    dst: new Map([[1, a.hitBonus], [2, a.critBonus], [3, a.atkRate], [4, a.monsterDmg], [5, a.atkPower]]) };
+  const f = { level: a.level, dex: a.dex, sta: 30, adjHit: 0, parry: 0, weapon: null, wRare: a.wRare, wElem, sElem, job: 0, defMin: 0, defMax: 0,
+    dst: new Map([[D.ADJ_HITRATE, a.hitBonus], [D.CRITICAL_BONUS, a.critBonus], [D.ATKPOWER_RATE, a.atkRate], [D.MONSTER_DMG, a.monsterDmg], [D.ATKPOWER, a.atkPower]]) };
   rules.playerAtk = () => [a.atkMin, a.atkMax];
   rules.critChance = () => a.crit;
-  rules.upgrade = { elementFactor: () => elem };
+  const snapA = rules.fightSnapshot(f).attacker;
   const r = withRolls(seq, () => rules.playerHitsMob(f, mob));
-  players.push({ a, m: mob, elem, seq, expected: r });
+  players.push({ attacker: snapA, wElem, table, m: mob, seq, expected: r });
 
-  // mob → jogador
-  const d = { level: int(1, 130), dex: int(15, 400), parry: int(0, 80), parryDst: int(0, 40), def: int(0, 1500) };
-  const g = { level: d.level, dex: d.dex, parry: d.parry, dst: new Map([[6, d.parryDst]]), sElem: [0, 0] };
-  rules.defense = () => d.def;
-  rules.upgrade = { elementFactor: () => elem };
+  // mob → jogador (defesa de verdade, com o item sorteado entre defMin e defMax)
+  const d = { level: int(1, 130), dex: int(15, 400), sta: int(10, 200), parry: int(0, 80), parryDst: int(0, 40), defMin: int(0, 800), defMax: 0, adjDef: int(0, 100), adjDefRate: int(0, 40) };
+  d.defMax = d.defMin + int(0, 400);
+  const g = { level: d.level, dex: d.dex, sta: d.sta, parry: d.parry, job: 0, defMin: d.defMin, defMax: d.defMax, weapon: null, wRare: 1, wElem, sElem, adjHit: 0,
+    dst: new Map([[D.PARRY, d.parryDst], [D.ADJDEF, d.adjDef], [D.ADJDEF_RATE, d.adjDefRate]]) };
+  rules.playerAtk = () => [1, 1];
+  rules.critChance = () => 0;
+  const snapD = rules.fightSnapshot(g).defender;
   const r2 = withRolls(seq, () => rules.mobHitsPlayer(mob, g));
-  mobsHit.push({ d: { level: d.level, dodge: Math.floor(d.dex * 0.5 + d.parry + d.parryDst), def: d.def }, m: mob, elem, seq, expected: r2 });
+  mobsHit.push({ defender: snapD, sElem, table, m: mob, seq, expected: r2 });
+
+  // o fator do elemento sozinho (inclui níveis fora da tabela e negativos)
+  for (let k = 0; k < 4; k++) {
+    const q = [int(0, 5), int(-1, 22), int(0, 5), int(-1, 22)];
+    elements.push({ table, q, expected: up.elementFactor(q[0], q[1], q[2], q[3]) });
+  }
 }
 
 const out = path.join(import.meta.dirname, '..', 'game-server', 'tests', 'vectors.json');
 fs.mkdirSync(path.dirname(out), { recursive: true });
-fs.writeFileSync(out, JSON.stringify({ playerHitsMob: players, mobHitsPlayer: mobsHit }));
+fs.writeFileSync(out, JSON.stringify({ playerHitsMob: players, mobHitsPlayer: mobsHit, elementFactor: elements }));
 const hits = (players as { expected: { hit: boolean } }[]).filter((p) => p.expected.hit).length;
-console.log(`${players.length + mobsHit.length} casos em ${out} (jogador acertou em ${hits}/${players.length})`);
+console.log(`${players.length + mobsHit.length + elements.length} casos em ${out} (jogador acertou em ${hits}/${players.length})`);

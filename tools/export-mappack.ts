@@ -24,7 +24,7 @@ const spawns = w.respawns.filter((r) => r.type === OT.MOVER).map((r) => {
   return {
     modelId: r.modelId, rect, pos: r.pos, count: Math.max(1, r.count), attackCount: r.attackCount || 0, timeS: r.time || 30,
     speed: w.moverSpeed.get(r.modelId) ?? 0, flying: w.flyingMovers.has(r.modelId), boss: isBoss(p),
-    prop: p && { level: p.level, sta: p.sta, dex: p.dex, hr: p.hr, er: p.er, hp: p.hp, naturalArmor: p.naturalArmor, atkSpeed: p.attackSpeed, atkMin: p.atkMin, atkMax: p.atkMax, exp: p.exp, peaceful: p.belligerence === 'BELLI_PEACEFUL' },
+    prop: p && { level: p.level, sta: p.sta, dex: p.dex, hr: p.hr, er: p.er, hp: p.hp, naturalArmor: p.naturalArmor, atkSpeed: p.attackSpeed, atkMin: p.atkMin, atkMax: p.atkMax, exp: p.exp, element: p.element, elementLevel: p.elementLevel, peaceful: p.belligerence === 'BELLI_PEACEFUL' },
   };
 });
 const S = MAP_SIZE + 1, tile = w.tileSize, mpu = w.wld.mpu;

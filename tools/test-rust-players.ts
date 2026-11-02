@@ -32,7 +32,7 @@ const saw = (c: C, from: number, t: string, id: number) => c.msgs.slice(from).so
 const stats = () => new Promise<any>((resolve, reject) => {
   const s = net.connect(9201, '127.0.0.1'); let buf = Buffer.alloc(0), step = 0;
   const w = (v: unknown) => { const b = Buffer.from(JSON.stringify(v)); const h = Buffer.alloc(4); h.writeUInt32BE(b.length); s.write(Buffer.concat([h, b])); };
-  s.on('connect', () => w({ k: 'hello', secret, version: 1 })); s.on('error', reject);
+  s.on('connect', () => w({ k: 'hello', secret, version: 1, probe: true })); s.on('error', reject);
   s.on('data', (d) => { buf = Buffer.concat([buf, d]); while (buf.length >= 4 && buf.length >= 4 + buf.readUInt32BE(0)) { const n = buf.readUInt32BE(0); const m = JSON.parse(buf.subarray(4, 4 + n).toString()); buf = buf.subarray(4 + n); if (m.k === 'hello_ok' && step++ === 0) w({ k: 'stats' }); else if (m.k === 'stats') { s.end(); resolve(m); } } });
   setTimeout(() => reject(new Error('stats timeout')), 3000);
 });

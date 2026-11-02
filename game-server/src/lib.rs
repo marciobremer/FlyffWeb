@@ -1,6 +1,7 @@
 //! Game Server (Rust) do Projeto Atools. Plano e protocolo: docs/ARQUITETURA.md.
 pub mod aoi;
 pub mod combat;
+pub mod elements;
 pub mod fastmap;
 pub mod grid;
 pub mod mobs;

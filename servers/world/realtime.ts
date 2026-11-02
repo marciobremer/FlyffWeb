@@ -1793,6 +1793,10 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   /** personagens anexados ao Rust → últimos flags enviados (morto, invisível, staff) */
   const rustAttached = new Map<number, string>();
   const rustOn = () => !!rust?.up;
+  /** último estado de luta enviado ao Rust por personagem: só manda de novo quando algo muda */
+  const rustFight = new Map<number, { f: unknown; mt: number; hp: number; maxHp: number; dead: boolean; god: boolean; level: number }>();
+  /** RUST_COMBAT=0 mantém o cálculo de dano no Node (o Rust só cuida de mobs, visão e rede) */
+  const rustCombat = process.env.RUST_COMBAT !== '0';
   /** navegadores conectados direto no servidor WebSocket do Rust (RUST_WS_PORT): id do Rust → socket virtual */
   const rustWs = new Map<number, LinkSocket>();
   const rustWsPort = Number(process.env.RUST_WS_PORT ?? 0);
@@ -1829,12 +1833,16 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       const prop = mw.terrain.moverProps.get(modelId);
       if (!prop) return 0;
       rust!.send({ k: 'summon', x, z, y, n, spawn: { modelId, rect: null, pos: [x, y, z], count: 1, attackCount: 0, timeS: 30, speed: mw.terrain.moverSpeed.get(modelId) ?? 0, flying: mw.terrain.flyingMovers.has(modelId), boss: isBoss(prop),
-        prop: { level: prop.level, sta: prop.sta, dex: prop.dex, hr: prop.hr, er: prop.er, hp: prop.hp, naturalArmor: prop.naturalArmor, atkSpeed: prop.attackSpeed, atkMin: prop.atkMin, atkMax: prop.atkMax, exp: prop.exp, peaceful: prop.belligerence === 'BELLI_PEACEFUL' } } });
+        prop: { level: prop.level, sta: prop.sta, dex: prop.dex, hr: prop.hr, er: prop.er, hp: prop.hp, naturalArmor: prop.naturalArmor, atkSpeed: prop.attackSpeed, atkMin: prop.atkMin, atkMax: prop.atkMax, exp: prop.exp, element: prop.element, elementLevel: prop.elementLevel, peaceful: prop.belligerence === 'BELLI_PEACEFUL' } } });
       return n;
     };
     rust = new RustLink(process.env.RUST_LINK_HOST ?? '127.0.0.1', Number(process.env.RUST_LINK_PORT ?? 9201), process.env.GAME_LINK_SECRET ?? '', {
-      onUp: () => { rustAttached.clear(); console.log('rust-link: conectado — mobs de', rustWorld.name, 'agora são do Rust'); },
-      onDown: () => { rustAttached.clear(); for (const s of [...rustWs.values()]) s.closed(); rustWs.clear(); },
+      onUp: () => {
+        rustAttached.clear(); rustFight.clear();
+        // tabela dos elementos (dano, defesa, ataque extra por nível): o Rust refaz o fator do elemento
+        if (smith) rust!.send({ k: 'elements', table: Array.from({ length: smith.attribute.length }, (_, i) => { const a = smith.attribute[i]; return [a?.dmg ?? 0, a?.def ?? 0, a?.addAtk ?? 0]; }) });
+        void 0; console.log('rust-link: conectado — mobs de', rustWorld.name, 'agora são do Rust'); },
+      onDown: () => { rustAttached.clear(); rustFight.clear(); for (const s of [...rustWs.values()]) s.closed(); rustWs.clear(); },
       onWsMessage: (id, payload) => { rustWs.get(id)?.emit('message', payload); },
       onRaw: (conn, payload) => {
         const c = byId.get(conn);
@@ -1872,6 +1880,27 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
           if (!c?.player) return;
           for (const id of m.leave ?? []) { const o = byId.get(id); if (o) hideFrom(c, o); }
           for (const id of m.enter ?? []) { const o = byId.get(id); if (o?.player && !o.switching && o.player.w === c.player.w) showTo(c, o); }
+        } else if (m.k === 'attacked') {
+          // o Rust resolveu um golpe do jogador: modo de batalha/Dark Illusion e a espera compartilhada com as skills
+          const c = connOf(m.char);
+          if (!c?.player) return;
+          if (c.peace) setPeace(c, false);
+          breakDark(c);
+          if (c.cb) c.cb.nextAtk = Date.now() + (m.cooldown_ms ?? 0);
+        } else if (m.k === 'hurt') {
+          // golpe de mob resolvido no Rust: HP novo (o Node cuida da morte, dos buffs e da janela de status)
+          const c = connOf(m.char), cb = c?.cb;
+          if (!c?.player || !cb || cb.dead) return;
+          cb.hp = m.hp; cb.lastHurt = Date.now(); cb.dirty = true;
+          const sent = rustFight.get(m.char);
+          if (sent) sent.hp = m.hp; // não devolve ao Rust o que ele mesmo mandou
+          if (m.dead) killPlayer(c);
+        } else if (m.k === 'kill') {
+          // o Rust matou o mob para `char` (quem mais causou dano): exp e itens
+          const killer = connOf(m.char), mob = mw.byId.get(m.mob);
+          if (!killer?.player || !killer.cb || !mob?.prop) return;
+          mob.x = m.x; mob.z = m.z; mob.s = 'dead'; mob.diedAt = Date.now();
+          rewardKill(killer, mob.prop, m.x, m.z); dropLoot(mob, killer);
         } else if (m.k === 'mob_attack') {
           const mob = mw.byId.get(m.mob), c = connOf(m.char);
           if (mob && c?.player?.w === rustWorld.name) mobAttack(mob, m.char);
@@ -1900,8 +1929,19 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         if (c.dirty) pos.push({ id: p.id, x: p.p[0], y: p.p[1], z: p.p[2], h: p.h, s: p.s });
         if (rustAttached.get(p.id) !== flags) { rust.send(flagsMsg); rustAttached.set(p.id, flags); }
       }
+      // estado de luta: atributos já somados, alcance, espera entre golpes, HP… (só quando algo muda)
+      const cb = c.cb;
+      if (rustCombat && rules && cb) {
+        const last = rustFight.get(p.id), god = !!c.god;
+        if (!last || last.f !== cb.f || last.mt !== p.mt || last.hp !== cb.hp || last.maxHp !== cb.maxHp || last.dead !== cb.dead || last.god !== god || last.level !== p.level) {
+          const snap = rules.fightSnapshot(cb.f);
+          rust.send({ k: 'fighter', char: p.id, f: { attacker: snap.attacker, defender: snap.defender, wElem: snap.wElem, sElem: snap.sElem, reach: reachOf(snap.range),
+            intervalMs: rules.attackInterval(cb.f, p.mt), snd: snap.snd, hp: cb.hp, maxHp: cb.maxHp, dead: cb.dead, god } });
+          rustFight.set(p.id, { f: cb.f, mt: p.mt, hp: cb.hp, maxHp: cb.maxHp, dead: cb.dead, god, level: p.level });
+        }
+      }
     }
-    for (const id of [...rustAttached.keys()]) if (!here.has(id)) { rust.send({ k: 'detach', conn: id }); rustAttached.delete(id); }
+    for (const id of [...rustAttached.keys()]) if (!here.has(id)) { rust.send({ k: 'detach', conn: id }); rustAttached.delete(id); rustFight.delete(id); }
     if (pos.length) rust.send({ k: 'pos', list: pos });
   }
 

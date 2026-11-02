@@ -69,7 +69,7 @@ export function startRustEngine(world: string): void {
     if (stopping) return;
     const args = ['--pack', pack, '--listen', `127.0.0.1:${port}`, '--secret', secret];
     if (process.env.RUST_WS_PORT && process.env.RUST_WS_PORT !== '0') args.push('--ws-listen', `0.0.0.0:${process.env.RUST_WS_PORT}`);
-    // --rust-combat (o Rust calcula o dano) NÃO é ligado aqui: o Node ainda não manda os atributos de luta nem aplica o HP de volta
+    if (process.env.RUST_COMBAT !== '0') args.push('--rust-combat'); // o Rust resolve golpes de quem já mandou o estado de luta
     const c = spawn(bin, args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     child = c;
     try { fs.writeFileSync(pidFile, String(c.pid)); } catch { /* sem pid */ }

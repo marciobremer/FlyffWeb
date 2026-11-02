@@ -36,8 +36,11 @@ pub struct Defender {
     pub level: i64,
     /// `dodge` = floor(dex·0.5 + parry + DST_PARRY)
     pub dodge: i64,
-    /// defesa (CalcDefenseCore do jogador)
-    pub def: i64,
+    /// defesa em pedaços (`CombatRules.defenseParts`): base + item/4 sorteado entre min e máx, × (1 + rate/100)
+    pub def_base: i64,
+    pub def_min: i64,
+    pub def_max: i64,
+    pub def_rate: i64,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -51,6 +54,9 @@ pub struct MobProp {
     pub hp: i64,
     pub natural_armor: i64,
     pub atk_speed: i64,
+    /// eElementType (1 fogo, 2 água, 3 elétrico, 4 vento, 5 terra; 0 nenhum) e nível do elemento
+    pub element: i64,
+    pub element_level: i64,
     /// dwAtkMin/Max já somados ao dwAbility da arma do mob (II_WEA_MOB_*)
     pub atk_min: i64,
     pub atk_max: i64,
@@ -106,7 +112,10 @@ pub fn mob_hits_player(rng: &mut impl Rng, m: &MobProp, d: &Defender, elem: i64)
         atk = (atk * k).floor();
     }
     let atk = ((atk * (1.0 + elem as f64 / 10000.0)).floor() as i64).max(0);
-    HitResult { hit: true, dmg: 1.max(atk - d.def).max((atk as f64 * 0.1).floor() as i64), crit }
+    // a defesa sorteia o item DEPOIS do crítico e do elemento (como `playerDef(f)` no fim de mobHitsPlayer)
+    let item = rng.range(d.def_min, d.def_max) as f64;
+    let def = (((d.def_base as f64 + (item / 4.0).floor()) * (1.0 + d.def_rate as f64 / 100.0)).floor() as i64).max(0);
+    HitResult { hit: true, dmg: 1.max(atk - def).max((atk as f64 * 0.1).floor() as i64), crit }
 }
 
 /// exp por matar o mob (penalidade por diferença de nível)
@@ -121,7 +130,7 @@ mod tests {
     use super::*;
     use crate::rng::SeqRng;
 
-    fn mob() -> MobProp { MobProp { level: 10, sta: 20, dex: 30, hr: 40, er: 12, hp: 500, natural_armor: 8, atk_speed: 1000, atk_min: 20, atk_max: 30, exp: 100, peaceful: false } }
+    fn mob() -> MobProp { MobProp { level: 10, sta: 20, dex: 30, hr: 40, er: 12, hp: 500, natural_armor: 8, atk_speed: 1000, element: 0, element_level: 0, atk_min: 20, atk_max: 30, exp: 100, peaceful: false } }
 
     #[test]
     fn def_and_exp() {

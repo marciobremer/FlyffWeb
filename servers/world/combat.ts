@@ -227,10 +227,29 @@ export class CombatRules {
 
   /** defesa (CalcDefenseCore, ataque genérico): atributos, defesa dos itens/4, DST_ADJDEF e DST_ADJDEF_RATE; `random` sorteia entre min e máx */
   private defense(f: Fighter, random: boolean) {
-    const item = random ? rand(f.defMin, f.defMax) : Math.floor((f.defMin + f.defMax) / 2);
-    // GetSta()/2 é divisão de inteiros no original
-    const base = Math.trunc((f.level * 2 + Math.floor(f.sta / 2)) / 2.8 - 4 + (f.sta - 14) * this.job(f.job).def) + Math.floor(item / 4) + this.dstOf(f, 'ADJDEF');
-    return Math.max(0, Math.floor(base * (1 + this.dstOf(f, 'ADJDEF_RATE') / 100)));
+    const p = this.defenseParts(f);
+    const item = random ? rand(p.min, p.max) : Math.floor((p.min + p.max) / 2);
+    return Math.max(0, Math.floor((p.base + Math.floor(item / 4)) * (1 + p.rate / 100)));
+  }
+  /**
+   * a defesa em pedaços (o game-server em Rust refaz a conta a cada golpe: base + item/4 sorteado entre min e máx, × (1 + rate/100)):
+   * base = atributos + DST_ADJDEF; GetSta()/2 é divisão de inteiros no original
+   */
+  defenseParts(f: Fighter) {
+    return {
+      base: Math.trunc((f.level * 2 + Math.floor(f.sta / 2)) / 2.8 - 4 + (f.sta - 14) * this.job(f.job).def) + this.dstOf(f, 'ADJDEF'),
+      min: f.defMin, max: f.defMax, rate: this.dstOf(f, 'ADJDEF_RATE'),
+    };
+  }
+  /** tudo o que o game-server em Rust precisa do personagem para resolver golpes (as mesmas funções das fórmulas, valores já somados) */
+  fightSnapshot(f: Fighter) {
+    const [atkMin, atkMax] = this.playerAtk(f);
+    return {
+      attacker: { level: f.level, dex: f.dex, hitBonus: this.hitBonus(f), atkMin, atkMax, crit: this.critChance(f), critBonus: this.dstOf(f, 'CRITICAL_BONUS'),
+        atkRate: this.dstOf(f, 'ATKPOWER_RATE'), monsterDmg: this.dstOf(f, 'MONSTER_DMG'), atkPower: this.dstOf(f, 'ATKPOWER'), wRare: f.wRare },
+      defender: { level: f.level, dodge: this.dodge(f), ...(({ base, min, max, rate }) => ({ defBase: base, defMin: min, defMax: max, defRate: rate }))(this.defenseParts(f)) },
+      wElem: f.wElem, sElem: f.sElem, range: this.attackRange(f), snd: [f.weapon?.snd1 ?? -1, f.weapon?.snd2 ?? -1],
+    };
   }
   /** valores para a janela de personagem: defesa média contra mobs e chance de crítico (%) */
   showDefense(f: Fighter) { return this.defense(f, false); }

@@ -5,6 +5,7 @@
 //! Tick de simulação a `tick_ms` (50 = 20 Hz); a rede (mobs/diffs de visão) sai a cada 2 ticks (10 Hz).
 use crate::aoi::Aoi;
 use crate::combat::{self, Attacker, Defender};
+use crate::elements::Elements;
 use crate::grid::EntityId;
 use crate::mobs::{Mob, MobHooks, MobState, MobWorld, Terrain, CORPSE_MS};
 use crate::protocol::*;
@@ -114,6 +115,18 @@ pub fn start<T: Terrain + Send + 'static>(addr: &str, cfg: Config, mobs: MobWorl
     Ok(Handle { addr: local, ws_addr, stop: stop_tx, map_thread })
 }
 
+/// estado de luta que o Node empurra (equipamento, buffs, nível…): o que o Rust precisa para resolver golpes
+struct Fight {
+    attacker: Attacker,
+    defender: Defender,
+    w_elem: (i64, i64),
+    s_elem: (i64, i64),
+    reach: f64,
+    interval_ms: u64,
+    snd: [i64; 2],
+    god: bool,
+}
+
 struct Player {
     link: u64,
     /// conexão WebSocket direta (None = as mensagens passam pelo Node)
@@ -135,21 +148,21 @@ struct Player {
     staff: bool,
     /// mexeu desde o último envio de rede
     moved: bool,
-    attacker: Attacker,
-    defender: Defender,
-    reach: f64,
-    interval_ms: u64,
+    /// morto/invisível: os mobs não o veem (`flags` do Node)
+    untargetable: bool,
+    /// None até o Node mandar o `fighter`: sem ele os golpes continuam sendo resolvidos pelo Node
+    fight: Option<Fight>,
     next_atk: u64,
 }
 
-struct Link { out: Sender<Vec<u8>>, authed: bool }
+struct Link { out: Sender<Vec<u8>>, authed: bool, probe: bool }
 
 /// os mobs perguntam aos jogadores; o golpe do mob é só anotado e resolvido depois do tick
 struct Hooks<'a> { players: &'a IdMap<Player>, attacks: Vec<(EntityId, EntityId)> }
 impl MobHooks for Hooks<'_> {
-    fn player(&self, id: u32) -> Option<(f64, f64)> { self.players.get(&id).filter(|p| !p.dead).map(|p| (p.x, p.z)) }
+    fn player(&self, id: u32) -> Option<(f64, f64)> { self.players.get(&id).filter(|p| !p.dead && !p.untargetable).map(|p| (p.x, p.z)) }
     fn players_near(&self, x: f64, z: f64, r: f64, out: &mut Vec<(u32, f64, f64)>) {
-        out.extend(self.players.values().filter(|p| !p.dead && (p.x - x).hypot(p.z - z) <= r).map(|p| (p.ent, p.x, p.z)));
+        out.extend(self.players.values().filter(|p| !p.dead && !p.untargetable && (p.x - x).hypot(p.z - z) <= r).map(|p| (p.ent, p.x, p.z)));
     }
     fn attack(&mut self, mob: &Mob, player: u32) { self.attacks.push((mob.id, player)); }
 }
@@ -179,6 +192,9 @@ struct MapState<T: Terrain> {
     ws_conns: IdMap<tokio::sync::mpsc::Sender<Out>>,
     /// mensagens descartadas por fila cheia (cliente lento)
     ws_dropped: std::cell::Cell<u64>,
+    /// tabela de elementos (vem do Node) e conexão WebSocket → jogador (o Rust atende o `atk` direto)
+    elements: Elements,
+    ws_ent: IdMap<EntityId>,
 }
 
 impl<T: Terrain> MapState<T> {
@@ -186,7 +202,7 @@ impl<T: Terrain> MapState<T> {
         if let Some(l) = self.links.get(&link) { let _ = l.out.send(encode(v)); }
     }
     /// o link do Node (quem recebe os eventos dos navegadores)
-    fn gateway(&self) -> Option<u64> { self.links.iter().find(|(_, l)| l.authed).map(|(k, _)| *k) }
+    fn gateway(&self) -> Option<u64> { self.links.iter().filter(|(_, l)| l.authed && !l.probe).map(|(k, _)| *k).min() }
 
     /// entrega um JSON pronto ao jogador: direto no WebSocket dele (se conectou no Rust) ou em quadro cru pelo Node
     fn deliver(&self, ent: EntityId, text: &str) {
@@ -211,7 +227,7 @@ impl<T: Terrain> MapState<T> {
 
     fn handle(&mut self, now: u64, ev: Inbound) {
         match ev {
-            Inbound::Open { link, out } => { self.links.insert(link, Link { out, authed: false }); }
+            Inbound::Open { link, out } => { self.links.insert(link, Link { out, authed: false, probe: false }); }
             Inbound::Closed { link } => {
                 self.links.remove(&link);
                 if self.gateway().is_none() {
@@ -236,6 +252,15 @@ impl<T: Terrain> MapState<T> {
                 None => { let _ = tx.try_send(Out::Close); }
             },
             Inbound::Ws(WsEvent::Msg { ws, payload }) => {
+                // `atk` de quem já tem estado de luta no Rust: resolvido aqui, o Node nem vê a mensagem
+                if payload.starts_with(b"{\"t\":\"atk\"") {
+                    if let Some(&ent) = self.ws_ent.get(&ws) {
+                        if self.players.get(&ent).is_some_and(|p| p.fight.is_some()) {
+                            if let Some(id) = serde_json::from_slice::<Value>(&payload).ok().and_then(|v| v.get("id").and_then(Value::as_u64)) { self.on_attack(now, ent, id as u32); }
+                            return;
+                        }
+                    }
+                }
                 // do navegador para o Node: quadro cru [2][ws][JSON]
                 if let Some(link) = self.gateway() {
                     if let Some(l) = self.links.get(&link) {
@@ -250,6 +275,7 @@ impl<T: Terrain> MapState<T> {
             }
             Inbound::Ws(WsEvent::Closed { ws }) => {
                 self.ws_conns.remove(&ws);
+                self.ws_ent.remove(&ws);
                 for p in self.players.values_mut() { if p.ws == Some(ws) { p.ws = None; } }
                 if let Some(link) = self.gateway() { self.send(link, &LinkOut::WsClose { ws }); }
             }
@@ -259,6 +285,7 @@ impl<T: Terrain> MapState<T> {
     fn drop_player(&mut self, ent: EntityId) {
         if let Some(p) = self.players.remove(&ent) {
             self.by_conn.remove(&(p.link, p.conn));
+            if let Some(w) = p.ws { self.ws_ent.remove(&w); }
             self.aoi.remove_observer(ent);
             self.aoi_p.remove_observer(ent);
             self.mobs.grid_mut().remove(ent);
@@ -269,12 +296,12 @@ impl<T: Terrain> MapState<T> {
     fn handle_msg(&mut self, now: u64, link: u64, msg: LinkIn) {
         let authed = self.links.get(&link).is_some_and(|l| l.authed);
         match msg {
-            LinkIn::Hello { secret, version } => {
+            LinkIn::Hello { secret, version, probe } => {
                 if secret != self.cfg.secret || version != VERSION {
                     self.send(link, &LinkOut::Error { error: "hello recusado (segredo ou versão)".into() });
                     self.links.remove(&link); // fecha a fila de escrita → o socket cai
                 } else {
-                    if let Some(l) = self.links.get_mut(&link) { l.authed = true; }
+                    if let Some(l) = self.links.get_mut(&link) { l.authed = true; l.probe = probe; }
                     self.send(link, &LinkOut::HelloOk { version: VERSION });
                 }
             }
@@ -286,18 +313,15 @@ impl<T: Terrain> MapState<T> {
                     self.by_conn.remove(&old);
                     self.drop_player(ent);
                 }
-                let mut attacker: Attacker = (&ch.attacker).into();
-                if attacker.level == 0 { attacker.level = ch.level; }
-                let mut defender: Defender = (&ch.defender).into();
-                if defender.level == 0 { defender.level = ch.level; }
                 self.mobs.grid_mut().set(ent, ch.x as f32, ch.z as f32);
                 self.aoi.add_observer(ent);
                 self.aoi_p.add_observer(ent);
                 self.by_conn.insert((link, conn), ent);
                 self.players.insert(ent, Player {
                     link, ws: ch.ws, conn, ent, name: ch.name, level: ch.level, x: ch.x, z: ch.z, y: 0.0, h: 0.0, st: "stand".into(), invis: false, staff: false, moved: false, hp: ch.hp, max_hp: ch.max_hp.max(1), dead: ch.hp <= 0,
-                    attacker, defender, reach: ch.reach, interval_ms: ch.interval_ms, next_atk: 0,
+                    untargetable: false, fight: None, next_atk: 0,
                 });
+                if let Some(w) = ch.ws { self.ws_ent.insert(w, ent); }
             }
             LinkIn::Detach { conn } => { if let Some(&e) = self.by_conn.get(&(link, conn)) { self.drop_player(e); } }
             LinkIn::Pos { list } => {
@@ -317,7 +341,7 @@ impl<T: Terrain> MapState<T> {
             LinkIn::Forget { char } => self.mobs.forget(PLAYER_BASE + char),
             LinkIn::Flags { char, untargetable, invis, staff } => {
                 if let Some(p) = self.players.get_mut(&(PLAYER_BASE + char)) {
-                    p.dead = untargetable;
+                    p.untargetable = untargetable;
                     p.invis = invis;
                     p.staff = staff;
                 }
@@ -331,6 +355,18 @@ impl<T: Terrain> MapState<T> {
                 if self.mobs.damage(mob, ent, dmg, peaceful, now) { self.stats.kills += 1; }
             }
             LinkIn::Summon { spawn, x, z, y, n } => { self.mobs.summon(&spawn.to_spawn(), x, z, y, n); }
+            LinkIn::Elements { table } => { self.elements = Elements { table }; }
+            LinkIn::Fighter { char, f } => {
+                if let Some(p) = self.players.get_mut(&(PLAYER_BASE + char)) {
+                    p.hp = f.hp;
+                    p.max_hp = f.max_hp.max(1);
+                    p.dead = f.dead;
+                    p.fight = Some(Fight {
+                        attacker: (&f.attacker).into(), defender: (&f.defender).into(), w_elem: (f.w_elem[0], f.w_elem[1]), s_elem: (f.s_elem[0], f.s_elem[1]),
+                        reach: f.reach, interval_ms: f.interval_ms, snd: f.snd, god: f.god,
+                    });
+                }
+            }
             LinkIn::WsClose { ws } => { if let Some(tx) = self.ws_conns.remove(&ws) { let _ = tx.try_send(Out::Close); } }
             LinkIn::Stats => {
                 let mut s = self.stats.clone();
@@ -366,51 +402,63 @@ impl<T: Terrain> MapState<T> {
     /// golpe do jogador no mob: o alvo PRECISA estar no conjunto de visão dele (AOI), vivo, no alcance, e fora da espera
     fn on_attack(&mut self, now: u64, ent: EntityId, mob_id: u32) {
         let Some(pl) = self.players.get(&ent) else { return };
+        let Some(fight) = pl.fight.as_ref() else { return };
         if pl.dead { self.stats.rejects_dead += 1; return; }
         if mob_id >= PLAYER_BASE || !self.aoi.knows(ent, mob_id) { self.stats.rejects_not_visible += 1; return; }
         let Some(m) = self.mobs.get(mob_id) else { self.stats.rejects_not_visible += 1; return };
         let Some(prop) = m.prop.clone() else { return };
         if m.s == MobState::Dead { self.stats.rejects_dead += 1; return; }
-        if (m.x - pl.x).hypot(m.z - pl.z) > pl.reach { self.stats.rejects_range += 1; return; }
+        if (m.x - pl.x).hypot(m.z - pl.z) > fight.reach { self.stats.rejects_range += 1; return; }
         if now + 120 < pl.next_atk { self.stats.rejects_cooldown += 1; return; }
-        let (attacker, interval, pid, plevel) = (pl.attacker.clone(), pl.interval_ms, pl.ent, pl.level);
-        let r = combat::player_hits_mob(&mut self.rng, &attacker, &prop, 0);
+        self.stats.direct_atk += 1;
+        let (attacker, interval, snd, link, pid, plevel) = (fight.attacker.clone(), fight.interval_ms, fight.snd, pl.link, pl.ent, pl.level);
+        let elem = self.elements.player_vs_mob(fight.w_elem, &prop);
+        let r = combat::player_hits_mob(&mut self.rng, &attacker, &prop, elem);
         if let Some(p) = self.players.get_mut(&ent) { p.next_atk = now + interval; }
         self.stats.hits += 1;
         let died = r.hit && self.mobs.damage(mob_id, pid, r.dmg, prop.peaceful, now);
-        let hp = self.mobs.get(mob_id).map_or(0, mob_hp);
+        let (hp, mx, mz) = self.mobs.get(mob_id).map_or((0, 0.0, 0.0), |m| (mob_hp(m), m.x, m.z));
         let char_id = pid - PLAYER_BASE;
-        let hit = json!({ "t": "hit", "k": "p", "a": char_id, "d": mob_id, "dmg": r.dmg, "f": (!r.hit as i64) | ((r.crit as i64) << 1), "hp": hp });
+        let hit = json!({ "t": "hit", "k": "p", "a": char_id, "d": mob_id, "dmg": r.dmg, "f": (!r.hit as i64) | ((r.crit as i64) << 1), "hp": hp, "sn": snd });
         self.to_watchers_of(mob_id, Some(ent), &hit);
+        // o Node desfaz Dark Illusion/modo de batalha e guarda a espera do golpe (as skills respeitam a mesma espera)
+        self.send(link, &LinkOut::Attacked { char: char_id, cooldown_ms: interval });
         if died {
             self.stats.kills += 1;
-            // exp e drop: o Node (dono do inventário/personagem) aplica; a mensagem já leva o valor
-            let die = json!({ "t": "mdie", "id": mob_id, "k": char_id, "exp": combat::exp_for(&prop, plevel) });
+            // exp para quem causou mais dano (entre os jogadores que ainda estão aqui); o Node dá exp e solta os itens
+            let best = self.mobs.get(mob_id).and_then(|m| m.dmg_by.iter().filter(|(id, _)| self.players.contains_key(id)).max_by_key(|(_, d)| **d).map(|(id, _)| *id)).unwrap_or(pid);
+            let best_char = best - PLAYER_BASE;
+            let die = json!({ "t": "mdie", "id": mob_id, "k": best_char, "exp": combat::exp_for(&prop, plevel) });
             self.to_watchers_of(mob_id, Some(ent), &die);
+            let link = self.players.get(&best).map_or(link, |p| p.link);
+            self.send(link, &LinkOut::Kill { char: best_char, mob: mob_id, x: mx, z: mz });
         }
     }
 
-    /// golpes dos mobs anotados no tick
+    /// golpes dos mobs anotados no tick: quem tem estado de luta no Rust é resolvido aqui; os outros vão para o Node
     fn resolve_mob_attacks(&mut self, attacks: Vec<(EntityId, EntityId)>) {
         for (mob_id, ent) in attacks {
             let Some(m) = self.mobs.get(mob_id) else { continue };
             let Some(prop) = m.prop.clone() else { continue };
             let Some(p) = self.players.get(&ent) else { continue };
             if p.dead { continue; }
-            let def = p.defender.clone();
-            let r = combat::mob_hits_player(&mut self.rng, &prop, &def, 0);
+            let Some(fight) = p.fight.as_ref().filter(|_| self.cfg.rust_combat) else {
+                self.send(p.link, &LinkOut::MobAttack { char: ent - PLAYER_BASE, mob: mob_id });
+                continue;
+            };
+            let (def, elem, god) = (fight.defender.clone(), self.elements.mob_vs_player(&prop, fight.s_elem), fight.god);
+            let r = combat::mob_hits_player(&mut self.rng, &prop, &def, elem);
             self.stats.mob_hits += 1;
             let p = self.players.get_mut(&ent).unwrap();
-            if r.hit { p.hp = (p.hp - r.dmg).max(0); }
+            if r.hit && !god { p.hp = (p.hp - r.dmg).max(0); }
             let died = p.hp == 0;
             if died { p.dead = true; }
-            let (hp, char_id) = (p.hp, ent - PLAYER_BASE);
+            let (hp, link, char_id) = (p.hp, p.link, ent - PLAYER_BASE);
             let hit = json!({ "t": "hit", "k": "m", "a": mob_id, "d": char_id, "dmg": r.dmg, "f": (!r.hit as i64) | ((r.crit as i64) << 1), "hp": hp });
             self.to_watchers_of(mob_id, Some(ent), &hit);
-            if died {
-                self.to_player(ent, json!({ "t": "pdie", "id": char_id }));
-                self.mobs.forget(ent);
-            }
+            // o Node é dono do resto da vida do personagem (barra de HP, morte, buffs, troca): recebe o valor novo
+            if r.hit { self.send(link, &LinkOut::Hurt { char: char_id, hp, dmg: r.dmg, dead: died }); }
+            if died { self.mobs.forget(ent); }
         }
     }
 
@@ -506,7 +554,7 @@ impl<T: Terrain> MapState<T> {
         // espelho para o Node (só mobs que alguém vê): posição, estado e HP completos, uma vez por envio
         if !mirror.is_empty() {
             let list: Vec<Value> = mirror.keys().filter_map(|id| self.mobs.get(*id)).map(|m| json!([m.id, m.model_id, r1(m.x), r1(m.z), m.h.round(), state_str(m.s), if m.flying { json!(r1(m.y)) } else { Value::Null }, mob_hp(m)])).collect();
-            let link = self.links.iter().find(|(_, l)| l.authed).map(|(k, _)| *k);
+            let link = self.gateway();
             if let Some(link) = link { self.send(link, &LinkOut::Mirror { list }); }
         }
         self.mobs.clear_dirty();
@@ -519,7 +567,7 @@ fn run_map<T: Terrain>(rx: Receiver<Inbound>, stop: Receiver<()>, cfg: Config, m
     let dt = cfg.tick_ms as f64 / 1000.0;
     let mut st = MapState {
         cfg, mobs, aoi: Aoi::new(), aoi_p: Aoi::new(), links: HashMap::new(), players: IdMap::default(), by_conn: HashMap::new(),
-        rng: Xorshift32::new(0x9e3779b1), stats: Stats::default(), tick_sum_ms: 0.0, net_n: 0, ws_conns: IdMap::default(), ws_dropped: std::cell::Cell::new(0),
+        rng: Xorshift32::new(0x9e3779b1), stats: Stats::default(), tick_sum_ms: 0.0, net_n: 0, ws_conns: IdMap::default(), ws_dropped: std::cell::Cell::new(0), elements: Elements::default(), ws_ent: IdMap::default(),
     };
     let _ = st.rng.next_f64();
     let start = Instant::now();
@@ -545,14 +593,7 @@ fn run_map<T: Terrain>(rx: Receiver<Inbound>, stop: Receiver<()>, cfg: Config, m
             hooks.attacks
         };
         st.stats.mob_attacks += attacks.len() as u64;
-        if st.cfg.rust_combat {
-            st.resolve_mob_attacks(attacks);
-        } else {
-            // o Node calcula o dano: avisa o dono do personagem que o mob golpeou
-            for (mob, ent) in attacks {
-                if let Some(p) = st.players.get(&ent) { st.send(p.link, &LinkOut::MobAttack { char: ent - PLAYER_BASE, mob }); }
-            }
-        }
+        st.resolve_mob_attacks(attacks);
         if n % 2 == 0 { st.send_views(now); }
         let ms = t0.elapsed().as_secs_f64() * 1000.0;
         st.stats.ticks += 1;

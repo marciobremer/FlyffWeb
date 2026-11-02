@@ -10,8 +10,6 @@ pub const VERSION: u32 = 1;
 pub const MAX_FRAME: usize = 1 << 20;
 
 fn one() -> f32 { 1.0 }
-fn reach() -> f64 { 4.8 }
-fn interval() -> u64 { 1000 }
 
 /// o personagem que o Gateway anexa (já autenticado; o Node monta os atributos de luta a partir do inventário)
 #[derive(Debug, Clone, Deserialize)]
@@ -24,15 +22,6 @@ pub struct Character {
     pub z: f64,
     pub hp: i64,
     pub max_hp: i64,
-    #[serde(default)]
-    pub attacker: AttackerIn,
-    #[serde(default)]
-    pub defender: DefenderIn,
-    /// alcance do golpe (u) e intervalo mínimo entre golpes (ms)
-    #[serde(default = "reach")]
-    pub reach: f64,
-    #[serde(default = "interval")]
-    pub interval_ms: u64,
     /// conexão WebSocket (do servidor WS do Rust) deste jogador: as mensagens dele vão direto, sem passar pelo Node
     #[serde(default)]
     pub ws: Option<u32>,
@@ -55,9 +44,35 @@ impl From<&AttackerIn> for Attacker {
 
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
-pub struct DefenderIn { pub level: i64, pub dodge: i64, pub def: i64 }
+pub struct DefenderIn { pub level: i64, pub dodge: i64, pub def_base: i64, pub def_min: i64, pub def_max: i64, pub def_rate: i64 }
 impl From<&DefenderIn> for Defender {
-    fn from(d: &DefenderIn) -> Self { Defender { level: d.level, dodge: d.dodge, def: d.def } }
+    fn from(d: &DefenderIn) -> Self { Defender { level: d.level, dodge: d.dodge, def_base: d.def_base, def_min: d.def_min, def_max: d.def_max, def_rate: d.def_rate } }
+}
+
+/// o que o Rust precisa do estado de luta de um personagem (o Node manda de novo quando muda: equipar, buff, nível, HP, postura…)
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FighterIn {
+    pub attacker: AttackerIn,
+    pub defender: DefenderIn,
+    /// elemento e nível da arma e da suit ([0, 0] = nenhum)
+    #[serde(default)]
+    pub w_elem: [i64; 2],
+    #[serde(default)]
+    pub s_elem: [i64; 2],
+    /// alcance do golpe (u, já com a folga de rede) e intervalo mínimo entre golpes (ms)
+    pub reach: f64,
+    pub interval_ms: u64,
+    /// sons do golpe da arma (vão no `hit`)
+    #[serde(default)]
+    pub snd: [i64; 2],
+    pub hp: i64,
+    pub max_hp: i64,
+    #[serde(default)]
+    pub dead: bool,
+    /// GM/admin imortal: o golpe acontece e o dano aparece, o HP não cai
+    #[serde(default)]
+    pub god: bool,
 }
 
 /// movimento de um personagem (mesmo formato do `states` do cliente: id, x, y, z, rumo em graus, estado)
@@ -68,12 +83,17 @@ pub struct PosIn { pub id: u32, pub x: f64, pub y: f64, pub z: f64, pub h: f64, 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "k", rename_all = "snake_case")]
 pub enum LinkIn {
-    Hello { secret: String, version: u32 },
+    /// `probe`: conexão só de consulta (stats): não recebe eventos de navegador nem é o gateway
+    Hello { secret: String, version: u32, #[serde(default)] probe: bool },
     Attach { conn: u32, ch: Character },
     Detach { conn: u32 },
     /// mensagem do cliente, no protocolo JSON dele
     C2s { conn: u32, msg: Value },
     Stats,
+    /// estado de luta do personagem (atributos já somados, HP, alcance…)
+    Fighter { char: u32, f: FighterIn },
+    /// tabela de níveis do elemento: [dano, defesa, ataque extra] por nível
+    Elements { table: Vec<[i64; 3]> },
     /// o Node pede para fechar uma conexão WebSocket (kick, ban, fim de sessão)
     WsClose { ws: u32 },
     /// posições aceitas pelo Node (autoritativo: teleportes e movimento já validados lá): quem se mexeu desde o último envio
@@ -97,6 +117,12 @@ pub enum LinkOut {
     S2c { conn: u32, msg: Value },
     Stats(Stats),
     Error { error: String },
+    /// o jogador golpeou (o Rust resolveu o golpe): o Node desfaz Dark Illusion/modo de batalha e reinicia a espera dele
+    Attacked { char: u32, cooldown_ms: u64 },
+    /// HP do jogador mudou por golpe de mob (valor absoluto, `dmg` do golpe) e se morreu
+    Hurt { char: u32, hp: i64, dmg: i64, dead: bool },
+    /// o jogador matou o mob (quem causou mais dano): o Node dá exp e solta os itens
+    Kill { char: u32, mob: u32, x: f64, z: f64 },
     /// novo navegador conectou no WebSocket do Rust (o Node cria o "socket virtual" e roda o `join` de sempre)
     WsOpen { ws: u32, ip: String },
     /// o navegador desconectou
@@ -130,6 +156,8 @@ pub struct Stats {
     /// golpes de mob anotados pela IA (resolvidos aqui ou enviados ao Node)
     pub mob_attacks: u64,
     pub kills: u64,
+    /// golpes de jogador resolvidos no Rust (o `atk` não passou pelo Node)
+    pub direct_atk: u64,
     /// ações recusadas por motivo (AOI = o alvo não está no conjunto de visão do jogador)
     pub rejects_not_visible: u64,
     pub rejects_range: u64,

@@ -66,9 +66,11 @@ fn boot() -> (game_server::server::Handle, Gw) {
 }
 
 fn attach(gw: &mut Gw, conn: u32, id: u32, x: f64, z: f64) {
-    gw.send(json!({ "k": "attach", "conn": conn, "ch": {
-        "id": id, "name": "Teste", "level": 20, "x": x, "z": z, "hp": 1000, "maxHp": 1000, "reach": 50.0, "intervalMs": 50,
-        "attacker": { "level": 20, "dex": 5000, "atkMin": 100, "atkMax": 100, "crit": 0 }, "defender": { "level": 20, "dodge": 0, "def": 0 } } }));
+    gw.send(json!({ "k": "attach", "conn": conn, "ch": { "id": id, "name": "Teste", "level": 20, "x": x, "z": z, "hp": 1000, "maxHp": 1000 } }));
+    gw.send(json!({ "k": "fighter", "char": id, "f": {
+        "attacker": { "level": 20, "dex": 5000, "atkMin": 100, "atkMax": 100, "crit": 0 },
+        "defender": { "level": 20, "dodge": 0, "defBase": 0, "defMin": 0, "defMax": 0, "defRate": 0 },
+        "reach": 50.0, "intervalMs": 50, "hp": 1000, "maxHp": 1000 } }));
 }
 
 #[test]
