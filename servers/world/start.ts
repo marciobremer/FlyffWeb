@@ -15,6 +15,9 @@ import { startRustEngine } from './rustproc';
 /** mundos extras que o servidor também carrega (id WI_WORLD_*, define e ponto de chegada do ticket.inc) */
 const EXTRA_WORLDS: Record<string, { id: number; define: string; start: [number, number, number] }> = {
   WdKebaras: { id: 2, define: 'WI_WORLD_KEBARAS', start: [1271, 114, 1326] }, // Azria
+  WdCisland: { id: 3, define: 'WI_WORLD_CISLAND', start: [2002, 120, 855] }, // Coral Island
+  WdRartesia: { id: 4, define: 'WI_WORLD_RARTESIA', start: [1400, 120, 1287] }, // Traseia
+  WdDarkRartesia: { id: 5, define: 'WI_WORLD_DARKRARTESIA', start: [1400, 120, 1287] }, // Dark Traseia
 };
 
 /**
@@ -36,9 +39,9 @@ export function startWorld(server: http.Server, world = WORLD, extra: Pick<Realt
   combat.playerFSpeed = [fs('MI_MALE') || 0.1, fs('MI_FEMALE') || fs('MI_MALE') || 0.1];
   console.log(`Velocidade dos personagens (fSpeed): ${combat.playerFSpeed.join(' / ')}`);
   setCharacterInventory(inventory); // a lista de personagens (login) leva o equipamento para a prévia da seleção
-  // Azria e os outros mapas extras: mobs e NPCs próprios (EXTRA_WORLDS=WdKebaras,… ou vazio para nenhum)
+  // Azria e os outros mapas extras: mobs e NPCs próprios (EXTRA_WORLDS=WdKebaras,WdCisland,WdRartesia,WdDarkRartesia — o padrão; vazio para nenhum)
   const extraWorlds: WorldRuntime[] = [];
-  for (const name of (process.env.EXTRA_WORLDS ?? 'WdKebaras').split(',').map((s) => s.trim()).filter(Boolean)) {
+  for (const name of (process.env.EXTRA_WORLDS ?? 'WdKebaras,WdCisland,WdRartesia,WdDarkRartesia').split(',').map((s) => s.trim()).filter(Boolean)) {
     const info = EXTRA_WORLDS[name];
     if (!info || name === world) continue;
     try {
