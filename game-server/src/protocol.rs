@@ -33,6 +33,9 @@ pub struct Character {
     pub reach: f64,
     #[serde(default = "interval")]
     pub interval_ms: u64,
+    /// conexão WebSocket (do servidor WS do Rust) deste jogador: as mensagens dele vão direto, sem passar pelo Node
+    #[serde(default)]
+    pub ws: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -71,6 +74,8 @@ pub enum LinkIn {
     /// mensagem do cliente, no protocolo JSON dele
     C2s { conn: u32, msg: Value },
     Stats,
+    /// o Node pede para fechar uma conexão WebSocket (kick, ban, fim de sessão)
+    WsClose { ws: u32 },
     /// posições aceitas pelo Node (autoritativo: teleportes e movimento já validados lá): quem se mexeu desde o último envio
     Pos { list: Vec<PosIn> },
     /// o Node calculou um dano (golpe, skill) em um mob: o Rust confere a visão, aplica e é dono do HP/morte
@@ -92,6 +97,10 @@ pub enum LinkOut {
     S2c { conn: u32, msg: Value },
     Stats(Stats),
     Error { error: String },
+    /// novo navegador conectou no WebSocket do Rust (o Node cria o "socket virtual" e roda o `join` de sempre)
+    WsOpen { ws: u32, ip: String },
+    /// o navegador desconectou
+    WsClose { ws: u32 },
     /// um mob golpeou o personagem (modo em que o Node calcula o dano)
     MobAttack { char: u32, mob: u32 },
     /// conjunto de mobs conhecidos de `char` mudou (as ações do Node conferem nele): ids que entraram e que saíram
@@ -115,6 +124,9 @@ pub struct Stats {
     pub see_enter: u64,
     pub see_leave: u64,
     pub state_updates: u64,
+    /// conexões WebSocket abertas e mensagens descartadas por fila cheia (cliente lento)
+    pub ws_open: usize,
+    pub ws_dropped: u64,
     /// golpes de mob anotados pela IA (resolvidos aqui ou enviados ao Node)
     pub mob_attacks: u64,
     pub kills: u64,

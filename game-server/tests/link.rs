@@ -58,7 +58,7 @@ fn spawn(x: f64, count: u32, hp: i64) -> Spawn {
 fn boot() -> (game_server::server::Handle, Gw) {
     // ids 1–3: perto do jogador (x≈1000); id 4: longe (x≈6000), existe mas não deve ser visível; id 5: perto, fraco (250 HP)
     let mobs = MobWorld::new(&[spawn(1000.0, 3, 100_000), spawn(6000.0, 1, 100_000), spawn(1020.0, 1, 250)], Xorshift32::new(1), Open);
-    let h = start("127.0.0.1:0", Config { secret: "s3".into(), tick_ms: 20, rust_combat: true }, mobs).unwrap();
+    let h = start("127.0.0.1:0", Config { secret: "s3".into(), tick_ms: 20, rust_combat: true, ws_listen: None }, mobs).unwrap();
     let mut gw = Gw::connect(h.addr);
     gw.send(json!({ "k": "hello", "secret": "s3", "version": VERSION }));
     assert_eq!(gw.recv().unwrap()["k"], "hello_ok");
@@ -74,7 +74,7 @@ fn attach(gw: &mut Gw, conn: u32, id: u32, x: f64, z: f64) {
 #[test]
 fn wrong_secret_is_rejected() {
     let mobs = MobWorld::new(&[spawn(1000.0, 1, 100)], Xorshift32::new(1), Open);
-    let h = start("127.0.0.1:0", Config { secret: "certo".into(), tick_ms: 20, rust_combat: true }, mobs).unwrap();
+    let h = start("127.0.0.1:0", Config { secret: "certo".into(), tick_ms: 20, rust_combat: true, ws_listen: None }, mobs).unwrap();
     let mut gw = Gw::connect(h.addr);
     gw.send(json!({ "k": "hello", "secret": "errado", "version": VERSION }));
     assert_eq!(gw.recv().unwrap()["k"], "error");

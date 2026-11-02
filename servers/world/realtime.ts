@@ -14,7 +14,7 @@ import { TRADE_SLOTS, type TradeOffer } from '../character/inventory';
 import { ItemCatalog, jobCanUse } from '../common/items';
 import type { CombatRules, Equipped, Fighter } from './combat';
 import { MOB_ATTACK_RANGE, isBoss, type Mob } from './mobs';
-import { RustLink } from './rustlink';
+import { RustLink, LinkSocket } from './rustlink';
 import { GROUND_MS, OWNER_MS, type DropRules } from './drops';
 import { notifyInventory } from '../character/inventory';
 import type { ShopCatalog } from './shops';
@@ -1793,6 +1793,9 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   /** personagens anexados ao Rust → últimos flags enviados (morto, invisível, staff) */
   const rustAttached = new Map<number, string>();
   const rustOn = () => !!rust?.up;
+  /** navegadores conectados direto no servidor WebSocket do Rust (RUST_WS_PORT): id do Rust → socket virtual */
+  const rustWs = new Map<number, LinkSocket>();
+  const rustWsPort = Number(process.env.RUST_WS_PORT ?? 0);
   const rustHere = (c: Conn) => !!rustMobs && rustOn() && c.player?.w === rustWorld!.name;
   if (rustWorld && rustMobs) {
     const mw = rustMobs, orig = { tick: mw.tick.bind(mw), damage: mw.damage.bind(mw), forget: mw.forget.bind(mw), summon: mw.summon.bind(mw) };
@@ -1831,7 +1834,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     };
     rust = new RustLink(process.env.RUST_LINK_HOST ?? '127.0.0.1', Number(process.env.RUST_LINK_PORT ?? 9201), process.env.GAME_LINK_SECRET ?? '', {
       onUp: () => { rustAttached.clear(); console.log('rust-link: conectado — mobs de', rustWorld.name, 'agora são do Rust'); },
-      onDown: () => { rustAttached.clear(); },
+      onDown: () => { rustAttached.clear(); for (const s of [...rustWs.values()]) s.closed(); rustWs.clear(); },
+      onWsMessage: (id, payload) => { rustWs.get(id)?.emit('message', payload); },
       onRaw: (conn, payload) => {
         const c = byId.get(conn);
         if (!c || c.ws.readyState !== WebSocket.OPEN) return;
@@ -1849,6 +1853,13 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
             for (const id of msg.d ?? []) c.mobs.delete(id);
           }
           send(c.ws, msg);
+        } else if (m.k === 'ws_open') {
+          const s = new LinkSocket(m.ws, rust!, m.ip);
+          rustWs.set(m.ws, s);
+          wss.emit('connection', s, { url: '/ws', headers: {}, socket: { remoteAddress: m.ip } });
+        } else if (m.k === 'ws_close') {
+          rustWs.get(m.ws)?.closed();
+          rustWs.delete(m.ws);
         } else if (m.k === 'known') {
           const c = byId.get(m.char);
           if (!c) return;
@@ -1881,7 +1892,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       if (!rustAttached.has(p.id)) {
         // o Rust recomeça o conjunto de visão do zero: limpa no cliente o que ele conhecia por outro caminho
         if (c.mobs.size) { send(c.ws, { t: 'mobs', a: [], u: [], d: [...c.mobs] }); c.mobs = new Set(); }
-        rust.send({ k: 'attach', conn: p.id, ch: { id: p.id, name: p.name, level: p.level, x: p.p[0], z: p.p[2], hp: Math.max(1, c.cb?.hp ?? 1), maxHp: Math.max(1, c.cb?.maxHp ?? 1) } });
+        rust.send({ k: 'attach', conn: p.id, ch: { id: p.id, name: p.name, level: p.level, x: p.p[0], z: p.p[2], hp: Math.max(1, c.cb?.hp ?? 1), maxHp: Math.max(1, c.cb?.maxHp ?? 1), ...(c.ws instanceof LinkSocket ? { ws: c.ws.id } : {}) } });
         rust.send(flagsMsg);
         pos.push({ id: p.id, x: p.p[0], y: p.p[1], z: p.p[2], h: p.h, s: p.s });
         rustAttached.set(p.id, flags);
@@ -2017,6 +2028,12 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   }
 
   wss.on('connection', (ws: WebSocket) => {
+    // com o servidor WebSocket do Rust no ar, o navegador conecta direto nele: manda a porta e solta esta conexão
+    if (!(ws as unknown as LinkSocket instanceof LinkSocket) && rustWsPort && rustOn()) {
+      ws.send(JSON.stringify({ t: 'redirect', port: rustWsPort }));
+      setTimeout(() => ws.close(), 500);
+      return;
+    }
     const c: Conn = { ws, player: null, accountId: 0, dirty: false, alive: true, mobs: new Set(), chatAt: [], invQueue: Promise.resolve(), cb: null, ground: new Set(), hide: 0, joinedAt: Date.now(), seen: new Map(), viewers: new Set(), seq: connSeq++ };
     conns.add(c);
     counters.connections++;

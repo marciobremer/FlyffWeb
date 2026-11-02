@@ -1,5 +1,5 @@
 //! Grade uniforme de células de `CELL` unidades (x, z). Guarda ids por célula; troca de célula é O(1).
-use std::collections::HashMap;
+use crate::fastmap::{CellMap, IdMap};
 
 pub const CELL: f32 = 64.0;
 pub type EntityId = u32;
@@ -10,8 +10,8 @@ pub fn cell_of(x: f32, z: f32) -> (i32, i32) {
 
 #[derive(Default)]
 pub struct Grid {
-    cells: HashMap<(i32, i32), Vec<EntityId>>,
-    at: HashMap<EntityId, ((i32, i32), (f32, f32))>,
+    cells: CellMap<Vec<EntityId>>,
+    at: IdMap<((i32, i32), (f32, f32))>,
 }
 
 impl Grid {

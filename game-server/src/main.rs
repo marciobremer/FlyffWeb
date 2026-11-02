@@ -1,5 +1,5 @@
 //! Binário do Game Server de UM mapa.
-//!   game-server --pack data/mappack/WdMadrigal [--listen 127.0.0.1:9201] [--secret SEGREDO] [--tick-ms 50] [--rust-combat]
+//!   game-server --pack data/mappack/WdMadrigal [--listen 127.0.0.1:9201] [--secret SEGREDO] [--tick-ms 50] [--rust-combat] [--ws-listen 0.0.0.0:8081]
 //! O segredo também pode vir de GAME_LINK_SECRET.
 use game_server::mobs::MobWorld;
 use game_server::pack::{AttrTerrain, Pack};
@@ -26,7 +26,7 @@ fn main() {
     let terrain = AttrTerrain::open(&dir, &pack).expect("attrs.bin");
     let mobs = MobWorld::new(&pack.spawns(), Xorshift32::new(12345), terrain);
     println!("mapa {}: {} mobs em {} respawns, tick {} ms", pack.world, mobs.len(), pack.spawns.len(), tick_ms);
-    let h = start(&listen, Config { secret, tick_ms, rust_combat: std::env::args().any(|a| a == "--rust-combat") }, mobs).expect("não consegui escutar");
+    let h = start(&listen, Config { secret, tick_ms, rust_combat: std::env::args().any(|a| a == "--rust-combat"), ws_listen: arg("--ws-listen") }, mobs).expect("não consegui escutar");
     println!("link do Gateway em {}", h.addr);
     h.map_thread.join().ok();
 }

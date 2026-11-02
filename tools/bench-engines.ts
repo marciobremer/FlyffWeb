@@ -8,7 +8,7 @@ import { query, pool } from '../servers/common/db/index';
  * Compara os dois motores com bots (tools/loadtest.ts): sobe o servidor do jogo SOZINHO numa porta própria, com o motor
  * escolhido, entra com N bots na mesma área, mede e desliga.
  *
- *   npx tsx tools/bench-engines.ts <node|rust> [bots=200] [duração(s)=60] [spread(u)=300] [x=6744] [z=2995] [behavior=walk]
+ *   npx tsx tools/bench-engines.ts <node|rust|rust-ws> [bots=200] [duração(s)=60] [spread(u)=300] [x=6744] [z=2995] [behavior=walk]
  *
  * Mede: CPU do processo Node (e do game-server), memória, atraso do event loop do servidor (perf do /internal/stats), tráfego
  * que chega aos bots (KB/s e msgs/s), RTT do ping e o intervalo entre atualizações de posição (gapP95). Usa as contas lt_bot*
@@ -35,7 +35,8 @@ const pct = (a: number[], p: number) => { if (!a.length) return 0; const s = [..
 const avg = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 
 spawnSync('taskkill', ['/F', '/IM', 'game-server.exe'], { stdio: 'ignore' });
-const env = { ...process.env, PORT: String(PORT), ADMIN_TOKEN: TOKEN, GAME_ENGINE: engine === 'rust' ? 'rust' : '', FORCE_COLOR: '0', PGAPPNAME: 'bench' };
+const WS_PORT = 9081; // rust-ws: os bots conectam direto no servidor WebSocket do Rust
+const env = { ...process.env, PORT: String(PORT), ADMIN_TOKEN: TOKEN, GAME_ENGINE: engine.startsWith('rust') ? 'rust' : '', FORCE_COLOR: '0', PGAPPNAME: 'bench', ...(engine === 'rust-ws' ? { RUST_WS_PORT: String(WS_PORT) } : {}) };
 const server: ChildProcess = spawn(process.execPath, ['--import', 'tsx', 'servers/main.ts'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
 const log: string[] = [];
 server.stdout!.on('data', (d) => log.push(String(d)));
@@ -48,7 +49,7 @@ process.on('exit', cleanup);
 let up = false;
 for (let i = 0; i < 180 && !up; i++) { try { up = (await http('/internal/stats')).ok; } catch { /* ainda subindo */ } if (!up) await sleep(1000); }
 if (!up) { console.error('servidor não subiu:\n' + log.join('').slice(-1500)); process.exit(1); }
-if (engine === 'rust') {
+if (engine.startsWith('rust')) {
   for (let i = 0; i < 30 && !log.join('').includes('rust-link: conectado'); i++) await sleep(500);
   if (!log.join('').includes('rust-link: conectado')) { console.error('o Rust não conectou:\n' + log.join('').slice(-1500)); process.exit(1); }
 }
@@ -59,7 +60,7 @@ if (bots.length < N) { console.error(`só há ${bots.length} bots no banco (rode
 const tk = (await (await http('/internal/loadtest/sessions', { method: 'POST', body: JSON.stringify({ accountIds: bots.map((b) => Number(b.account_id)) }) })).json()) as { tokens: Record<number, string> };
 await pool.end();
 
-const cfg = { url: `ws://127.0.0.1:${PORT}/ws`, bots: bots.map((b) => ({ token: tk.tokens[Number(b.account_id)], characterId: Number(b.character_id) })), ramp: Math.max(20, Math.round(N / 5)), duration: DURATION, spread: Number(spreadArg), center: [Number(xArg), Number(zArg)], y: 100, behavior, workers: 0 };
+const cfg = { url: `ws://127.0.0.1:${engine === 'rust-ws' ? WS_PORT : PORT}/ws`, bots: bots.map((b) => ({ token: tk.tokens[Number(b.account_id)], characterId: Number(b.character_id) })), ramp: Math.max(20, Math.round(N / 5)), duration: DURATION, spread: Number(spreadArg), center: [Number(xArg), Number(zArg)], y: 100, behavior, workers: 0 };
 loadChild = spawn(process.execPath, ['--import', 'tsx', 'tools/loadtest.ts'], { cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, env: { ...process.env, FORCE_COLOR: '0' } });
 loadChild.stdin!.write(JSON.stringify(cfg) + '\n');
 const ticks: any[] = [];
@@ -70,7 +71,7 @@ loadChild.stderr!.on('data', (d) => process.stderr.write(String(d)));
 // amostragem do servidor
 const nodePid = server.pid!;
 const samples: { cpuNode: number; cpuRust: number; rss: number; perf: any }[] = [];
-let lastNode = cpuSeconds(nodePid), rustPid = engine === 'rust' ? pidOf('game-server.exe') : null, lastRust = rustPid ? cpuSeconds(rustPid) : 0, lastAt = Date.now();
+let lastNode = cpuSeconds(nodePid), rustPid = engine.startsWith('rust') ? pidOf('game-server.exe') : null, lastRust = rustPid ? cpuSeconds(rustPid) : 0, lastAt = Date.now();
 const warm = Math.min(15, Math.round(DURATION * 0.25)); // ignora a subida dos bots
 const start = Date.now();
 while (!done && Date.now() - start < (DURATION + 20) * 1000) {
@@ -79,6 +80,7 @@ while (!done && Date.now() - start < (DURATION + 20) * 1000) {
   const cn = cpuSeconds(nodePid), cr = rustPid ? cpuSeconds(rustPid) : 0;
   const st = await (await http('/internal/stats')).json().catch(() => null) as any;
   if ((now - start) / 1000 > warm && st) samples.push({ cpuNode: ((cn - lastNode) / dt) * 100, cpuRust: rustPid ? ((cr - lastRust) / dt) * 100 : 0, rss: st.rssMb, perf: st.perf });
+  if (process.env.BENCH_VERBOSE) console.log(`t=${Math.round((now - start) / 1000)}s joined=${ticks[ticks.length - 1]?.joined} nodeCPU=${(((cn - lastNode) / dt) * 100).toFixed(0)}% lagMax=${st?.perf?.lagMax} lagP99=${st?.perf?.lagP99}`);
   lastNode = cn; lastRust = cr;
 }
 const steady = ticks.filter((t) => t.at / 1000 > warm + 5);
@@ -87,7 +89,7 @@ const perfKeys = samples[0]?.perf ? Object.keys(samples[0].perf) : [];
 const out: Record<string, unknown> = {
   motor: engine, bots: N, joined: last?.joined, failed: last?.failed,
   'CPU Node % (médio / pior)': `${avg(samples.map((s) => s.cpuNode)).toFixed(1)} / ${Math.max(0, ...samples.map((s) => s.cpuNode)).toFixed(1)}`,
-  'CPU game-server % (médio)': engine === 'rust' ? avg(samples.map((s) => s.cpuRust)).toFixed(1) : '-',
+  'CPU game-server % (médio)': engine.startsWith('rust') ? avg(samples.map((s) => s.cpuRust)).toFixed(1) : '-',
   'RAM Node MB': Math.max(0, ...samples.map((s) => s.rss)),
   'bots recebem KB/s (total)': Math.round(avg(steady.map((t) => t.rxKBps))), 'msgs/s (total)': Math.round(avg(steady.map((t) => t.rxMsgs))),
   'RTT p50/p95 ms': `${pct(steady.map((t) => t.rttP50), 50)} / ${pct(steady.map((t) => t.rttP95), 95)}`,

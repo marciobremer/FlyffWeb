@@ -6,6 +6,8 @@ rem Fechar esta janela (ou Ctrl+C) desliga o painel e o servidor do jogo.
 title ReactioN MMO - Servidor
 rem Motor dos mobs: Rust (game-server/). Para voltar ao Node, defina GAME_ENGINE=node antes de abrir este arquivo.
 if not defined GAME_ENGINE set "GAME_ENGINE=rust"
+rem WebSocket do jogo direto no Rust (porta 8081; se o navegador nao alcancar, ele volta sozinho para a 8080). Para desligar: set RUST_WS_PORT=0
+if not defined RUST_WS_PORT set "RUST_WS_PORT=8081"
 cd /d "%~dp0"
 
 where node >nul 2>nul

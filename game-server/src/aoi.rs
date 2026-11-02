@@ -1,7 +1,7 @@
 //! Interest management: cada observador tem um conjunto de entidades que "conhece". O servidor só envia
 //! o que está no conjunto e só aceita ações sobre ids que estão nele (`knows`).
 use crate::grid::{EntityId, Grid};
-use std::collections::{HashMap, HashSet};
+use crate::fastmap::{IdMap, IdSet};
 
 /// Raio (em células) para entrar no conjunto (5×5 = 320 u, cobre os 150 u de visão do Node) e para sair (7×7): histerese de 1 célula.
 pub const ENTER_R: i32 = 2;
@@ -15,7 +15,7 @@ pub struct Diff {
 
 #[derive(Default)]
 pub struct Aoi {
-    sets: HashMap<EntityId, HashSet<EntityId>>,
+    sets: IdMap<IdSet>,
     scratch: Vec<EntityId>,
 }
 
@@ -30,7 +30,7 @@ impl Aoi {
         self.sets.get(&obs).is_some_and(|s| s.contains(&target))
     }
 
-    pub fn set_of(&self, obs: EntityId) -> Option<&HashSet<EntityId>> { self.sets.get(&obs) }
+    pub fn set_of(&self, obs: EntityId) -> Option<&IdSet> { self.sets.get(&obs) }
 
     /// Revê o conjunto de `obs` contra a grade; `visible(target)` filtra (ex.: invisíveis). `max` limita o tamanho
     /// do conjunto (entram os mais próximos primeiro).

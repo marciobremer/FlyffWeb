@@ -389,9 +389,16 @@ export class NetClient {
     this.open();
   }
 
+  /** porta do servidor WebSocket dedicado (0 = usa o do site) e quantas vezes falhou */
+  private directPort = 0;
+  private directFails = 0;
+
   private open() {
     if (!this.join) return;
-    const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+    // o servidor pode mandar o jogo para o servidor WebSocket dedicado (Rust): `{ t: 'redirect', port }`. Se ele não responder,
+    // volta para o endereço de sempre.
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const url = this.directPort && this.directFails < 2 ? `${proto}://${location.hostname}:${this.directPort}/ws` : `${proto}://${location.host}/ws`;
     const ws = new WebSocket(url);
     this.ws = ws;
     this.onStatus('Conectando ao servidor…');
@@ -399,20 +406,31 @@ export class NetClient {
     ws.onmessage = (ev) => {
       let m: { t: string; [k: string]: unknown };
       try { m = JSON.parse(String(ev.data)); } catch { return; }
+      if (m.t === 'redirect') {
+        this.directPort = Number(m.port) || 0;
+        this.directFails = 0;
+        ws.onclose = null;
+        ws.close();
+        if (this.directPort) { this.ws = null; this.open(); }
+        return;
+      }
       if (m.t === 'welcome') {
         this.myId = m.id as number;
         this.remotes.clear();
         for (const p of m.players as PlayerView[]) { this.remotes.add(p); if (p.pet) this.onPet(p.id, p.pet); }
-        this.online = this.remotes.count + 1;
+        // o servidor só manda quem está perto (área de visão): o total online vem à parte ('online', a cada 5 s)
+        this.online = typeof m.online === 'number' ? m.online : this.remotes.count + 1;
         this.onStatus('');
         this.onWelcome((m.eq ?? []) as string[], Number(m.mt ?? 0));
       } else if (m.t === 'enter') {
         const p = m.player as PlayerView;
-        this.remotes.add(p); this.online = this.remotes.count + 1;
+        this.remotes.add(p);
         this.onPet(p.id, p.pet ?? 0);
       } else if (m.t === 'leave') {
-        this.remotes.remove(m.id as number); this.online = this.remotes.count + 1;
+        this.remotes.remove(m.id as number);
         this.onPet(m.id as number, 0);
+      } else if (m.t === 'online') {
+        this.online = Number(m.n) || 0;
       } else if (m.t === 'states') {
         for (const [id, x, y, z, h, s] of m.list as [number, number, number, number, number, string][]) if (id !== this.myId) this.remotes.update(id, x, y, z, h, s);
       } else if (m.t === 'mobs') {
@@ -534,8 +552,11 @@ export class NetClient {
         this.onStatus(String(m.error), true);
       }
     };
+    let joined = false;
+    ws.addEventListener('message', (ev) => { if (!joined && String(ev.data).startsWith('{"t":"welcome"')) joined = true; });
     ws.onclose = () => {
       if (this.ws !== ws) return;
+      if (this.directPort && !joined) this.directFails++; // não chegou ao servidor dedicado: depois de 2 falhas volta ao endereço de sempre
       this.remotes.clear();
       this.onReset();
       this.online = 0;

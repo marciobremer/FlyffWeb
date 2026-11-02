@@ -36,7 +36,7 @@ async function rustStats(port = 9201) {
 
 const r = await fetch(`http://${BASE}/gapi/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: user, password: pass }) });
 const a: any = await r.json();
-const ws = new WebSocket(`ws://${BASE}/ws`);
+const ws = new WebSocket(`ws://${process.env.WS_BASE ?? BASE}/ws`);
 const msgs: any[] = [];
 const mobs = new Map<number, any[]>();
 ws.on('message', (raw) => {

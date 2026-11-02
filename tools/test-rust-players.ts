@@ -20,7 +20,7 @@ async function login(u: string, p: string) {
 interface C { ws: WebSocket; id: number; name: string; msgs: any[]; send(m: unknown): void }
 async function join(u: string, p: string): Promise<C> {
   const a = await login(u, p), ch = a.characters[0];
-  const ws = new WebSocket(`ws://${BASE}/ws`);
+  const ws = new WebSocket(`ws://${process.env.WS_BASE ?? BASE}/ws`);
   const c: C = { ws, id: ch.id, name: ch.name, msgs: [], send: (m) => ws.send(JSON.stringify(m)) };
   ws.on('message', (raw) => c.msgs.push(JSON.parse(String(raw))));
   await new Promise((res, rej) => { ws.on('open', res); ws.on('error', rej); });

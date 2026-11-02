@@ -9,7 +9,9 @@ use crate::grid::EntityId;
 use crate::mobs::{Mob, MobHooks, MobState, MobWorld, Terrain, CORPSE_MS};
 use crate::protocol::*;
 use crate::rng::{Rng, Xorshift32};
+use crate::ws::{self, Out, WsEvent};
 use serde_json::{json, Value};
+use crate::fastmap::IdMap;
 use std::collections::HashMap;
 use std::io::{BufReader, BufWriter, Write};
 use std::net::{SocketAddr, TcpListener};
@@ -32,16 +34,23 @@ pub struct Config {
     pub tick_ms: u64,
     /// true: o Rust calcula o dano dos golpes (jogador e mob); false: o Node calcula e o Rust cuida de mobs, IA e visão
     pub rust_combat: bool,
+    /// endereço do servidor WebSocket que os navegadores usam (ex.: "0.0.0.0:8081"); None = só o link (o Node tem os sockets)
+    pub ws_listen: Option<String>,
 }
 
 enum Inbound {
     Open { link: u64, out: Sender<Vec<u8>> },
     Closed { link: u64 },
     Msg { link: u64, msg: LinkIn },
+    /// o Node mandou um JSON pronto para o navegador `ws` (quadro cru, byte 3)
+    WsOut { ws: u32, payload: Vec<u8> },
+    Ws(WsEvent),
 }
 
 pub struct Handle {
     pub addr: SocketAddr,
+    /// onde os navegadores conectam (WebSocket), se ligado
+    pub ws_addr: Option<SocketAddr>,
     /// termina o loop do mapa (e, com isso, o servidor)
     pub stop: Sender<()>,
     pub map_thread: JoinHandle<()>,
@@ -77,6 +86,12 @@ pub fn start<T: Terrain + Send + 'static>(addr: &str, cfg: Config, mobs: MobWorl
             thread::spawn(move || {
                 let mut r = BufReader::new(stream);
                 while let Ok(frame) = read_frame(&mut r) {
+                    // quadro cru do Node para um navegador: [3][ws u32][JSON]
+                    if frame.len() >= 5 && frame[0] == 3 {
+                        let ws = u32::from_be_bytes([frame[1], frame[2], frame[3], frame[4]]);
+                        if t.send(Inbound::WsOut { ws, payload: frame[5..].to_vec() }).is_err() { return; }
+                        continue;
+                    }
                     match serde_json::from_slice::<LinkIn>(&frame) {
                         Ok(msg) => { if t.send(Inbound::Msg { link, msg }).is_err() { return; } }
                         Err(_) => break,
@@ -87,12 +102,22 @@ pub fn start<T: Terrain + Send + 'static>(addr: &str, cfg: Config, mobs: MobWorl
         }
     })?;
 
+    // servidor WebSocket dos navegadores (opcional): os eventos dele entram na mesma fila da thread de mapa
+    let mut ws_addr = None;
+    if let Some(addr) = cfg.ws_listen.clone() {
+        let (wtx, wrx) = mpsc::channel::<WsEvent>();
+        ws_addr = Some(ws::spawn_server(&addr, wtx)?);
+        let fwd = tx.clone();
+        thread::Builder::new().name("ws-forward".into()).spawn(move || { for ev in wrx { if fwd.send(Inbound::Ws(ev)).is_err() { break; } } })?;
+    }
     let map_thread = thread::Builder::new().name("map".into()).spawn(move || run_map(rx, stop_rx, cfg, mobs))?;
-    Ok(Handle { addr: local, stop: stop_tx, map_thread })
+    Ok(Handle { addr: local, ws_addr, stop: stop_tx, map_thread })
 }
 
 struct Player {
     link: u64,
+    /// conexão WebSocket direta (None = as mensagens passam pelo Node)
+    ws: Option<u32>,
     conn: u32,
     ent: EntityId,
     name: String,
@@ -120,7 +145,7 @@ struct Player {
 struct Link { out: Sender<Vec<u8>>, authed: bool }
 
 /// os mobs perguntam aos jogadores; o golpe do mob é só anotado e resolvido depois do tick
-struct Hooks<'a> { players: &'a HashMap<EntityId, Player>, attacks: Vec<(EntityId, EntityId)> }
+struct Hooks<'a> { players: &'a IdMap<Player>, attacks: Vec<(EntityId, EntityId)> }
 impl MobHooks for Hooks<'_> {
     fn player(&self, id: u32) -> Option<(f64, f64)> { self.players.get(&id).filter(|p| !p.dead).map(|p| (p.x, p.z)) }
     fn players_near(&self, x: f64, z: f64, r: f64, out: &mut Vec<(u32, f64, f64)>) {
@@ -143,28 +168,44 @@ struct MapState<T: Terrain> {
     aoi: Aoi,
     aoi_p: Aoi,
     links: HashMap<u64, Link>,
-    players: HashMap<EntityId, Player>,
+    players: IdMap<Player>,
     by_conn: HashMap<(u64, u32), EntityId>,
     rng: Xorshift32,
     stats: Stats,
     tick_sum_ms: f64,
     /// contador dos envios de rede (escalona a revisão da visão)
     net_n: u64,
+    /// navegadores conectados direto ao Rust: id → fila de saída
+    ws_conns: IdMap<tokio::sync::mpsc::Sender<Out>>,
+    /// mensagens descartadas por fila cheia (cliente lento)
+    ws_dropped: std::cell::Cell<u64>,
 }
 
 impl<T: Terrain> MapState<T> {
     fn send(&self, link: u64, v: &LinkOut) {
         if let Some(l) = self.links.get(&link) { let _ = l.out.send(encode(v)); }
     }
-    fn to_player(&self, ent: EntityId, msg: Value) {
-        if let Some(p) = self.players.get(&ent) { self.send(p.link, &LinkOut::S2c { conn: p.conn, msg }); }
+    /// o link do Node (quem recebe os eventos dos navegadores)
+    fn gateway(&self) -> Option<u64> { self.links.iter().find(|(_, l)| l.authed).map(|(k, _)| *k) }
+
+    /// entrega um JSON pronto ao jogador: direto no WebSocket dele (se conectou no Rust) ou em quadro cru pelo Node
+    fn deliver(&self, ent: EntityId, text: &str) {
+        let Some(p) = self.players.get(&ent) else { return };
+        if let Some(w) = p.ws {
+            if let Some(tx) = self.ws_conns.get(&w) {
+                if tx.try_send(Out::Text(text.to_owned())).is_err() { self.ws_dropped.set(self.ws_dropped.get() + 1); }
+                return;
+            }
+        }
+        self.send_raw(p.link, p.conn, text.as_bytes());
     }
+
+    fn to_player(&self, ent: EntityId, msg: Value) { self.deliver(ent, &msg.to_string()); }
     /// para todo jogador que CONHECE o mob (interest management: ninguém recebe golpe de mob que não vê)
     fn to_watchers_of(&self, mob: EntityId, also: Option<EntityId>, msg: &Value) {
+        let text = msg.to_string();
         for p in self.players.values() {
-            if self.aoi.knows(p.ent, mob) || Some(p.ent) == also {
-                self.send(p.link, &LinkOut::S2c { conn: p.conn, msg: msg.clone() });
-            }
+            if self.aoi.knows(p.ent, mob) || Some(p.ent) == also { self.deliver(p.ent, &text); }
         }
     }
 
@@ -173,10 +214,45 @@ impl<T: Terrain> MapState<T> {
             Inbound::Open { link, out } => { self.links.insert(link, Link { out, authed: false }); }
             Inbound::Closed { link } => {
                 self.links.remove(&link);
+                if self.gateway().is_none() {
+                    // sem o Node ninguém atende o `join`: solta os navegadores (eles reconectam quando o link voltar)
+                    for (_, tx) in self.ws_conns.drain() { let _ = tx.try_send(Out::Close); }
+                    for p in self.players.values_mut() { p.ws = None; }
+                }
                 let gone: Vec<EntityId> = self.players.values().filter(|p| p.link == link).map(|p| p.ent).collect();
                 for e in gone { self.drop_player(e); }
             }
             Inbound::Msg { link, msg } => self.handle_msg(now, link, msg),
+            Inbound::WsOut { ws, payload } => {
+                if let (Some(tx), Ok(text)) = (self.ws_conns.get(&ws), String::from_utf8(payload)) {
+                    if tx.try_send(Out::Text(text)).is_err() { self.ws_dropped.set(self.ws_dropped.get() + 1); }
+                }
+            }
+            Inbound::Ws(WsEvent::Open { ws, tx, ip }) => match self.gateway() {
+                Some(link) => {
+                    self.ws_conns.insert(ws, tx);
+                    self.send(link, &LinkOut::WsOpen { ws, ip });
+                }
+                None => { let _ = tx.try_send(Out::Close); }
+            },
+            Inbound::Ws(WsEvent::Msg { ws, payload }) => {
+                // do navegador para o Node: quadro cru [2][ws][JSON]
+                if let Some(link) = self.gateway() {
+                    if let Some(l) = self.links.get(&link) {
+                        let mut f = Vec::with_capacity(payload.len() + 9);
+                        f.extend_from_slice(&((payload.len() + 5) as u32).to_be_bytes());
+                        f.push(2);
+                        f.extend_from_slice(&ws.to_be_bytes());
+                        f.extend_from_slice(&payload);
+                        let _ = l.out.send(f);
+                    }
+                }
+            }
+            Inbound::Ws(WsEvent::Closed { ws }) => {
+                self.ws_conns.remove(&ws);
+                for p in self.players.values_mut() { if p.ws == Some(ws) { p.ws = None; } }
+                if let Some(link) = self.gateway() { self.send(link, &LinkOut::WsClose { ws }); }
+            }
         }
     }
 
@@ -219,7 +295,7 @@ impl<T: Terrain> MapState<T> {
                 self.aoi_p.add_observer(ent);
                 self.by_conn.insert((link, conn), ent);
                 self.players.insert(ent, Player {
-                    link, conn, ent, name: ch.name, level: ch.level, x: ch.x, z: ch.z, y: 0.0, h: 0.0, st: "stand".into(), invis: false, staff: false, moved: false, hp: ch.hp, max_hp: ch.max_hp.max(1), dead: ch.hp <= 0,
+                    link, ws: ch.ws, conn, ent, name: ch.name, level: ch.level, x: ch.x, z: ch.z, y: 0.0, h: 0.0, st: "stand".into(), invis: false, staff: false, moved: false, hp: ch.hp, max_hp: ch.max_hp.max(1), dead: ch.hp <= 0,
                     attacker, defender, reach: ch.reach, interval_ms: ch.interval_ms, next_atk: 0,
                 });
             }
@@ -255,8 +331,11 @@ impl<T: Terrain> MapState<T> {
                 if self.mobs.damage(mob, ent, dmg, peaceful, now) { self.stats.kills += 1; }
             }
             LinkIn::Summon { spawn, x, z, y, n } => { self.mobs.summon(&spawn.to_spawn(), x, z, y, n); }
+            LinkIn::WsClose { ws } => { if let Some(tx) = self.ws_conns.remove(&ws) { let _ = tx.try_send(Out::Close); } }
             LinkIn::Stats => {
                 let mut s = self.stats.clone();
+                s.ws_open = self.ws_conns.len();
+                s.ws_dropped = self.ws_dropped.get();
                 s.players = self.players.len();
                 s.mobs = self.mobs.len();
                 s.tick_avg_ms = if s.ticks > 0 { self.tick_sum_ms / s.ticks as f64 } else { 0.0 };
@@ -353,15 +432,15 @@ impl<T: Terrain> MapState<T> {
         self.net_n += 1;
         let n = self.net_n;
         // texto de cada mob que mudou (formato `u` do cliente) e de cada jogador que andou (formato do `states`)
-        let mut mob_u: HashMap<EntityId, String> = HashMap::new();
+        let mut mob_u: IdMap<String> = IdMap::default();
         for m in self.mobs.mobs() {
             if m.dirty { mob_u.insert(m.id, format!("[{},{:.1},{:.1},{},\"{}\",{}]", m.id, m.x, m.z, m.h.round() as i64, state_str(m.s), mob_hp(m))); }
         }
-        let moved: HashMap<EntityId, String> = self.players.values().filter(|p| p.moved)
+        let moved: IdMap<String> = self.players.values().filter(|p| p.moved)
             .map(|p| (p.ent, format!("[{},{:.2},{:.2},{:.2},{},\"{}\"]", p.ent - PLAYER_BASE, p.x, p.y, p.z, p.h.round() as i64, p.st)))
             .collect();
         let ents: Vec<EntityId> = self.players.keys().copied().collect();
-        let mut mirror: HashMap<EntityId, ()> = HashMap::new();
+        let mut mirror: IdMap<()> = IdMap::default();
         for ent in ents {
             let Some(p) = self.players.get(&ent) else { continue };
             let (link, conn, staff) = (p.link, p.conn, p.staff);
@@ -392,7 +471,7 @@ impl<T: Terrain> MapState<T> {
             for t in &diff.enter { mirror.insert(*t, ()); }
             if !a.is_empty() || !u.is_empty() || !d.is_empty() {
                 let msg = format!("{{\"t\":\"mobs\",\"a\":[{}],\"u\":[{}],\"d\":[{}]}}", a.join(","), u.join(","), d.join(","));
-                self.send_raw(link, conn, msg.as_bytes());
+                self.deliver(ent, &msg);
             }
             if !diff.enter.is_empty() || !diff.leave.is_empty() {
                 // o Node mantém o conjunto `c.mobs` (as ações conferem nele)
@@ -419,7 +498,7 @@ impl<T: Terrain> MapState<T> {
                     if !list.is_empty() {
                         self.stats.state_updates += list.len() as u64;
                         let msg = format!("{{\"t\":\"states\",\"list\":[{}]}}", list.join(","));
-                        self.send_raw(link, conn, msg.as_bytes());
+                        self.deliver(ent, &msg);
                     }
                 }
             }
@@ -439,8 +518,8 @@ fn run_map<T: Terrain>(rx: Receiver<Inbound>, stop: Receiver<()>, cfg: Config, m
     let tick = Duration::from_millis(cfg.tick_ms);
     let dt = cfg.tick_ms as f64 / 1000.0;
     let mut st = MapState {
-        cfg, mobs, aoi: Aoi::new(), aoi_p: Aoi::new(), links: HashMap::new(), players: HashMap::new(), by_conn: HashMap::new(),
-        rng: Xorshift32::new(0x9e3779b1), stats: Stats::default(), tick_sum_ms: 0.0, net_n: 0,
+        cfg, mobs, aoi: Aoi::new(), aoi_p: Aoi::new(), links: HashMap::new(), players: IdMap::default(), by_conn: HashMap::new(),
+        rng: Xorshift32::new(0x9e3779b1), stats: Stats::default(), tick_sum_ms: 0.0, net_n: 0, ws_conns: IdMap::default(), ws_dropped: std::cell::Cell::new(0),
     };
     let _ = st.rng.next_f64();
     let start = Instant::now();

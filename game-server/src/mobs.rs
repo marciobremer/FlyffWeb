@@ -3,7 +3,7 @@
 use crate::combat::MobProp;
 use crate::grid::{EntityId, Grid, CELL};
 use crate::rng::Rng;
-use std::collections::HashMap;
+use crate::fastmap::IdMap;
 
 pub const MOB_ATTACK_RANGE: f64 = 2.6;
 const AGGRO_RADIUS: f64 = 9.0;
@@ -54,7 +54,7 @@ pub struct Mob {
     pub foe: u32,
     pub next_atk: u64,
     pub next_scan: u64,
-    pub dmg_by: HashMap<u32, i64>,
+    pub dmg_by: IdMap<i64>,
     pub died_at: u64,
     pub respawn_at: u64,
     /// < 0 = invocado (não renasce)
@@ -79,7 +79,7 @@ pub struct Spawn {
 
 pub struct MobWorld<R: Rng, T: Terrain> {
     mobs: Vec<Mob>,
-    index: HashMap<EntityId, usize>,
+    index: IdMap<usize>,
     grid: Grid,
     rng: R,
     terrain: T,
@@ -107,12 +107,12 @@ impl<R: Rng, T: Terrain> MobWorld<R, T> {
                 mobs.push(Mob {
                     id: mobs.len() as u32 + 1, model_id: r.model_id, x, z, y: r.pos.1, h, s: MobState::Stand, area: r.rect, origin: (r.pos.0, r.pos.2),
                     target: None, wait, speed: r.speed, flying: r.flying, prop: r.prop.clone(), hp, max_hp: hp,
-                    aggressive: k < r.attack_count || r.boss, foe: 0, next_atk: 0, next_scan: 0, dmg_by: HashMap::new(),
+                    aggressive: k < r.attack_count || r.boss, foe: 0, next_atk: 0, next_scan: 0, dmg_by: IdMap::default(),
                     died_at: 0, respawn_at: 0, respawn_ms: r.time_s.max(5) as i64 * 1000, dirty: false,
                 });
             }
         }
-        let mut w = MobWorld { index: HashMap::new(), grid: Grid::new(), rng, terrain, seq: mobs.len() as u32, scratch: Vec::new(), mobs };
+        let mut w = MobWorld { index: IdMap::default(), grid: Grid::new(), rng, terrain, seq: mobs.len() as u32, scratch: Vec::new(), mobs };
         for (i, m) in w.mobs.iter().enumerate() {
             w.index.insert(m.id, i);
             w.grid.set(m.id, m.x as f32, m.z as f32);
@@ -332,7 +332,7 @@ impl<R: Rng, T: Terrain> MobWorld<R, T> {
                 id: self.seq, model_id: spawn.model_id, x: mx, z: mz, y, h, s: MobState::Stand,
                 area: Some(Rect { x_min: x - 8.0, z_min: z - 8.0, x_max: x + 8.0, z_max: z + 8.0 }), origin: (x, z), target: None, wait: 2.0,
                 speed: spawn.speed, flying: spawn.flying, prop: spawn.prop.clone(), hp, max_hp: hp, aggressive: spawn.boss, foe: 0, next_atk: 0,
-                next_scan: 0, dmg_by: HashMap::new(), died_at: 0, respawn_at: 0, respawn_ms: -1, dirty: true,
+                next_scan: 0, dmg_by: IdMap::default(), died_at: 0, respawn_at: 0, respawn_ms: -1, dirty: true,
             };
             self.grid.set(m.id, mx as f32, mz as f32);
             self.index.insert(m.id, self.mobs.len());

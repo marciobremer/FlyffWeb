@@ -201,3 +201,27 @@ Leitura honesta:
 - O `gap` entre atualizações de posição subiu (≈210 ms p95 contra ≈150 ms): a fase do envio de rede do Rust não está alinhada com os `pos` do Node.
 
 Para ganhar CPU de verdade falta tirar o envio pelos WebSockets de dentro do Node (o Rust falar WebSocket com o navegador — a opção que o memorando deixou para quando o Node virar gargalo).
+
+### 11.5 WebSocket dos navegadores no Rust (2026-11-02, quinta etapa)
+
+Com `RUST_WS_PORT=<porta>` (o `.bat` usa 8081; `0` desliga) o **game-server escuta os navegadores direto** (tokio + tokio-tungstenite, path `/ws`, mensagens ≤ 4096 bytes, ping de 15 s, 45 s calado = conexão morta):
+- Os navegadores ainda abrem `ws://site:8080/ws` (Node). Se o Rust está no ar, o Node responde `{t:'redirect', port}` e solta a conexão; o **cliente** (`client/net.ts`) reconecta em `ws://<host>:<porta>/ws`. Se a porta não responder (firewall), depois de 2 falhas volta ao `:8080`.
+- O resto do Node não mudou: cada navegador aparece como um **`LinkSocket`** (WebSocket virtual em `servers/world/rustlink.ts`) — `send` vai pelo link (quadro cru, byte 3), as mensagens do navegador chegam do Rust como quadro cru (byte 2) e viram o evento `message`; `join`, inventário, chat, party… rodam exatamente o mesmo código.
+- O que o Rust gera (mobs, posições, golpes) vai **direto ao WebSocket** do jogador; o Node nunca toca nesse tráfego, que é a maior parte. O `Attach` leva o id da conexão (`ws`).
+- Backpressure: fila de 512 mensagens por conexão; cheia → descarta (posição se refaz) e conta em `stats.ws_dropped`. Link com o Node cai → os navegadores são soltos e reconectam.
+- `HashMap/HashSet` de ids usam um hasher barato (`fastmap.rs`).
+
+Medição (mesmo método da 11.4; bots conectam direto na porta do Rust):
+
+| bots | motor | CPU Node | CPU game-server (soma dos threads) | lag event loop p99 | RTT p50 / p95 |
+|---|---|---|---|---|---|
+| 500 | Node | 30 % | – | 42 ms | 28 / 45 ms |
+| 500 | Rust (link) | 33 % | 17 % | 16 ms | 6 / 20 ms |
+| 500 | **Rust + WebSocket** | **12 %** | 47 % | **16 ms** | 8 / 17 ms |
+| 1000 | Node | 58 % | – | 74 ms | 40 / 79 ms |
+| 1000 | Rust (link) | 68 % | 35 % | 29 ms | 18 / 46 ms |
+| 1000 | **Rust + WebSocket** | **~20 %** | 97 % | **15 ms** | 22 / 40 ms |
+
+Leitura: a thread única do Node passa a ter folga (12–20 % e event loop com ~15 ms de p99 a 1000 bots), mas o trabalho de rede foi para o Rust, que usa vários threads (97 % = quase um núcleo inteiro somando os do tokio e o do mapa); a CPU total é maior que a do Node sozinho, só que espalhada em núcleos. Com 1000 bots o RTT p50 sobe (22 ms) — a máquina dos testes também roda os 1000 bots. Um pico de ~1,5 s do event loop apareceu na última amostra (os 1000 bots desconectando de uma vez, gravando posição no banco), não em regime.
+
+Limites: sem TLS no Rust (para `wss://` atrás de HTTPS é preciso proxy com TLS ou terminar TLS no Rust); a porta 8081 precisa estar liberada no firewall para outros PCs; o redirect depende do cliente novo (clientes antigos ficam no `:8080`, que continua funcionando).

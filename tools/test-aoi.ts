@@ -23,7 +23,7 @@ async function login(user: string, pass: string) {
 interface Client { ws: WebSocket; id: number; msgs: Record<string, any>[]; mobs: Map<number, [number, number]>; send(m: unknown): void }
 async function join(user: string, pass: string): Promise<Client> {
   const a = await login(user, pass), ch = a.characters[0];
-  const ws = new WebSocket(`ws://${BASE}/ws`);
+  const ws = new WebSocket(`ws://${process.env.WS_BASE ?? BASE}/ws`);
   const c: Client = { ws, id: ch.id, msgs: [], mobs: new Map(), send: (m) => ws.send(JSON.stringify(m)) };
   ws.on('message', (raw) => {
     const m = JSON.parse(String(raw));
