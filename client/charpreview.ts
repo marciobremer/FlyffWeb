@@ -83,11 +83,12 @@ export class CharView {
   /** anima o movimento (false = parado na pose) */
   animate = true;
   /**
-   * Pose na seleção (CWndSelectChar::OnDraw): quem não está escolhido senta (MTI_SIT uma vez, depois MTI_SITSTAND em loop);
-   * ao ser escolhido levanta (MTI_GETUP uma vez, depois MTI_STAND). `phase` é a transição em andamento.
+   * Pose na seleção: quem não está escolhido fica em pé (MTI_STAND normal, sem a postura da arma); ao ser escolhido entra
+   * em modo de batalha (a postura da arma equipada) e, ao perder a escolha, volta ao normal.
    */
-  private pose: 'stand' | 'sit' = 'stand';
-  private phase: 'sitting' | 'getup' | null = null;
+  private pose: 'normal' | 'battle' = 'normal';
+  /** o movimento em pé da pose atual (com a postura da arma só no modo de batalha) */
+  private standMotion() { return motionOf('stand', this.pose === 'battle' ? this.look?.mt ?? 0 : 0); }
 
   constructor(private world: WorldView, label: string) {
     this.canvas.className = 'char-model';
@@ -135,9 +136,7 @@ export class CharView {
     const inst = new MoverInstance(tpl, source, new Matrix4());
     inst.setHairColor(hairRgb(look.hairColor ?? 0, sex, look.hair || 1));
     applyEnchantGlow(inst, equip, sex, d, true);
-    // boneco novo já começa na pose, sem a transição
-    if (this.pose === 'sit') inst.play('MTI_SITSTAND', true); else inst.play(...motionOf('stand', mt));
-    this.phase = null;
+    inst.play(...this.standMotion());
     inst.update(0);
     this.scene.add(inst.group);
     this.inst = inst;
@@ -155,12 +154,11 @@ export class CharView {
     this.inst.setHairColor(hairRgb(color, this.look.sex === 1 ? 'female' : 'male', this.look.hair || 1));
   }
 
-  /** senta (não escolhido) ou levanta (escolhido), com a animação de transição do original */
-  setPose(p: 'stand' | 'sit') {
+  /** em pé normal (não escolhido) ou em modo de batalha (escolhido) */
+  setPose(p: 'normal' | 'battle') {
     if (p === this.pose) return;
     this.pose = p;
-    if (!this.inst) return;
-    if (p === 'sit') { this.inst.play('MTI_SIT', false); this.phase = 'sitting'; } else { this.inst.play('MTI_GETUP', false); this.phase = 'getup'; }
+    this.inst?.play(...this.standMotion());
   }
 
   resetRotation() { this.rot = 0; this.place(); }
@@ -177,11 +175,6 @@ export class CharView {
     if (!this.inst) return;
     if (this.camera.aspect !== aspect) { this.camera.aspect = aspect; this.camera.updateProjectionMatrix(); }
     if (this.animate) this.inst.update(dt);
-    // fim da transição: sentado em loop ou em pé (com a postura da arma)
-    if (this.phase && this.inst.finished) {
-      if (this.phase === 'sitting') this.inst.play('MTI_SITSTAND', true); else this.inst.play(...motionOf('stand', this.look?.mt ?? 0));
-      this.phase = null;
-    }
     this.scene.updateMatrixWorld();
     r.render(this.scene, this.camera);
   }

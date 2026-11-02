@@ -1694,6 +1694,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     const c = connOf(playerId), cb = c?.cb, p = c?.player;
     if (!c || !cb || !p || !rules || !m.prop || cb.dead) return;
     const r = rules.mobHitsPlayer(m.prop, cb.f);
+    if (c.peace) setPeace(c, false); // o primeiro golpe de mob (mesmo que erre) liga o modo de batalha
     // imortal (GM/admin): o golpe acontece e o dano aparece, mas o HP não cai
     if (r.hit && !c.god) { cb.hp = Math.max(0, cb.hp - r.dmg); cb.lastHurt = Date.now(); cb.dirty = true; }
     sendNear(p.w, m.x, m.z, { t: 'hit', k: 'm', a: m.id, d: p.id, dmg: r.dmg, f: (r.hit ? 0 : 1) | (r.crit ? 2 : 0), hp: cb.hp });
@@ -1895,6 +1896,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
           // golpe de mob resolvido no Rust: HP novo (o Node cuida da morte, dos buffs e da janela de status)
           const c = connOf(m.char), cb = c?.cb;
           if (!c?.player || !cb || cb.dead) return;
+          if (c.peace) setPeace(c, false); // o primeiro golpe de mob (mesmo que erre) liga o modo de batalha
           cb.hp = m.hp; cb.lastHurt = Date.now(); cb.dirty = true;
           const sent = rustFight.get(m.char);
           if (sent) sent.hp = m.hp; // não devolve ao Rust o que ele mesmo mandou
@@ -1972,6 +1974,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     const tok = typeof msg.token === 'string' ? msg.token : null;
     const s = opts.resolveSession ? (tok ? await opts.resolveSession(tok) : null) : sessionFrom(tok);
     if (!s) { send(c.ws, { t: 'error', error: 'Sessão expirada. Entre novamente.' }); c.ws.close(); return; }
+    c.peace = true; // sempre entra em pé (postura normal, mesmo com arma): o primeiro golpe que receber ou der liga o modo de batalha
     const r = await query<{ id: string; name: string; sex: number; hair_mesh: number; hair_color: number; head_mesh: number; level: number; job: number; pos_x: number; pos_y: number; pos_z: number; angle: number;
       str: number; sta: number; dex: number; int: number; hp: number; mp: number; fp: number; exp: string; stat_points: number; shortcuts: unknown; skills: Record<string, number>; skill_points: number; world_id: number; pet_filter: unknown }>(
       'SELECT id, name, sex, hair_mesh, hair_color, head_mesh, level, job, pos_x, pos_y, pos_z, angle, world_id, str, sta, dex, "int", hp, mp, fp, exp, stat_points, shortcuts, skills, skill_points, pet_filter FROM characters WHERE id = $1 AND account_id = $2 AND NOT deleted',

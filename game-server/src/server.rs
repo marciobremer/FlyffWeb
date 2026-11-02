@@ -457,7 +457,7 @@ impl<T: Terrain> MapState<T> {
             let hit = json!({ "t": "hit", "k": "m", "a": mob_id, "d": char_id, "dmg": r.dmg, "f": (!r.hit as i64) | ((r.crit as i64) << 1), "hp": hp });
             self.to_watchers_of(mob_id, Some(ent), &hit);
             // o Node é dono do resto da vida do personagem (barra de HP, morte, buffs, troca): recebe o valor novo
-            if r.hit { self.send(link, &LinkOut::Hurt { char: char_id, hp, dmg: r.dmg, dead: died }); }
+            self.send(link, &LinkOut::Hurt { char: char_id, hp, dmg: if r.hit { r.dmg } else { 0 }, dead: died }); // também o golpe que erra: o Node liga o modo de batalha
             if died { self.mobs.forget(ent); }
         }
     }

@@ -1206,7 +1206,7 @@ function renderSlots() {
       card.setAttribute('aria-label', `${ch.name}, nível ${ch.level}`);
       card.tabIndex = 0;
       card.appendChild(v.canvas);
-      v.setPose(on ? 'stand' : 'sit');
+      v.setPose(on ? 'battle' : 'normal'); // não escolhido: em pé normal; escolhido: modo de batalha
       void v.set({ sex: ch.sex, hair: ch.hairMesh, head: ch.headMesh, hairColor: ch.hairColor ?? 0, equip: lookList(ch.equip ?? [], hideMaskOf(ch.id)), mt: ch.mt });
       name.textContent = ch.name;
       const small = document.createElement('small');
