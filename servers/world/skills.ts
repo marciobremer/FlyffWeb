@@ -197,7 +197,7 @@ export class SkillCatalog {
 
   /** o que o cliente precisa para a janela de skills e a barra */
   view(s: SkillDef) {
-    return { id: s.id, sym: s.symbol, name: s.name, desc: s.desc, icon: s.icon, job: s.job, jtype: s.jtype, req: s.reqLevel, pre: s.pre, max: s.max, cost: this.cost(s), melee: s.kind !== 'other', kind: s.kind, mo: s.kind === 'melee' ? '' : s.motion,
+    return { id: s.id, sym: s.symbol, name: s.name, desc: s.desc, icon: s.icon, job: s.job, jtype: s.jtype, req: s.reqLevel, pre: s.pre, max: s.max, cost: this.cost(s), melee: s.kind !== 'other', kind: s.kind, hostile: s.hostile, mo: s.kind === 'melee' ? '' : s.motion,
       levels: s.levels.slice(0, s.max).map((l) => ({ mp: l.mp, fp: l.fp, cd: l.cooldown, min: l.min, max: l.max, dest: l.dest, adj: l.adj, time: l.time })) };
   }
 }

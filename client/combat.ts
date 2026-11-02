@@ -15,7 +15,7 @@ import type { MoverInstance } from '../shared/movers';
 const ATTACK_RANGE = 2.4;
 
 /** skill a lançar: id, movimento do personagem e se é buff (vale em quem lança) */
-export interface QueuedSkill { id: number; motion: string; buff?: boolean }
+export interface QueuedSkill { id: number; motion: string; buff?: boolean; /** alcance da skill (magia/debuff lançam de longe); sem isso vale o da arma */ range?: number }
 
 export class Combat {
   /** mob (id do servidor) sendo atacado */
@@ -38,7 +38,7 @@ export class Combat {
   onChainStep: (i: number) => void = () => {};
 
   /** lança a skill no alvo atual assim que estiver ao alcance */
-  queueSkill(id: number, motion: string, buff = false) { this.queued = { id, motion, buff }; this.nextAtk = Math.min(this.nextAtk, performance.now()); }
+  queueSkill(id: number, motion: string, buff = false, range?: number) { this.queued = { id, motion, buff, range }; this.nextAtk = Math.min(this.nextAtk, performance.now()); }
   /** Action Slot (UseSkillQueue): lança as skills uma depois da outra no alvo; depois volta ao golpe normal */
   queueChain(list: QueuedSkill[]) { this.chain = [...list]; this.chainStep = -1; this.queued = null; this.nextAtk = Math.min(this.nextAtk, performance.now()); }
   private endChain() { if (this.chainStep >= 0 || this.chain.length) { this.chain = []; this.chainStep = -1; this.onChainStep(-1); } }
@@ -68,7 +68,8 @@ export class Combat {
     if (!info || info.s === 'dead' || p.dead || p.flying || this.view.moveKeysDown()) { this.stop(); return; }
     const [mx, , mz] = info.pos;
     const dist = Math.hypot(mx - p.pos[0], mz - p.pos[2]);
-    if (dist > Math.max(ATTACK_RANGE, this.range - 0.8)) {
+    const next = this.queued ?? this.chain[0], reach = next?.range ?? this.range; // magia: de longe, como o arco e a varinha
+    if (dist > Math.max(ATTACK_RANGE, reach - 0.8)) {
       if (now >= this.nextMove) { p.moveTo(mx, mz); this.nextMove = now + 200; }
       return;
     }

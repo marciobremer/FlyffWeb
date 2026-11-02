@@ -269,11 +269,13 @@ export class CombatRules {
 
   /**
    * Alcance do golpe normal (GetAttackRange do dwAttackRange da arma): AR_SHORT 2, LONG 3, FAR 4, RANGE 10, WAND 15, HRANGE 6, HWAND 18.
-   * Arco e ioiô atacam de longe; sem arma, como AR_SHORT.
+   * Arco e ioiô atacam de longe, cajado como a varinha (10); sem arma, como AR_SHORT.
    */
   attackRange(f: Fighter) {
     const i = this.ar.indexOf(f.weapon?.attackRange ?? -1);
-    return [2, 3, 4, 10, 15, 6, 18][i] ?? 2;
+    const r = [2, 3, 4, 10, 15, 6, 18][i] ?? 2;
+    // cajado (IK3_STAFF) é arma de mago: ataca de longe como a varinha (nos dados vem AR_SHORT)
+    return f.weapon?.kind3 === 7 ? Math.max(r, 10) : r;
   }
   /** precisão (%) e esquiva do jogador, para a janela */
   hitBonus(f: Fighter) { return f.adjHit + this.dstOf(f, 'ADJ_HITRATE'); }

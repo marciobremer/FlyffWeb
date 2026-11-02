@@ -11,7 +11,7 @@ import { GameWindow } from './ui';
  * como o original. Arraste o ícone de uma skill aprendida para a barra de atalhos para usar com as teclas 1…0.
  */
 export interface SkillView {
-  id: number; sym: string; name: string; desc: string; icon: string; job: number; jtype: string; req: number; pre: [number, number][]; max: number; cost: number; melee: boolean; kind?: 'melee' | 'magic' | 'buff' | 'other'; mo?: string;
+  id: number; sym: string; name: string; desc: string; icon: string; job: number; jtype: string; req: number; pre: [number, number][]; max: number; cost: number; melee: boolean; kind?: 'melee' | 'magic' | 'buff' | 'other'; /** debuff em mob: precisa de alvo */ hostile?: boolean; mo?: string;
   levels: { mp: number; fp: number; cd: number; min: number; max: number; time?: number }[];
 }
 

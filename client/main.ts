@@ -202,6 +202,8 @@ net.onSkillUsed = (id, cd) => {
   const p = view.player?.pos;
   if (s?.sym === 'SI_ACR_SUP_DARKILLUSION' && p) combat.popup([p[0], p[1] + 0.9, p[2]], 'Você usou Dark Illusion.', 'notice');
 };
+/** alcance de lançar: magia 22 u (o servidor aceita 24), debuff 14 (15); golpe corpo a corpo = o da arma */
+const skillRange = (s: { kind?: string; hostile?: boolean }) => (s.kind === 'magic' ? 22 : s.hostile ? 14 : undefined);
 /** atalho de skill: lança no mob selecionado (anda até o alcance) */
 actionBar.onUseSkill = (id) => {
   const s = skillWnd.get(id);
@@ -215,7 +217,7 @@ actionBar.onUseSkill = (id) => {
     if (!net.resurrect(id, rid)) chat.system('Sem conexão com o servidor.');
     return;
   }
-  if (s.kind === 'buff') { // buff/cura: vale em você, sem alvo
+  if (s.kind === 'buff' && !s.hostile) { // buff/cura: vale em você, sem alvo
     net.castSkill(id, 0);
     return;
   }
@@ -225,7 +227,7 @@ actionBar.onUseSkill = (id) => {
     combat.start(t);
     if (!combat.attacking) return;
   }
-  combat.queueSkill(id, s.mo || s.sym.replace(/^SI_/, 'MTI_'));
+  combat.queueSkill(id, s.mo || s.sym.replace(/^SI_/, 'MTI_'), false, skillRange(s));
 };
 /**
  * Action Slot (CWndTaskBar::UseSkillQueue): clique direito no monstro ou tecla C com ele selecionado — anda até ele e lança
@@ -235,7 +237,7 @@ function runActionSlot(inst: MoverInstance | null = view.target) {
   if (!inGame) return;
   if (!inst || inst.owner !== 'spawns') { chat.system('Selecione um monstro primeiro.'); return; }
   const list = actionBar.queueSkills.map((it) => skillWnd.get(it.id)).filter((s): s is NonNullable<typeof s> => !!s && s.melee && skillWnd.levelOf(s.id) > 0)
-    .map((s) => ({ id: s.id, motion: s.mo || s.sym.replace(/^SI_/, 'MTI_'), buff: s.kind === 'buff' }));
+    .map((s) => ({ id: s.id, motion: s.mo || s.sym.replace(/^SI_/, 'MTI_'), buff: s.kind === 'buff' && !s.hostile, range: skillRange(s) }));
   if (!list.length) { chat.system('A Action Slot está vazia: arraste skills aprendidas da janela de skills (K) para ela.'); return; }
   if (view.target !== inst) view.selectTarget(inst);
   combat.start(inst);
