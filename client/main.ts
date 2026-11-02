@@ -1175,12 +1175,15 @@ function showSelect() {
   $('charCreate').hidden = true;
   $('charDelete').hidden = true;
   $('charSelect').hidden = false;
-  if (selectedSlot === null || !characters.some((c) => c.slot === selectedSlot)) selectedSlot = characters[0]?.slot ?? null;
+  // o vão escolhido pode ser um vazio (habilita Criar); sem escolha, o primeiro personagem (ou o 1º vão, conta sem personagem)
+  if (selectedSlot === null || selectedSlot < 0 || selectedSlot > 2) selectedSlot = characters[0]?.slot ?? 0;
   renderSlots();
   saySelect(characters.length ? 'Escolha o personagem e clique em Entrar.' : '');
-  $<HTMLButtonElement>('newCharBtn').disabled = characters.length >= 3;
-  $<HTMLButtonElement>('enterBtn').disabled = selectedSlot === null;
-  $<HTMLButtonElement>('deleteCharBtn').disabled = selectedSlot === null;
+  // Criar só com um vão vazio escolhido; Entrar e Apagar só com um personagem escolhido
+  const hasChar = characters.some((c) => c.slot === selectedSlot);
+  $<HTMLButtonElement>('newCharBtn').disabled = hasChar || characters.length >= 3;
+  $<HTMLButtonElement>('enterBtn').disabled = !hasChar;
+  $<HTMLButtonElement>('deleteCharBtn').disabled = !hasChar;
   fitCharScreen();
   stage.start();
   view.labelRenderer.domElement.hidden = true; // nomes de NPC não passam por cima das janelas
@@ -1193,6 +1196,7 @@ function renderSlots() {
   $('slotList').replaceChildren(...[0, 1, 2].flatMap((slot) => {
     const ch = characters.find((c) => c.slot === slot);
     const on = !!ch && slot === selectedSlot;
+    const sel = slot === selectedSlot; // o quadro escolhido (com personagem ou vazio) pisca em verde
     const card = document.createElement('div');
     card.className = 'card';
     card.style.left = `${48 + 172 * slot}px`;
@@ -1222,6 +1226,12 @@ function renderSlots() {
       name.classList.add('empty');
       name.textContent = '- Vazio -';
       void v.set(null);
+      card.setAttribute('aria-selected', String(sel));
+      card.setAttribute('aria-label', 'Vaga vazia');
+      card.tabIndex = 0;
+      const pickEmpty = () => { if (selectedSlot !== slot) { selectedSlot = slot; showSelect(); } };
+      card.addEventListener('click', pickEmpty);
+      card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickEmpty(); } });
     }
     return [card, name];
   }));
@@ -1349,7 +1359,7 @@ $('charCreate').addEventListener('submit', async (ev) => {
   btn.disabled = true;
   sayCreate('Criando…');
   try {
-    const r = await api<{ character: CharacterInfo; characters: CharacterInfo[] }>('/gapi/characters', { method: 'POST', body: JSON.stringify({ name, sex: draft.sex, hair: draft.hair, head: draft.head, hairColor: draftColor() }) });
+    const r = await api<{ character: CharacterInfo; characters: CharacterInfo[] }>('/gapi/characters', { method: 'POST', body: JSON.stringify({ name, sex: draft.sex, hair: draft.hair, head: draft.head, hairColor: draftColor(), slot: selectedSlot }) });
     characters = r.characters;
     selectedSlot = r.character.slot;
     showSelect();

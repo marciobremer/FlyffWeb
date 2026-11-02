@@ -73,7 +73,9 @@ async function createCharacter(req: IncomingMessage, res: ServerResponse) {
     return send(res, 400, { error: 'Aparência inválida.' });
   }
   const used = new Set((await query<{ slot: number }>('SELECT slot FROM characters WHERE account_id = $1 AND NOT deleted', [s.accountId])).rows.map((r) => r.slot));
-  const slot = [0, 1, 2].find((x) => !used.has(x));
+  // o vão escolhido na tela de seleção (`slot` 0–2) se estiver livre; senão o primeiro livre
+  const want = Number.isInteger(body.slot) ? Number(body.slot) : -1;
+  const slot = want >= 0 && want <= 2 && !used.has(want) ? want : [0, 1, 2].find((x) => !used.has(x));
   if (slot === undefined) return send(res, 409, { error: 'Você já tem 3 personagens.' });
   try {
     await query('INSERT INTO characters (account_id, slot, name, sex, hair_mesh, hair_color, head_mesh) VALUES ($1, $2, $3, $4, $5, $6, $7)', [s.accountId, slot, name, sex, hair, hairColor, head]);
