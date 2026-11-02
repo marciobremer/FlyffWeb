@@ -4,6 +4,8 @@ rem Painel: http://127.0.0.1:8090   Site: http://localhost:8080/   Jogo: http://
 rem Abre o painel e, quando o servidor do jogo estiver no ar, o jogo numa aba nova.
 rem Fechar esta janela (ou Ctrl+C) desliga o painel e o servidor do jogo.
 title ReactioN MMO - Servidor
+rem Motor dos mobs: Rust (game-server/). Para voltar ao Node, defina GAME_ENGINE=node antes de abrir este arquivo.
+if not defined GAME_ENGINE set "GAME_ENGINE=rust"
 cd /d "%~dp0"
 
 where node >nul 2>nul

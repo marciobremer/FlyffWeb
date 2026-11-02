@@ -10,6 +10,7 @@ import { ShopCatalog } from './shops';
 import { SkillCatalog } from './skills';
 import { MobWorld } from './mobs';
 import { attachRealtime, type RealtimeOptions, type WorldRuntime } from './realtime';
+import { startRustEngine } from './rustproc';
 
 /** mundos extras que o servidor também carrega (id WI_WORLD_*, define e ponto de chegada do ticket.inc) */
 const EXTRA_WORLDS: Record<string, { id: number; define: string; start: [number, number, number] }> = {
@@ -22,6 +23,7 @@ const EXTRA_WORLDS: Record<string, { id: number; define: string; start: [number,
  * processo só do mapa. `session` troca a conferência do token de login (processo separado não enxerga a memória do Auth).
  */
 export function startWorld(server: http.Server, world = WORLD, extra: Pick<RealtimeOptions, 'resolveSession'> = {}) {
+  startRustEngine(world); // GAME_ENGINE=rust: sobe o game-server (ou volta para o Node se faltar algo)
   const sw = new ServerWorld(RES_DIR, world).load();
   const mobs = new MobWorld(sw);
   console.log(`Mundo ${world}: ${mobs.mobs.length} mobs em ${sw.respawns.length} respawns`);

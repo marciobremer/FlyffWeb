@@ -55,3 +55,7 @@ data/loadtests/
 
 # pacote do mapa gerado por tools/export-mappack.ts
 data/mappack/
+
+# link com o game-server em Rust (segredo e pid desta maquina)
+data/rust-link.secret
+data/rust.pid
