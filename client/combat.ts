@@ -15,7 +15,7 @@ import type { MoverInstance } from '../shared/movers';
 const ATTACK_RANGE = 2.4;
 
 /** skill a lançar: id, movimento do personagem e se é buff (vale em quem lança) */
-export interface QueuedSkill { id: number; motion: string; buff?: boolean; /** alcance da skill (magia/debuff lançam de longe); sem isso vale o da arma */ range?: number }
+export interface QueuedSkill { id: number; motion: string; buff?: boolean; /** lança uma vez e para de atacar (debuff como o Sneaker não vira golpe automático) */ once?: boolean; /** alcance da skill (magia/debuff lançam de longe); sem isso vale o da arma */ range?: number }
 
 export class Combat {
   /** mob (id do servidor) sendo atacado */
@@ -38,7 +38,7 @@ export class Combat {
   onChainStep: (i: number) => void = () => {};
 
   /** lança a skill no alvo atual assim que estiver ao alcance */
-  queueSkill(id: number, motion: string, buff = false, range?: number) { this.queued = { id, motion, buff, range }; this.nextAtk = Math.min(this.nextAtk, performance.now()); }
+  queueSkill(id: number, motion: string, buff = false, range?: number, once = false) { this.queued = { id, motion, buff, range, once }; this.nextAtk = Math.min(this.nextAtk, performance.now()); }
   /** Action Slot (UseSkillQueue): lança as skills uma depois da outra no alvo; depois volta ao golpe normal */
   queueChain(list: QueuedSkill[]) { this.chain = [...list]; this.chainStep = -1; this.queued = null; this.nextAtk = Math.min(this.nextAtk, performance.now()); }
   private endChain() { if (this.chainStep >= 0 || this.chain.length) { this.chain = []; this.chainStep = -1; this.onChainStep(-1); } }
@@ -83,7 +83,7 @@ export class Combat {
       if (q) {
         this.nextAtk = now + Math.max(this.interval, 1200);
         if (q.buff) this.sendSkill(q.id, 0); // buff da sequência vale em quem lança (o movimento toca quando o servidor aceita)
-        else { p.cast(q.motion); this.sendSkill(q.id, id); }
+        else { p.cast(q.motion); this.sendSkill(q.id, id); if (q.once) { this.endChain(); this.targetId = null; } }
       } else {
         this.nextAtk = now + this.interval;
         p.attack();

@@ -4,10 +4,10 @@
 /* janela do alvo (imagens do tema do cliente; medidas do WndTargetInfornation02.tga 272×72) */
 #targetWnd { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); width: 272px; height: 72px; background: no-repeat 0 0; pointer-events: none; image-rendering: pixelated; }
 #targetWnd .tw-name { position: absolute; left: 74px; top: 10px; right: 18px; color: #fff; font: 600 15px system-ui, sans-serif; text-shadow: 0 0 3px #000, 0 1px 1px #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#targetWnd .tw-debuffs { position: absolute; left: 73px; top: 49px; display: flex; gap: 3px; }
-#targetWnd .tw-debuff { position: relative; width: 22px; height: 22px; background: rgba(0, 0, 0, .55); border: 1px solid #c05a4a; border-radius: 3px; }
-#targetWnd .tw-debuff img { width: 20px; height: 20px; display: block; }
-#targetWnd .tw-debuff span { position: absolute; right: 0; bottom: -1px; font: 700 9px/10px Tahoma, sans-serif; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; }
+#targetWnd .tw-debuffs { position: absolute; left: 73px; top: 76px; display: flex; gap: 4px; }
+#targetWnd .tw-debuff { position: relative; width: 32px; height: 32px; background: rgba(0, 0, 0, .55); border: 1px solid #c05a4a; border-radius: 3px; }
+#targetWnd .tw-debuff img { width: 30px; height: 30px; display: block; }
+#targetWnd .tw-debuff span { position: absolute; right: 0; bottom: -1px; font: 700 11px/12px Tahoma, sans-serif; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; }
 #targetWnd.hostile .tw-name { color: #ffb0a0; }
 #targetWnd .tw-level { position: absolute; left: 6px; top: 6px; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; color: #fff; font: 700 16px system-ui, sans-serif; }
 #targetWnd .tw-level img { width: 10px; height: 16px; }

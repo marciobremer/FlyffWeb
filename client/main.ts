@@ -227,7 +227,7 @@ actionBar.onUseSkill = (id) => {
     combat.start(t);
     if (!combat.attacking) return;
   }
-  combat.queueSkill(id, s.mo || s.sym.replace(/^SI_/, 'MTI_'), false, skillRange(s));
+  combat.queueSkill(id, s.mo || s.sym.replace(/^SI_/, 'MTI_'), false, skillRange(s), !!s.hostile);
 };
 /**
  * Action Slot (CWndTaskBar::UseSkillQueue): clique direito no monstro ou tecla C com ele selecionado — anda até ele e lança
