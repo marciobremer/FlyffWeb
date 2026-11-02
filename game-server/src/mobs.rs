@@ -54,6 +54,8 @@ pub struct Mob {
     pub foe: u32,
     pub next_atk: u64,
     pub next_scan: u64,
+    /// debuff de skill (Sneaker): até este instante (ms) o mob não anda — ainda golpeia quem está ao alcance
+    pub frozen_until: u64,
     pub dmg_by: IdMap<i64>,
     pub died_at: u64,
     pub respawn_at: u64,
@@ -107,7 +109,7 @@ impl<R: Rng, T: Terrain> MobWorld<R, T> {
                 mobs.push(Mob {
                     id: mobs.len() as u32 + 1, model_id: r.model_id, x, z, y: r.pos.1, h, s: MobState::Stand, area: r.rect, origin: (r.pos.0, r.pos.2),
                     target: None, wait, speed: r.speed, flying: r.flying, prop: r.prop.clone(), hp, max_hp: hp,
-                    aggressive: k < r.attack_count || r.boss, foe: 0, next_atk: 0, next_scan: 0, dmg_by: IdMap::default(),
+                    aggressive: k < r.attack_count || r.boss, foe: 0, next_atk: 0, next_scan: 0, frozen_until: 0, dmg_by: IdMap::default(),
                     died_at: 0, respawn_at: 0, respawn_ms: r.time_s.max(5) as i64 * 1000, dirty: false,
                 });
             }
@@ -245,6 +247,10 @@ impl<R: Rng, T: Terrain> MobWorld<R, T> {
                     continue;
                 }
                 let dist = (p.0 - m.x).hypot(p.1 - m.z);
+                if dist > MOB_ATTACK_RANGE && m.frozen_until > now {
+                    Self::set_state(m, MobState::Stand);
+                    continue;
+                }
                 if dist > MOB_ATTACK_RANGE {
                     Self::set_state(m, MobState::Run);
                     Self::step_to(grid, m, p.0, p.1, run, dt, MOB_ATTACK_RANGE * 0.8);
@@ -266,6 +272,10 @@ impl<R: Rng, T: Terrain> MobWorld<R, T> {
             }
 
             // patrulha
+            if m.frozen_until > now {
+                Self::set_state(m, MobState::Stand);
+                continue;
+            }
             if m.target.is_none() {
                 m.wait -= dt;
                 if m.wait > 0.0 { continue; }
@@ -296,6 +306,11 @@ impl<R: Rng, T: Terrain> MobWorld<R, T> {
         self.mobs.swap_remove(i);
         if let Some(moved) = self.mobs.get(i) { self.index.insert(moved.id, i); }
         self.grid.remove(id);
+    }
+
+    /// debuff que para o mob de andar até `until` (ms)
+    pub fn freeze(&mut self, id: EntityId, until: u64) {
+        if let Some(&i) = self.index.get(&id) { self.mobs[i].frozen_until = until; }
     }
 
     /// jogador golpeou o mob: tira HP, guarda o dano (exp) e o mob passa a atacá-lo (se não for pacífico). true se morreu agora.
@@ -332,7 +347,7 @@ impl<R: Rng, T: Terrain> MobWorld<R, T> {
                 id: self.seq, model_id: spawn.model_id, x: mx, z: mz, y, h, s: MobState::Stand,
                 area: Some(Rect { x_min: x - 8.0, z_min: z - 8.0, x_max: x + 8.0, z_max: z + 8.0 }), origin: (x, z), target: None, wait: 2.0,
                 speed: spawn.speed, flying: spawn.flying, prop: spawn.prop.clone(), hp, max_hp: hp, aggressive: spawn.boss, foe: 0, next_atk: 0,
-                next_scan: 0, dmg_by: IdMap::default(), died_at: 0, respawn_at: 0, respawn_ms: -1, dirty: true,
+                next_scan: 0, frozen_until: 0, dmg_by: IdMap::default(), died_at: 0, respawn_at: 0, respawn_ms: -1, dirty: true,
             };
             self.grid.set(m.id, mx as f32, mz as f32);
             self.index.insert(m.id, self.mobs.len());
@@ -421,6 +436,20 @@ mod tests {
         h.players.clear();
         w.tick(0.05, 20_000, &mut h);
         assert_eq!(w.mobs()[0].foe, 0);
+    }
+
+    #[test]
+    fn frozen_mob_does_not_move_until_the_debuff_ends() {
+        let mut w = world(&[spawn(1, 1)]);
+        let (mx, mz) = (w.mobs()[0].x, w.mobs()[0].z);
+        let mut h = Hooks { players: vec![(7, mx + 12.0, mz)], hits: vec![] };
+        let id = w.mobs()[0].id;
+        w.freeze(id, 3000);
+        for t in 0..40u64 { w.tick(0.05, t * 50, &mut h); } // 2 s, ainda parado
+        let m = w.get(id).unwrap();
+        assert_eq!((m.x, m.z), (mx, mz), "mob parado não pode andar");
+        for t in 80..200u64 { w.tick(0.05, t * 50, &mut h); } // depois dos 3 s volta a perseguir
+        assert!(w.get(id).unwrap().x != mx || w.get(id).unwrap().z != mz, "passou o debuff: deveria andar");
     }
 
     #[test]

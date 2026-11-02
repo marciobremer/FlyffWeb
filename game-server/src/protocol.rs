@@ -122,6 +122,8 @@ pub enum LinkIn {
     Pos { list: Vec<PosIn> },
     /// o Node calculou um dano (golpe, skill) em um mob: o Rust confere a visão, aplica e é dono do HP/morte
     Damage { char: u32, mob: u32, dmg: i64, peaceful: bool },
+    /// skill de debuff (Sneaker): o mob não anda por `ms`
+    Freeze { mob: u32, ms: u64 },
     /// o personagem saiu/morreu: mobs que o atacavam desistem
     Forget { char: u32 },
     /// morto ou invisível: os mobs não o veem. `invis`: só quem é `staff` (GM/admin) o enxerga na visão de jogadores

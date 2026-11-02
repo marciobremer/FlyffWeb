@@ -1440,6 +1440,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
    * alvo ao alcance; buff/cura (EXT_SELFCHGPARAMET, EXT_ANOTHER…) valem em quem lança: DST de efeito instantâneo (HP/MP/FP) cura na
    * hora, os demais viram um buff com a duração dwSkillTime (somam aos atributos como os itens equipados).
    */
+  const WEAPON_NAMES: Record<number, string> = { 2: 'uma espada', 3: 'um machado', 4: 'um bastão', 5: 'um knuckle', 6: 'uma varinha', 7: 'um cajado', 8: 'uma espada de duas mãos', 9: 'um machado de duas mãos', 11: 'um yoyo', 12: 'um arco', 13: 'um arco', 14: 'uma besta' };
   function castSkill(c: Conn, skillId: number, mobId: number) {
     const mobWorld = W(c).mobs;
     const p = c.player, cb = c.cb, s = skillCat?.byId.get(skillId);
@@ -1448,16 +1449,17 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (lv <= 0) { reply(c, `Você ainda não aprendeu ${s.name}.`); return; }
     if (!skillCat!.lineage(p.job).has(s.job)) return;
     if (s.kind === 'other') { reply(c, `${s.name} ainda não pode ser lançada.`); return; }
+    if (!skillCat!.weaponOk(s, cb.f.weapon)) { reply(c, `${s.name} precisa de ${WEAPON_NAMES[s.weapon![0]] ?? 'outra arma'} equipada.`); return; }
     const now = Date.now();
     if ((cb.skillReady.get(skillId) ?? 0) > now) return;
     const L = s.levels[lv - 1];
-    const attack = s.kind === 'melee' || s.kind === 'magic';
+    const attack = s.kind === 'melee' || s.kind === 'magic', hostile = s.hostile;
     let m: Mob | undefined;
-    if (attack) {
-      if (now < cb.nextAtk - 120) return;
+    if (attack || hostile) {
+      if (attack && now < cb.nextAtk - 120) return;
       m = mobWorld.byId.get(mobId);
-      if (!m || m.s === 'dead' || !m.prop || !c.mobs.has(m.id)) return; // só mob que o cliente vê (interest set)
-      const reach = s.kind === 'magic' ? 24 : reachOf(rules.attackRange(cb.f)) + 1;
+      if (!m || m.s === 'dead' || !m.prop || !c.mobs.has(m.id)) { if (hostile) reply(c, 'Selecione um monstro como alvo.'); return; } // só mob que o cliente vê (interest set)
+      const reach = hostile ? 15 : s.kind === 'magic' ? 24 : reachOf(rules.attackRange(cb.f)) + 1;
       if (Math.hypot(m.x - p.p[0], m.z - p.p[2]) > reach) return;
     }
     if (cb.mp < L.mp || cb.fp < L.fp) { reply(c, L.mp > cb.mp ? 'MP insuficiente.' : 'FP insuficiente.'); return; }
@@ -1466,6 +1468,18 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     const cd = Math.max(L.cooldown || 0, s.kind === 'buff' ? 1000 : 1500);
     cb.skillReady.set(skillId, now + cd);
     send(c.ws, { t: 'skillUsed', id: skillId, cd });
+
+    if (hostile) {
+      // debuff no mob (Sneaker): a chance (nProbability) decide se pega; pegando, o mob não anda pela duração (dwSkillTime)
+      const fx = { c: s.sfx[0], h: s.sfx[2], s: s.sfx[4], b: -1, dur: 0, mo: s.motion, sn: s.snd[0] };
+      sendNear(p.w, p.p[0], p.p[2], { t: 'skillfx', a: p.id, fx, tg: m!.id });
+      if (Math.random() * 100 >= (L.prob > 0 ? L.prob : 100)) { reply(c, `${s.name} não afetou o alvo.`); return; }
+      const dur = L.time > 0 ? L.time : 5000;
+      m!.frozenUntil = now + dur;
+      if (rustHere(c)) rust?.send({ k: 'freeze', mob: m!.id, ms: dur });
+      sendNear(p.w, m!.x, m!.z, { t: 'mdebuff', id: m!.id, sk: skillId, name: s.name, icon: s.icon, ms: dur });
+      return;
+    }
 
     if (!attack) {
       // buff/cura em quem lança
@@ -1979,7 +1993,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
           const skills: unknown[] = [], hand = inventory?.catalog.bySymbol.get('II_WEA_HAN_HAND') ?? null;
           if (skillCat) for (const [id, lv] of cb.skills) {
             const sd = skillCat.byId.get(id), L = sd?.levels[lv - 1];
-            if (!sd || !L || lv <= 0 || (sd.kind !== 'melee' && sd.kind !== 'magic') || !skillCat.lineage(p.job).has(sd.job)) continue;
+            if (!sd || !L || lv <= 0 || (sd.kind !== 'melee' && sd.kind !== 'magic') || !skillCat.lineage(p.job).has(sd.job) || !skillCat.weaponOk(sd, cb.f.weapon)) continue;
             const pr = skillCat.powerRange(cb.f, sd, lv, hand);
             if (!pr) continue;
             const magic = sd.kind === 'magic';

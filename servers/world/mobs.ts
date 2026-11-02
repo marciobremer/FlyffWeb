@@ -26,6 +26,8 @@ export interface Mob {
   dmgBy: Map<number, number>; diedAt: number; respawnAt: number; respawnMs: number;
   /** mudou desde o último envio */
   dirty: boolean; cell: number;
+  /** debuff de skill (Sneaker): até este instante (ms) o mob não anda — ainda golpeia quem está ao alcance */
+  frozenUntil?: number;
 }
 
 /** o que o mundo dos mobs precisa saber dos jogadores (fornecido por server/realtime.ts) */
@@ -156,10 +158,12 @@ export class MobWorld {
         if (near.length) { near.sort((a, b) => Math.hypot(a.x - m.x, a.z - m.z) - Math.hypot(b.x - m.x, b.z - m.z)); m.foe = near[0].id; }
       }
 
+      const frozen = (m.frozenUntil ?? 0) > now;
       if (m.foe && hooks) {
         const p = hooks.player(m.foe);
         if (!p || this.outOfLeash(m)) { this.reset(m); continue; }
         const dist = Math.hypot(p[0] - m.x, p[1] - m.z);
+        if (dist > MOB_ATTACK_RANGE && frozen) { this.setState(m, 'stand'); continue; }
         if (dist > MOB_ATTACK_RANGE) { this.setState(m, 'run'); this.stepTo(m, p[0], p[1], runSpeed, dt, MOB_ATTACK_RANGE * 0.8); continue; }
         // perto: vira para o alvo e golpeia no ritmo do mob
         const h = (Math.atan2(p[0] - m.x, -(p[1] - m.z)) * 180) / Math.PI;
@@ -173,6 +177,7 @@ export class MobWorld {
       }
 
       // patrulha
+      if (frozen) { this.setState(m, 'stand'); continue; }
       if (!m.target) {
         m.wait -= dt;
         if (m.wait > 0) continue;

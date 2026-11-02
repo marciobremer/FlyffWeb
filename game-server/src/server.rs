@@ -372,6 +372,7 @@ impl<T: Terrain> MapState<T> {
                 self.stats.hits += 1;
                 if self.mobs.damage(mob, ent, dmg, peaceful, now) { self.stats.kills += 1; }
             }
+            LinkIn::Freeze { mob, ms } => { self.mobs.freeze(mob, now + ms); }
             LinkIn::Summon { spawn, x, z, y, n } => { self.mobs.summon(&spawn.to_spawn(), x, z, y, n); }
             LinkIn::Elements { table } => { self.elements = Elements { table }; }
             LinkIn::Fighter { char, f } => {

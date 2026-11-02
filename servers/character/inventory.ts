@@ -49,6 +49,11 @@ const LWEAPON = 9, RWEAPON = 10, SHIELD = 11;
 const baseJob = (job: number) => (job >= 32 && job <= 39 ? job - 26 : job >= 24 && job <= 31 ? job - 18 : job >= 16 && job <= 23 ? job - 10 : job);
 /** Blade (JOB_BLADE e Master/Hero dela) usa uma arma em cada mão: espada ou machado de uma mão (IK3_SWD 2 / IK3_AXE 3) */
 const isBlade = (job: number) => baseJob(job) === 7;
+/** 1ª classe (1 Mercenary, 2 Acrobat, 3 Assist, 4 Magician; 0 Vagrant) da linha de `job` */
+const firstClass = (job: number) => { const b = baseJob(job); return b >= 6 && b <= 13 ? Math.floor((b - 6) / 2) + 1 : b; };
+/** armas (IK3_*) que cada linha de classe empunha: espada/machado, yoyo/arco, bastão/knuckle, varinha/cajado (Vagrant: qualquer) */
+const CLASS_WEAPONS: Record<number, number[]> = { 1: [2, 3, 8, 9], 2: [11, 12, 13, 14], 3: [4, 5], 4: [6, 7] };
+const isWeaponKind = (d: ItemDef) => d.kind1 === 1 && d.kind3 >= 2 && d.kind3 <= 14 && d.kind3 !== 10;
 const dualWieldable = (d: ItemDef) => (d.kind3 === 2 || d.kind3 === 3) && !twoHanded(d);
 
 /**
@@ -268,6 +273,8 @@ export class Inventory {
     } else if (d.parts < 0 || !fitsPart(d.parts, slot)) return `${d.name} não vai nesse espaço.`;
     if (d.sex !== -1 && d.sex !== ch.sex) return `${d.name} é para o outro sexo.`;
     if (!jobCanUse(d.job, ch.job)) return `Sua classe não pode usar ${d.name}.`;
+    const mine = CLASS_WEAPONS[firstClass(ch.job)];
+    if (mine && (slot === RWEAPON || slot === LWEAPON) && isWeaponKind(d) && !mine.includes(d.kind3)) return `Sua classe não pode empunhar ${d.name}.`;
     if (d.level > ch.level) return `${d.name} precisa do nível ${d.level}.`;
     // voar (prancha/vassoura, IK3_BOARD/IK3_STICK) só a partir do nível 20, como no cliente
     if ((d.kind3 === 40 || d.kind3 === 41) && ch.level < 20) return 'Você precisa do nível 20 para voar.';

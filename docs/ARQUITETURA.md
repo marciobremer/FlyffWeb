@@ -247,6 +247,14 @@ Limites: PvP não existe em nenhum dos lados; a espera entre golpe do jogador e 
 
 **Persistência e segundo mapa — decidido não fazer agora.** Posição, HP e exp já nascem no Node (o cliente manda a posição ao Node; o Rust só espelha; o Node recebe `hurt`/`kill` e grava): gravar do Rust duplicaria escritas e criaria dois donos das mesmas colunas, sem ganho. Azria em outro processo Rust obrigaria o WebSocket de cada jogador a viver em um processo diferente do mapa dele (o navegador abre um só WebSocket) e ainda precisaria generalizar a ponte do Node, para um mapa de pouca carga (1873 mobs); o Node continua cuidando de Azria.
 
+### 11.8 Regras de skill, equipamento por classe e debuff em mob (2026-11-02)
+- **Arma exigida**: `SkillDef.weapon` (IK3_* aceitos na mão direita) vem da disciplina (`dwItemKind3` = DIS_*: SWORD/DOUBLE → espada/machado, TWOHAND* → 2 mãos, KNUCKLE/POSTER → bastão/knuckle, BOW, YOYO) e, para magia de ataque, varinha/cajado/bastão. `castSkill` recusa com "X precisa de … equipada"; o snapshot `fighter` só manda ao Rust as skills que a arma atual permite (as demais caem no Node, que explica o motivo).
+- **Equipamento por classe** (`inventory.cannotEquip`): além do `dwItemJob`, a mão direita/esquerda só aceita as armas da linha da classe (Mercenary: espada/machado/2 mãos; Acrobat: yoyo/arco/besta; Assist: bastão/knuckle; Magician: varinha/cajado; Vagrant: qualquer).
+- **Debuff em mob** (`SkillDef.hostile` = EXT_ANOTHER com DST_SPEED e `nProbability` > 0: Sneaker, Looting, Satanology): exige mob alvo visível a ≤15 u; rola `nProbability`% (falha → "não afetou o alvo"); pegando, `mob.frozenUntil = agora + dwSkillTime` (o mob não anda, mas ainda golpeia quem está ao alcance) e o Node avisa os vizinhos com `{t:'mdebuff', id, sk, name, icon, ms}`; o `skillfx` do cast leva `tg` (mob) para tocar o efeito no alvo.
+- **Contrato Node → Rust**: nova mensagem `{k:'freeze', mob, ms}` (Rust: `Mob.frozen_until`, ignora patrulha e perseguição enquanto durar).
+- **Cliente**: `TargetWindow.setDebuffs` mostra o ícone da skill com a contagem (s) sob a barra de HP do alvo.
+- Testes: `npx tsx tools/test-skill-rules.ts` (arma por skill, Sneaker) e `cargo test` (`frozen_mob_does_not_move_until_the_debuff_ends`).
+
 ## Contrato: modo de skills (auto/manual) — Admin → Game
 - O painel (aba Skills) grava `data/skill-mode.json` → `{ "mode": "auto" | "manual" }` via `servers/common/skillmode.ts` (`skillMode()` relê o arquivo a cada 2 s; sem arquivo = `manual`).
 - **manual**: comportamento atual (pontos a cada nível, o jogador distribui).

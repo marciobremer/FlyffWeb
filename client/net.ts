@@ -313,7 +313,9 @@ export class NetClient {
   onSkillUsed: (id: number, cd: number) => void = () => {};
   onBuffs: (list: import('./buffbar').BuffView[]) => void = () => {};
   /** efeitos de skill de buff/cura (quem lançou e os ids XI_*) */
-  onSkillFx: (a: number, fx: SkillFx) => void = () => {};
+  onSkillFx: (a: number, fx: SkillFx, target?: number) => void = () => {};
+  /** debuff de skill no mob `id` por `ms` (o relógio corre no cliente) */
+  onMobDebuff: (id: number, sk: number, name: string, icon: string, ms: number) => void = () => {};
   /** loja do NPC aberta pelo servidor */
   onShop: (s: import('./shop').ShopView) => void = () => {};
   /** você foi revivido no lugar (Resurrection de um Assist) */
@@ -470,7 +472,9 @@ export class NetClient {
       } else if (m.t === 'buffs') {
         this.onBuffs((m.list ?? []) as never);
       } else if (m.t === 'skillfx') {
-        this.onSkillFx(Number(m.a), m.fx as SkillFx);
+        this.onSkillFx(Number(m.a), m.fx as SkillFx, m.tg === undefined ? undefined : Number(m.tg));
+      } else if (m.t === 'mdebuff') {
+        this.onMobDebuff(Number(m.id), Number(m.sk), String(m.name ?? ''), String(m.icon ?? ''), Number(m.ms) || 0);
       } else if (m.t === 'skillUsed') {
         this.onSkillUsed(Number(m.id), Number(m.cd) || 1000);
       } else if (m.t === 'getup') {

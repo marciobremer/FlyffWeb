@@ -841,6 +841,9 @@ export class WorldView {
   /** HP do alvo na janela (0–1) */
   setTargetHp(frac: number) { if (this.selected) this.targetWnd.setHp(frac); }
 
+  /** debuffs do alvo selecionado (ícones com contagem sob a barra de HP) */
+  setTargetDebuffs(list: import('./target').TargetDebuff[]) { if (this.selected) this.targetWnd.setDebuffs(list); }
+
   selectTarget(inst: MoverInstance | null) {
     this.selected?.label?.element.classList.remove('selected');
     this.selected = inst;

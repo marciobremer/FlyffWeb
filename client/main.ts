@@ -406,7 +406,20 @@ function skillFx(a: number, target: [number, number, number] | null, fx: SkillFx
   // buff: o efeito fica no personagem enquanto durar
   if (fx.b !== undefined && fx.b >= 0 && fx.dur) view.playSfxFollow(fx.b, () => { const p = posOf(); return p ? [p[0], p[1], p[2]] : null; }, fx.dur);
 }
-net.onSkillFx = (a, fx) => skillFx(a, null, fx);
+net.onSkillFx = (a, fx, tg) => skillFx(a, tg === undefined ? null : view.moverMgr.externalInfo(tg)?.pos ?? null, fx);
+// debuffs nos mobs (Sneaker…): o ícone com a contagem aparece na janela do alvo
+const mobDebuffs = new Map<number, { sk: number; name: string; icon: string; end: number }[]>();
+net.onMobDebuff = (id, sk, name, icon, ms) => {
+  const l = (mobDebuffs.get(id) ?? []).filter((d) => d.sk !== sk);
+  l.push({ sk, name, icon, end: performance.now() + ms });
+  mobDebuffs.set(id, l);
+};
+setInterval(() => {
+  const t = view.target, id = t ? view.moverMgr.externalIdOf(t) : null;
+  const now = performance.now();
+  for (const [k, l] of mobDebuffs) { const live = l.filter((d) => d.end > now); if (live.length) mobDebuffs.set(k, live); else mobDebuffs.delete(k); }
+  view.setTargetDebuffs(id === null ? [] : mobDebuffs.get(id) ?? []);
+}, 250);
 net.onHit = (k, a, d, dmg, flags, hp, fx, sn) => {
   if ((k === 'p' && a === net.myId) || (k === 'm' && d === net.myId)) lastBattleAt = performance.now(); // batalha: não monta
   const mm = view.moverMgr, miss = (flags & 1) !== 0, crit = (flags & 2) !== 0;
@@ -442,7 +455,7 @@ net.onHit = (k, a, d, dmg, flags, hp, fx, sn) => {
     if (at) combat.popup(at, miss ? 'MISS' : String(dmg), miss ? 'miss' : d === net.myId ? (crit ? 'crit' : 'me') : 'other');
   }
 };
-net.onMobDie = (id) => { view.moverMgr.setExternalState(id, 'dead'); if (view.target && view.target === view.moverMgr.externalInfo(id)?.inst) view.setTargetHp(0); };
+net.onMobDie = (id) => { mobDebuffs.delete(id); view.moverMgr.setExternalState(id, 'dead'); if (view.target && view.target === view.moverMgr.externalInfo(id)?.inst) view.setTargetHp(0); };
 net.onPlayerDie = (id) => { if (id === net.myId) { combat.stop(); view.player?.die(); deathScreen(true); } };
 /**
  * Morto: a tela perde a cor e aparece a caixa com "Reviver na cidade" — ou espera um Assist usar Resurrection, que levanta

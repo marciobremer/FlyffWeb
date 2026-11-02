@@ -17,12 +17,16 @@ import type { MoverProp } from './world';
  * v1: só as skills EXT_MELEEATK lançam; as demais (buffs, magias) aparecem e podem ser aprendidas, mas ainda não lançam.
  */
 /** por nível: ataque mín/máx, custo, espera, alcance, e o efeito (dwDestParam/nAdjParamVal ×2) com a duração `time` (ms; 0 = instantâneo) */
-export interface SkillLevel { min: number; max: number; mp: number; fp: number; cooldown: number; range: number; dest: [number, number]; adj: [number, number]; time: number }
+export interface SkillLevel { min: number; max: number; mp: number; fp: number; cooldown: number; range: number; dest: [number, number]; adj: [number, number]; time: number; /** nProbability: chance de pegar no alvo (%) */ prob: number }
 /** melee = golpe; magic = ataque mágico no alvo; buff = efeito em quem lança (buff com duração ou cura); other = ainda sem efeito */
 export type SkillKind = 'melee' | 'magic' | 'buff' | 'other';
 export interface SkillDef {
   id: number; symbol: string; name: string; desc: string; jtype: string; job: number; reqLevel: number;
   pre: [number, number][]; max: number; icon: string; melee: boolean; kind: SkillKind;
+  /** tipos de arma (IK3_*) que a skill exige na mão direita; null = qualquer (ou sem arma) */
+  weapon: number[] | null;
+  /** debuff no mob alvo (EXT_ANOTHER com DST_SPEED e chance: Sneaker, Satanology…): para o mob de andar pela duração */
+  hostile: boolean;
   refer: { stat: number; target: number; value: number }[];
   levels: SkillLevel[];
   /** dwSfxObj…dwSfxObj5 (ids XI_*, -1 = nenhum): 0 ao lançar, 1 projétil, 2 no alvo ao acertar, 3 que dura no alvo (buff), 4 no lançador ao acertar */
@@ -36,6 +40,14 @@ export interface SkillDef {
 /** EXT_* do propSkill → o que o servidor sabe fazer */
 const kindOf = (exe: string): SkillKind => (exe === 'EXT_MELEEATK' ? 'melee' : exe === 'EXT_MAGICATK' || exe === 'EXT_MAGICATKSHOT' ? 'magic'
   : ['EXT_SELFCHGPARAMET', 'EXT_ANOTHER', 'EXT_ANOTHERWITH', 'EXT_OBJCHGPARAMET', 'EXT_TROUPE', 'EXT_MAGIC'].includes(exe) ? 'buff' : 'other');
+
+/** disciplina da skill (DIS_*, dwItemKind3 do propSkill) → armas (IK3_*) que ela exige; magia de ataque exige varinha/cajado (cheerstick do Ringmaster) */
+const DIS_WEAPON: Record<string, number[]> = {
+  DIS_SWORD: [2, 3], DIS_DOUBLE: [2, 3], DIS_DOUBLESWORD: [2, 3], DIS_DOUBLEAXE: [2, 3],
+  DIS_TWOHANDSWORD: [8], DIS_TWOHANDAXE: [9], DIS_TWOHANDWEAPON: [8, 9],
+  DIS_KNUCKLE: [4, 5], DIS_POSTER: [4, 5], DIS_BOW: [12, 13, 14], DIS_YOYO: [11, 13],
+};
+const MAGIC_WEAPON = [4, 6, 7];
 
 const JOB_PARENT: Record<number, number> = { 6: 1, 7: 1, 8: 2, 9: 2, 10: 3, 11: 3, 12: 4, 13: 4 };
 
@@ -60,7 +72,7 @@ export class SkillCatalog {
     const add = read('propSkillAdd.csv', 'windows-1252').split(/\r?\n/);
     const ah = (add[1] ?? '').replace(/^\/\//, '').split(',').map((s) => s.trim().toLowerCase());
     const A = (n: string) => ah.indexOf(n.toLowerCase());
-    const ai = { d1: A('dwDestParam1'), d2: A('dwDestParam2'), a1: A('nAdjParamVal1'), a2: A('nAdjParamVal2'), time: A('dwSkillTime'), name: A('dwName'), lv: A('dwSkillLvl'), min: A('dwAbilityMin'), max: A('dwAtkAbilityMax'), mp: A('dwReqMp'), fp: A('dwRepFp'), cd: A('dwCooldown'), range: A('dwSkillRange') };
+    const ai = { d1: A('dwDestParam1'), d2: A('dwDestParam2'), a1: A('nAdjParamVal1'), a2: A('nAdjParamVal2'), time: A('dwSkillTime'), prob: A('nProbability'), name: A('dwName'), lv: A('dwSkillLvl'), min: A('dwAbilityMin'), max: A('dwAtkAbilityMax'), mp: A('dwReqMp'), fp: A('dwRepFp'), cd: A('dwCooldown'), range: A('dwSkillRange') };
     const n0 = (v: string | undefined) => { const x = Number((v ?? '').trim()); return Number.isFinite(x) ? x : 0; };
     const dst = (v: string | undefined) => { const s = (v ?? '').trim(); if (!s || s === '=') return -1; return /^\d+$/.test(s) ? Number(s) : this.D(s); };
     for (const line of add.slice(2)) {
@@ -71,7 +83,7 @@ export class SkillCatalog {
       let a = levels.get(sym);
       if (!a) levels.set(sym, (a = []));
       a[lv - 1] = { min: n0(c[ai.min]), max: n0(c[ai.max]), mp: n0(c[ai.mp]), fp: n0(c[ai.fp]), cooldown: n0(c[ai.cd]), range: n0(c[ai.range]),
-        dest: [dst(c[ai.d1]), dst(c[ai.d2])], adj: [n0(c[ai.a1]), n0(c[ai.a2])], time: n0(c[ai.time]) };
+        dest: [dst(c[ai.d1]), dst(c[ai.d2])], adj: [n0(c[ai.a1]), n0(c[ai.a2])], time: n0(c[ai.time]), prob: n0(c[ai.prob]) };
     }
 
     const rows = read('propSkill.txt').split(/\r?\n/);
@@ -81,7 +93,7 @@ export class SkillCatalog {
       id: H('dwID'), name: H('szName'), k1: H('dwItemKind1'), k2: H('dwItemKind2'), req: H('dwReqDisLV'), re1: H('dwReSkill1'), rl1: H('dwReSkillLevel1'),
       re2: H('dwReSkill2'), rl2: H('dwReSkillLevel2'), icon: H('szIcon'), exe: H('dwExeTarget'), rs1: H('dwReferStat1'), rs2: H('dwReferStat2'),
       sfx0: H('dwSfxObj'), sfx1: H('dwSfxObj2'), sfx2: H('dwSfxObj3'), sfx3: H('dwSfxObj4'), sfx4: H('dwSfxObj5'),
-      motion: H('dwUseMotion'), sa1: H('dwSndAttack1'), sa2: H('dwSndAttack2'), rt1: H('dwReferTarget1'), rt2: H('dwReferTarget2'), rv1: H('dwReferValue1'), rv2: H('dwReferValue2'), max: H('ExpertMax'), comment: H('szComment'),
+      dis: H('dwItemKind3'), motion: H('dwUseMotion'), sa1: H('dwSndAttack1'), sa2: H('dwSndAttack2'), rt1: H('dwReferTarget1'), rt2: H('dwReferTarget2'), rv1: H('dwReferValue1'), rv2: H('dwReferValue2'), max: H('ExpertMax'), comment: H('szComment'),
     };
     const num = (v: string | undefined) => { const s = (v ?? '').trim(); if (!s || s === '=') return -1; return /^-?\d+$/.test(s) ? Number(s) : this.D(s); };
     for (const line of rows.slice(2)) {
@@ -100,12 +112,17 @@ export class SkillCatalog {
         id, symbol: sym, name: nt?.skills[sym]?.[0] || names.get((c[C.name] ?? '').trim()) || sym, desc: nt?.skills[sym]?.[1] ?? names.get((c[C.comment] ?? '').trim()) ?? '', jtype, job: num(c[C.k2]),
         reqLevel: Math.max(1, num(c[C.req])), pre, max: Math.min(lv.length, Math.max(1, num(c[C.max]) > 0 ? num(c[C.max]) : lv.length)),
         icon: (c[C.icon] ?? '').replace(/"/g, '').trim(), melee: (c[C.exe] ?? '').trim() === 'EXT_MELEEATK', kind: kindOf((c[C.exe] ?? '').trim()), refer, levels: lv,
+        weapon: kindOf((c[C.exe] ?? '').trim()) === 'magic' ? MAGIC_WEAPON : DIS_WEAPON[(c[C.dis] ?? '').trim()] ?? null,
+        hostile: (c[C.exe] ?? '').trim() === 'EXT_ANOTHER' && lv.some((l) => l.dest[0] === this.D('DST_SPEED') && l.prob > 0),
         sfx: [C.sfx0, C.sfx1, C.sfx2, C.sfx3, C.sfx4].map((k) => (k < 0 ? -1 : num(c[k]))),
         snd: [C.sa1, C.sa2].map((k) => (k < 0 ? -1 : num(c[k]))),
         motion: C.motion < 0 ? '' : /^MTI_\w+$/.test((c[C.motion] ?? '').trim()) ? (c[C.motion] ?? '').trim() : '',
       });
     }
   }
+
+  /** a arma da mão direita serve para a skill? (mago só lança com varinha/cajado; espada só com espada…) */
+  weaponOk(s: SkillDef, weapon: { kind3: number } | null) { return !s.weapon || (!!weapon && s.weapon.includes(weapon.kind3)); }
 
   /** classes cujas skills o personagem pode usar: Vagrant + 1ª classe + 2ª (master/hero contam como a 2ª) */
   lineage(job: number) {
