@@ -9,7 +9,8 @@ import { DropRules } from './drops';
 import { ShopCatalog } from './shops';
 import { SkillCatalog } from './skills';
 import { MobWorld } from './mobs';
-import { attachRealtime, type RealtimeOptions, type WorldRuntime } from './realtime';
+import { attachRealtime, type Portal, type RealtimeOptions, type WorldRuntime } from './realtime';
+import { instanceRules, worldTable, type WorldInfo } from './dungeons';
 import { startRustEngine } from './rustproc';
 
 /** mundos extras que o servidor também carrega (id WI_WORLD_*, define e ponto de chegada do ticket.inc) */
@@ -41,17 +42,52 @@ export function startWorld(server: http.Server, world = WORLD, extra: Pick<Realt
   setCharacterInventory(inventory); // a lista de personagens (login) leva o equipamento para a prévia da seleção
   // Azria e os outros mapas extras: mobs e NPCs próprios (EXTRA_WORLDS=WdKebaras,WdCisland,WdRartesia,WdDarkRartesia — o padrão; vazio para nenhum)
   const extraWorlds: WorldRuntime[] = [];
+  const pre = new Map<string, ServerWorld>();
   for (const name of (process.env.EXTRA_WORLDS ?? 'WdKebaras,WdCisland,WdRartesia,WdDarkRartesia').split(',').map((s) => s.trim()).filter(Boolean)) {
     const info = EXTRA_WORLDS[name];
     if (!info || name === world) continue;
     try {
       const xw = new ServerWorld(RES_DIR, name).load();
+      pre.set(name, xw);
       const xm = new MobWorld(xw);
       console.log(`Mundo ${name}: ${xm.mobs.length} mobs em ${xw.respawns.length} respawns`);
       extraWorlds.push({ name, ...info, mobs: xm, shops: new ShopCatalog(RES_DIR, items, name) });
     } catch (e) { console.warn(`Mundo ${name} não carregou:`, (e as Error).message); }
   }
+  // dungeons: as portas são as regiões com teleportWorld dos .rgn; o mapa de destino carrega na primeira vez que alguém entra
+  const table = worldTable(RES_DIR), rules = instanceRules(RES_DIR);
+  const swCache = new Map<string, ServerWorld>(pre);
+  const swOf = (name: string) => { let w = swCache.get(name); if (!w) { w = new ServerWorld(RES_DIR, name).load(); swCache.set(name, w); } return w; };
+  const portalsOf = (sw: ServerWorld): Portal[] => sw.regions.filter((g) => g.teleportWorld > 0).flatMap((g) => { const t = table.byId.get(g.teleportWorld); return t ? [{ rect: g.rect, define: t.define, pos: g.teleportPos }] : []; });
+  const runtimeOf = (info: WorldInfo, key = info.name): WorldRuntime => {
+    const xw = swOf(info.name), portals = portalsOf(xw);
+    return { name: key, base: info.name, id: info.id, define: info.define, mobs: new MobWorld(xw), shops: new ShopCatalog(RES_DIR, items, info.name), start: portals[0] ? [...portals[0].pos] : [0, 100, 0], portals };
+  };
+  swCache.set(world, sw);
+  for (const w of extraWorlds) { const xs = swCache.get(w.name); if (xs) w.portals = portalsOf(xs); }
+  const loadWorld = (define: string): WorldRuntime | null => {
+    const info = table.byDefine.get(define);
+    if (!info) return null;
+    try { const wr = runtimeOf(info); console.log(`Mundo ${info.name}: ${wr.mobs?.mobs.length ?? 0} mobs (carregado ao entrar)`); return wr; }
+    catch (e) { console.warn(`Mundo ${info.name} não carregou:`, (e as Error).message); return null; }
+  };
+  /** cópia de dungeon de uma party: mobs do .rgn + os monstros do PartyDungeon.lua (SetMonster) */
+  const loadInstance = (define: string, key: string): WorldRuntime | null => {
+    const info = table.byDefine.get(define);
+    if (!info) return null;
+    try {
+      const wr = runtimeOf(info, key);
+      for (const m of rules.get(define)?.monsters ?? []) {
+        const id = items.defines.get(m.mover);
+        if (id === undefined || !wr.mobs) continue;
+        if (wr.mobs.summon(id, m.pos[0], m.pos[2], m.pos[1], 1)) { const mob = wr.mobs.mobs[wr.mobs.mobs.length - 1]; if (m.aggressive) mob.aggressive = true; }
+      }
+      console.log(`Dungeon ${key}: criada (${wr.mobs?.mobs.length ?? 0} mobs)`);
+      return wr;
+    } catch (e) { console.warn(`Dungeon ${key} não carregou:`, (e as Error).message); return null; }
+  };
   return attachRealtime(server, {
+    mainPortals: portalsOf(sw), loadWorld, loadInstance, worldInfo: (k) => (typeof k === 'number' ? table.byId.get(k) : table.byDefine.get(k)), instanceRules: rules,
     mainWorld: world, worlds: extraWorlds,
     mobs, inventory, combat, drops: new DropRules(RES_DIR, items),
     shops: new ShopCatalog(RES_DIR, items, world), skills: new SkillCatalog(RES_DIR, items), ...extra,

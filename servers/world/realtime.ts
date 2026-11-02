@@ -16,6 +16,7 @@ import type { CombatRules, Equipped, Fighter } from './combat';
 import { MOB_ATTACK_RANGE, isBoss, type Mob } from './mobs';
 import { RustLink, LinkSocket } from './rustlink';
 import { skillMode } from '../common/skillmode';
+import { classOfJob, type InstanceRule, type WorldInfo } from './dungeons';
 import { GROUND_MS, OWNER_MS, type DropRules } from './drops';
 import { notifyInventory } from '../character/inventory';
 import type { ShopCatalog } from './shops';
@@ -143,6 +144,8 @@ interface Conn { ws: WebSocket; player: PlayerView | null; accountId: number; di
   /** convites de party recebidos (id de quem convidou → quando) */ partyReqs?: Map<number, number>;
   /** trade aberto e pedidos de trade recebidos (id de quem pediu → quando) */ trade?: Trade | null; tradeReqs?: Map<number, number>;
   /** recebendo os buffs do Buff Pang (um a cada 0,5 s) */ buffing?: boolean;
+  /** última vez que pisou numa porta (evita repetir o aviso parado em cima dela) */ portalAt?: number;
+  /** desde quando está numa dungeon de instância de outra party (sai depois de 3 min) */ instLeftAt?: number;
   /** trocando de mundo: a conexão fecha e o cliente entra de novo no mundo novo (não sai da party nem avisa os amigos) */ switching?: boolean;
   /** de onde veio ao entrar num mapa de ticket (usar o ticket de novo volta para cá) */ ticketFrom?: { w: string; p: [number, number, number] };
   /** guild do personagem (cargo: 0 mestre … 4 rookie) e convites de guild recebidos */ guild?: { id: number; name: string; rank: number } | null; guildReqs?: Map<number, number>;
@@ -207,18 +210,30 @@ const CHAT_MAX = 200, CHAT_BURST = 5, CHAT_WINDOW_MS = 5000;
 const SHOUT_MS = 10_000;
 
 /** um mundo carregado no servidor: mobs, NPCs/lojas, id do mundo (WI_WORLD_*) e onde se chega/renasce */
-export interface WorldRuntime { name: string; id: number; define: string; mobs: MobWorld | null; shops: ShopCatalog | null; start: [number, number, number] }
-export interface RealtimeOptions { /** mundos além do principal (ex.: WdKebaras = Azria) */ worlds?: WorldRuntime[]; mainWorld?: string; mobs?: MobWorld; inventory?: Inventory; combat?: CombatRules; drops?: DropRules; shops?: ShopCatalog; skills?: SkillCatalog; resolveSession?: (token: string) => Promise<Session | null> }
+/** porta de dungeon (região do .rgn com teleportWorld): ao pisar no retângulo, vai para o mundo `define` no ponto `pos` */
+export interface Portal { rect: { xMin: number; zMin: number; xMax: number; zMax: number }; define: string; pos: [number, number, number] }
+export interface WorldRuntime {
+  name: string; id: number; define: string; mobs: MobWorld | null; shops: ShopCatalog | null; start: [number, number, number];
+  /** pasta do mapa que o cliente abre (igual a `name`, exceto numa cópia de dungeon: `DuRustia#12` → `DuRustia`) */ base?: string;
+  portals?: Portal[];
+  /** cópia de dungeon de instância de uma party: some quando fica vazia por um tempo */ instance?: { define: string; party: number; emptySince: number };
+}
+export interface RealtimeOptions {
+  /** carrega um mundo extra na primeira vez que alguém vai para ele (porta de dungeon) / cria a cópia de dungeon de uma party */
+  /** portas do mundo principal */ mainPortals?: Portal[];
+  loadWorld?: (define: string) => WorldRuntime | null; loadInstance?: (define: string, key: string) => WorldRuntime | null;
+  worldInfo?: (idOrDefine: number | string) => WorldInfo | undefined; instanceRules?: Map<string, InstanceRule>;
+  /** mundos além do principal (ex.: WdKebaras = Azria) */ worlds?: WorldRuntime[]; mainWorld?: string; mobs?: MobWorld; inventory?: Inventory; combat?: CombatRules; drops?: DropRules; shops?: ShopCatalog; skills?: SkillCatalog; resolveSession?: (token: string) => Promise<Session | null> }
 export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   const inventory = opts.inventory ?? null;
   // ---------- mundos: o principal (opts.mobs/opts.shops) e os extras; cada jogador está em um ----------
   const MAIN = opts.mainWorld ?? 'WdMadrigal';
   const worlds = new Map<string, WorldRuntime>();
-  worlds.set(MAIN, { name: MAIN, id: 1, define: 'WI_WORLD_MADRIGAL', mobs: opts.mobs ?? null, shops: opts.shops ?? null, start: [...REVIVE_AT] });
+  worlds.set(MAIN, { name: MAIN, id: 1, define: 'WI_WORLD_MADRIGAL', mobs: opts.mobs ?? null, shops: opts.shops ?? null, start: [...REVIVE_AT], portals: opts.mainPortals });
   for (const w of opts.worlds ?? []) worlds.set(w.name, w);
   /** mundo do jogador (ou o principal) */
   const W = (c: Conn | null | undefined) => worlds.get(c?.player?.w ?? MAIN) ?? worlds.get(MAIN)!;
-  const worldByDefine = (d: string) => [...worlds.values()].find((w) => w.define === d) ?? null;
+  const worldByDefine = (d: string) => [...worlds.values()].find((w) => w.define === d && !w.instance) ?? null;
   /** ticket.inc: item de viagem → mundo e ponto de chegada (ex.: Azria Ticket → WI_WORLD_KEBARAS 1271, 114, 1326) */
   const tickets = (() => {
     const m = new Map<string, { define: string; pos: [number, number, number] }>();
@@ -1220,8 +1235,112 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     c.switching = true;
     await savePosition(p, c.cb, 0);
     void query('UPDATE characters SET online = true WHERE id = $1', [p.id]).catch(() => {});
-    send(c.ws, { t: 'changeWorld', w: world, p: pos });
+    send(c.ws, { t: 'changeWorld', w: worlds.get(world)?.base ?? world, p: pos });
   }
+
+  // ---------- dungeons: portas (regiões de teleporte dos .rgn), party, nível/classe e cópia por party ----------
+  /** cópias de dungeon de instância: `DuRustia#<id da party>` */
+  const instances = new Map<string, WorldRuntime>();
+  /** de onde o jogador entrou numa dungeon de instância (para voltar ao ser retirado) */
+  const instOrigin = new Map<number, { w: string; p: [number, number, number] }>();
+  /** espera para entrar em outra dungeon do mesmo tipo (SetCoolTime do PartyDungeon.lua): `<jogador>:<define>` → fim e cópia */
+  const dungeonCool = new Map<string, { until: number; key: string }>();
+  const registerWorld = (wr: WorldRuntime) => { worlds.set(wr.name, wr); attachHooks(wr); };
+  /** o mundo (aberto) de um WI_*; carrega na primeira vez */
+  function ensureWorld(define: string): WorldRuntime | null {
+    const have = worldByDefine(define);
+    if (have) return have;
+    const wr = opts.loadWorld?.(define) ?? null;
+    if (wr) registerWorld(wr);
+    return wr;
+  }
+  /** mundo a abrir ao entrar com o `world_id` salvo, quando ele ainda não está carregado: dungeon aberta carrega; cópia de party só se ela ainda existe */
+  function worldForJoin(worldId: number, charId: number): WorldRuntime | null {
+    const info = opts.worldInfo?.(worldId);
+    if (!info) return null;
+    if (info.define.startsWith('WI_INSTANCE_')) {
+      const party = parties.of(charId);
+      return party ? instances.get(`${info.name}#${party.id}`) ?? null : null;
+    }
+    return ensureWorld(info.define);
+  }
+  const fmtCool = (ms: number) => `${Math.floor(ms / 60000)} min ${Math.floor((ms % 60000) / 1000)} s`;
+
+  /** pisou numa porta de dungeon */
+  async function usePortal(c: Conn, pt: Portal) {
+    const p = c.player, cb = c.cb;
+    if (!p || !cb || cb.dead || c.switching) return;
+    const now = Date.now();
+    if (now - (c.portalAt ?? 0) < 3000) return; // parado em cima da porta: não repete o aviso
+    c.portalAt = now;
+    if (p.s !== 'stand' && p.s !== 'walk' && p.s !== 'run') return;
+    const info = opts.worldInfo?.(pt.define);
+    const here = worlds.get(p.w);
+    // porta que leva ao mesmo mundo (dois pontos da mesma dungeon): só muda de lugar
+    if (here && info && (here.define === pt.define || here.base === info.name)) {
+      p.p = [...pt.pos]; c.dirty = true;
+      send(c.ws, { t: 'teleport', p: pt.pos });
+      return;
+    }
+    const rule = opts.instanceRules?.get(pt.define);
+    const instance = pt.define.startsWith('WI_INSTANCE_');
+    const staff = !!p.rank; // administrador entra sem conferir nível/classe/espera (como o AUTH_ADMINISTRATOR do original)
+    if (rule && !staff) {
+      if (!rule.classes.has(classOfJob(p.job))) { reply(c, 'Sua classe não pode entrar nesta dungeon.'); return; }
+      if (p.level < rule.level[0] || p.level > rule.level[1]) { reply(c, `Esta dungeon é para os níveis ${rule.level[0]} a ${rule.level[1]}.`); return; }
+    }
+    let key: string;
+    let target: WorldRuntime | null;
+    if (instance) {
+      const party = parties.of(p.id);
+      if (!party) { reply(c, 'Você precisa estar em uma party para entrar nesta dungeon.'); return; }
+      const nm = info?.name ?? '';
+      key = `${nm}#${party.id}`;
+      if (rule && !staff) {
+        const cd = dungeonCool.get(`${p.id}:${pt.define}`);
+        if (cd && cd.key !== key && cd.until > now) { reply(c, `Você precisa esperar ${fmtCool(cd.until - now)} para entrar em outra dungeon deste tipo.`); return; }
+      }
+      target = instances.get(key) ?? null;
+      if (!target) {
+        target = opts.loadInstance?.(pt.define, key) ?? null;
+        if (target) { target.instance = { define: pt.define, party: party.id, emptySince: 0 }; instances.set(key, target); registerWorld(target); }
+      }
+      if (target && rule && !staff && !dungeonCool.get(`${p.id}:${pt.define}`)?.key.startsWith(nm + '#' + party.id)) dungeonCool.set(`${p.id}:${pt.define}`, { until: now + rule.coolMin * 60_000, key });
+      if (target) instOrigin.set(p.id, { w: p.w, p: [...p.p] });
+    } else {
+      target = ensureWorld(pt.define);
+      key = target?.name ?? '';
+    }
+    if (!target) { reply(c, 'Esta dungeon ainda não está disponível neste servidor.'); return; }
+    reply(c, `Entrando em ${info?.name ?? target.name}…`);
+    await changeWorld(c, key, pt.pos);
+  }
+
+  /** a cada 10 s: cópias de dungeon vazias por 10 min somem; quem saiu da party da cópia é retirado depois de 3 min */
+  const instanceTick = setInterval(() => {
+    const now = Date.now();
+    for (const [key, wr] of [...instances]) {
+      const inst = wr.instance!;
+      let inside = 0;
+      for (const c of conns) {
+        const p = c.player;
+        if (!p || p.w !== key) continue;
+        inside++;
+        if (parties.of(p.id)?.id === inst.party) { c.instLeftAt = undefined; continue; }
+        c.instLeftAt ??= now;
+        if (now - c.instLeftAt > 180_000 && !c.switching) {
+          const back = instOrigin.get(p.id) ?? { w: MAIN, p: [...REVIVE_AT] as [number, number, number] };
+          c.instLeftAt = undefined;
+          reply(c, 'Você saiu da party e foi retirado da dungeon.');
+          void changeWorld(c, worlds.has(back.w) ? back.w : MAIN, back.p);
+        }
+      }
+      if (inside) { inst.emptySince = 0; continue; }
+      if (!inst.emptySince) inst.emptySince = now;
+      else if (now - inst.emptySince > 600_000) { worlds.delete(key); instances.delete(key); console.log(`dungeon ${key}: cópia vazia removida`); }
+    }
+  }, 10_000);
+  http.on('close', () => clearInterval(instanceTick));
 
   /**
    * Ticket de mapa (ticket.inc, item de tempo: 1/3/7/15/30 dias = dwAbilityMin em minutos). Usar leva ao mapa dele e, na
@@ -1845,9 +1964,9 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     }, 1200);
   }
 
-  for (const wr of worlds.values()) {
+  const attachHooks = (wr: WorldRuntime) => {
     const mobWorld = wr.mobs;
-    if (!mobWorld) continue;
+    if (!mobWorld) return;
     mobWorld.hooks = {
       player: (id) => { const c = connOf(id); return c?.player && c.player.w === wr.name && c.cb && !c.cb.dead && !c.invis ? [c.player.p[0], c.player.p[2]] : null; },
       playersNear: (x, z, r) => {
@@ -1857,7 +1976,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       },
       attack: (m, id) => { if (connOf(id)?.player?.w === wr.name) mobAttack(m, id); },
     };
-  }
+  };
+  for (const wr of worlds.values()) attachHooks(wr);
 
   // ---------- motor Rust (GAME_ENGINE=rust): mobs, IA e área de visão no game-server/ ----------
   // O Node continua dono de jogadores, fórmulas, skills, itens e banco. O Rust é dono do estado dos mobs (posição, IA, HP, respawn)
@@ -2102,7 +2222,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (c.ws.readyState !== WebSocket.OPEN) { void inventory?.detach(id); return; } // fechou enquanto carregava
     const guildRow = await loadGuildOf(id);
     c.guild = guildRow;
-    const wr = [...worlds.values()].find((x) => x.id === ch.world_id) ?? null;
+    let wr = [...worlds.values()].find((x) => x.id === ch.world_id && !x.instance) ?? null;
+    if (!wr) wr = worldForJoin(ch.world_id, id); // dungeon ainda não carregada (ou a cópia da party) — sem ela, Flaris
     const wname = wr?.name ?? MAIN;
     const pStart = wr ? (inWorld(p0) ? p0 : [ch.pos_x, ch.pos_y, ch.pos_z]) : [...REVIVE_AT];
     c.player = { w: wname, ...(guildRow ? { guild: guildRow.name } : {}), ...(guildRow?.rank === 0 ? { gmaster: 1 as const } : {}), id, name: ch.name, sex: ch.sex, hair: ch.hair_mesh, ...(ch.hair_color ? { hc: ch.hair_color } : {}), head: ch.head_mesh, level: ch.level, p: pStart as [number, number, number], h: ch.angle, s: 'stand', eq: inv ? inventory!.looks(inv, c.hide) : [], job: ch.job, mt: stanceOf(c, inv ? inventory!.combatMotion(inv, ch.job) : 0), rank };
@@ -2210,6 +2331,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         if (Number.isFinite(h)) c.player.h = ((h % 360) + 360) % 360;
         if (typeof msg.s === 'string' && STATES.has(msg.s)) c.player.s = msg.s;
         c.dirty = true;
+        const portals = worlds.get(c.player.w)?.portals;
+        if (portals) for (const pt of portals) if (p[0] >= pt.rect.xMin && p[0] <= pt.rect.xMax && p[2] >= pt.rect.zMin && p[2] <= pt.rect.zMax) { void usePortal(c, pt).catch((e) => console.error('realtime: porta', e)); break; }
       } else if (msg.t === 'friendAdd' && c.player && typeof msg.name === 'string' && !Number.isInteger(msg.id)) {
         // janela "Add Friend": o pedido vai pelo nome (o jogador precisa estar online)
         const nick = msg.name.trim().slice(0, 32).toLowerCase();

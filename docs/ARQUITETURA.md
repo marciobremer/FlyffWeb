@@ -255,6 +255,13 @@ Limites: PvP não existe em nenhum dos lados; a espera entre golpe do jogador e 
 - **Cliente**: `TargetWindow.setDebuffs` mostra o ícone da skill com a contagem (s) sob a barra de HP do alvo.
 - Testes: `npx tsx tools/test-skill-rules.ts` (arma por skill, Sneaker) e `cargo test` (`frozen_mob_does_not_move_until_the_debuff_ends`).
 
+### 11.9 Dungeons: portas, party e cópias por party (2026-11-02)
+- **Portas**: as regiões do `.rgn` com `teleportWorld` (90 no total; 22 só no Madrigal) viram `Portal { rect, define, pos }` (`WorldRuntime.portals`). Ao pisar no retângulo (mensagem `state`), o jogador vai para o mundo de destino no ponto `pos`; porta cujo destino é o próprio mundo só muda de lugar. O mapa de destino carrega na primeira vez (`opts.loadWorld`), tabela de mundos em `servers/world/dungeons.ts` (World.inc + defineWorld.h).
+- **Dungeons de instância** (`WI_INSTANCE_*`, como o `CInstanceDungeonParty` do original): só entra quem está em **party**; cada party tem a própria cópia (`DuRustia#<id da party>`, `WorldRuntime.base` = pasta do mapa que o cliente abre); a cópia nasce com os mobs do `.rgn` + os monstros do `PartyDungeon.lua` (SetMonster); vazia por 10 min, some; quem sai da party é retirado depois de 3 min.
+- **Regras do `PartyDungeon.lua`** (`instanceRules`): classes (normal/master/hero/legend hero pelo id do job), faixa de nível e espera para entrar em outra cópia do mesmo tipo (`SetCoolTime`); administrador entra sem conferir classe/nível/espera, mas também precisa de party.
+- **Rust**: continua só no mapa principal; dungeons rodam no Node como o Azria.
+- Teste: `npx tsx tools/test-dungeons.ts`.
+
 ## Contrato: modo de skills (auto/manual) — Admin → Game
 - O painel (aba Skills) grava `data/skill-mode.json` → `{ "mode": "auto" | "manual" }` via `servers/common/skillmode.ts` (`skillMode()` relê o arquivo a cada 2 s; sem arquivo = `manual`).
 - **manual**: comportamento atual (pontos a cada nível, o jogador distribui).

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseWld, tileFileName, type WldInfo } from '../../shared/formats/wld';
 import { parseLnd } from '../../shared/formats/lnd';
-import { decodeText, parseRgn, parseTxtTxt, type Respawn } from '../../shared/formats/rgn';
+import { decodeText, parseRgn, parseTxtTxt, type Region, type Respawn } from '../../shared/formats/rgn';
 import { parseDefines } from '../../shared/formats/inc';
 import { MAP_SIZE } from '../../shared/formats/types';
 
@@ -29,6 +29,8 @@ export interface MoverProp {
 export class ServerWorld {
   wld!: WldInfo;
   respawns: Respawn[] = [];
+  /** regiões do .rgn (portas de dungeon = as com teleportWorld) */
+  regions: Region[] = [];
   /** propMover: fSpeed (unidades por tick de 1/60 s) por modelID */
   moverSpeed = new Map<number, number>();
   flyingMovers = new Set<number>();
@@ -53,7 +55,7 @@ export class ServerWorld {
     this.wld = parseWld(decodeText(wld));
     const rgn = this.ab(this.worldFile(`${this.name}.rgn`));
     const txt = this.ab(this.worldFile(`${this.name}.txt.txt`));
-    if (rgn) this.respawns = parseRgn(decodeText(rgn), txt ? parseTxtTxt(decodeText(txt, "windows-1252")) : new Map()).respawns;
+    if (rgn) { const parsed = parseRgn(decodeText(rgn), txt ? parseTxtTxt(decodeText(txt, "windows-1252")) : new Map()); this.respawns = parsed.respawns; this.regions = parsed.regions; }
     const defines = new Map<string, number>();
     for (const f of DEFINE_FILES) { const b = this.ab(path.join(this.resDir, f)); if (b) parseDefines(decodeText(b, 'windows-1252'), defines); }
     const pm = this.ab(path.join(this.resDir, 'propMover.txt'));
