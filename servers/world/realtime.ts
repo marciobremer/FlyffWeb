@@ -1372,19 +1372,22 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   const DST = { HP: D('DST_HP'), MP: D('DST_MP'), FP: D('DST_FP') };
   const USE_KINDS = new Set([D('IK2_POTION'), D('IK2_FOOD'), D('IK2_REFRESHER')]);
 
-  type BarEntry = { k: 'item' | 'skill'; id: number } | null;
+  /** `chat`: macro de texto (o que o jogador arrastou da caixa de chat) — repete a mensagem ao clicar */
+  type BarEntry = { k: 'item' | 'skill'; id: number } | { k: 'chat'; id: 0; text: string } | null;
   /** barra salva: 10 posições, cada uma null, { k: 'item', id } de um item ou { k: 'skill', id } de uma skill que existe */
   function cleanBar(v: unknown): BarEntry[] {
     const out: BarEntry[] = [];
     const arr = Array.isArray(v) ? v : [];
     for (let i = 0; i < 10; i++) {
-      const e = arr[i] as { k?: unknown; id?: unknown } | null | undefined;
+      const e = arr[i] as { k?: unknown; id?: unknown; text?: unknown } | null | undefined;
+      if (e?.k === 'chat' && typeof e.text === 'string' && e.text.trim()) { out.push({ k: 'chat', id: 0, text: e.text.trim().slice(0, 200) }); continue; }
       const ok = e && Number.isInteger(e.id) && ((e.k === 'item' && inventory?.catalog.byId.has(e.id as number)) || (e.k === 'skill' && skillCat?.byId.has(e.id as number)));
       out.push(ok ? { k: e!.k as 'item' | 'skill', id: e!.id as number } : null);
     }
     return out;
   }
   const barView = (bar: BarEntry[]) => bar.map((e) => {
+    if (e?.k === 'chat') return { k: 'chat', id: 0, icon: '', name: e.text, text: e.text };
     if (e?.k === 'skill') { const s = skillCat?.byId.get(e.id); return s ? { k: 'skill', id: s.id, icon: s.icon, name: s.name } : null; }
     const d = e && inventory?.catalog.byId.get(e.id); return d ? { k: 'item', id: d.id, icon: d.icon, name: d.name } : null;
   });
