@@ -643,9 +643,9 @@ export class WorldView {
     this.sfxMgr.playMoving(file, from, to, rotY, secs, onEnd);
   }
   /** efeito de uma vez só preso na posição que `getPos` devolve (anda junto com o personagem) */
-  playSfxFollowOnce(id: number, getPos: () => [number, number, number] | null, rotY = 0) {
+  playSfxFollowOnce(id: number, getPos: () => [number, number, number] | null, rotY = 0, flattenAbove: number | null = null) {
     const file = this.sfxFile(id);
-    if (file && this.layers.sfx) { this.sfxMgr.playFollowOnce(file, getPos, rotY); const p = getPos(); if (p) this.sfxSound(id, p); }
+    if (file && this.layers.sfx) { this.sfxMgr.playFollowOnce(file, getPos, rotY, flattenAbove); const p = getPos(); if (p) this.sfxSound(id, p); }
   }
   /** efeito que acompanha uma posição por `secs` segundos (buff) */
   playSfxFollow(id: number, getPos: () => [number, number, number] | null, secs: number) {

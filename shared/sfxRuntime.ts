@@ -108,6 +108,8 @@ export class SfxInstance {
   private alive = true;
   /** efeito de uma vez só (skill): ao terminar `done` fica true e some; no máximo `maxAge` s */
   once = false;
+  /** altura (u) acima da qual as partes do efeito são rebaixadas para o chão (null = como no arquivo) */
+  flattenAbove: number | null = null;
   done = false;
   private age = 0;
   maxAge = 4;
@@ -240,6 +242,7 @@ export class SfxInstance {
     const m = this.matRot.clone().multiply(rowYPR(pr[1], pr[0], pr[2]));
     void withKeyRotate;
     const t = transformCoord(key.pos, m);
+    if (this.flattenAbove !== null && t[1] > this.flattenAbove) t[1] = 0.3; // partes que o efeito põe lá no alto descem para a linha do chão
     return [this.pos[0] + t[0] * this.scale[0], this.pos[1] + t[1] * this.scale[1], this.pos[2] + t[2] * this.scale[2]];
   }
 
@@ -480,11 +483,12 @@ export class SfxManager {
     });
   }
   /** efeito de uma vez só que acompanha `getPos()` até acabar (level up, buff de NPC: anda junto com o personagem) */
-  playFollowOnce(file: string, getPos: () => V3 | null, rotY = 0) {
+  playFollowOnce(file: string, getPos: () => V3 | null, rotY = 0, flattenAbove: number | null = null) {
     const p0 = getPos();
     if (!p0) return;
     this.spawn(file, p0, rotY, (inst) => {
       inst.once = true;
+      inst.flattenAbove = flattenAbove;
       const p = getPos();
       if (p) inst.place(p[0], p[1], p[2]);
       return inst.done || !p;
