@@ -299,6 +299,7 @@ export class Inventory {
     if (!a) return { error: '' }; // nada para mover (estado do cliente desatualizado)
     const da = this.catalog.byId.get(a.id), db_ = b ? this.catalog.byId.get(b.id) : undefined;
     if (!da || (b && !db_)) return { error: 'Item desconhecido.' };
+    if (to[0] === EQUIP && a.x && a.x <= Date.now()) return { error: `${da.name} expirou e não pode mais ser equipado.` }; // item de tempo vencido
     if (to[0] === EQUIP) { const e = this.cannotEquip(da, to[1], ch); if (e) return { error: e }; }
     if (b && from[0] === EQUIP) { const e = this.cannotEquip(db_!, from[1], ch); if (e) return { error: to[0] === BAG ? 'Esse espaço da bolsa está ocupado.' : e }; }
     // duas mãos (DoEquip original): arma de duas mãos tira o escudo e a 2ª arma; escudo tira a arma de duas mãos e a 2ª arma;
