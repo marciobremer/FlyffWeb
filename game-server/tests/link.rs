@@ -138,3 +138,44 @@ fn killing_a_mob_sends_mdie_with_exp_and_far_player_never_hears_about_it() {
     assert!(k["exp"].as_i64().unwrap() > 0);
     let _ = h.stop.send(());
 }
+
+impl Gw {
+    /// primeiro quadro que satisfaz `f` (ou None em 3 s)
+    fn wait_frame(&mut self, f: impl Fn(&Value) -> bool) -> Option<Value> {
+        let end = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < end {
+            if let Some(v) = self.recv() { if f(&v) { return Some(v); } }
+        }
+        None
+    }
+}
+
+#[test]
+fn players_see_each_other_only_nearby_and_invisible_hides_from_non_staff() {
+    let (h, mut gw) = boot();
+    attach(&mut gw, 1, 10, 1005.0, 1005.0); // A
+    attach(&mut gw, 2, 11, 1030.0, 1005.0); // B perto de A
+    attach(&mut gw, 3, 12, 9000.0, 9000.0); // C longe
+
+    // A passa a ver B (e só B); C não vê ninguém
+    let see = gw.wait_frame(|f| f["k"] == "see" && f["char"] == 10 && f["enter"].as_array().is_some_and(|a| !a.is_empty())).expect("see de A");
+    assert_eq!(see["enter"], json!([11]));
+    assert!(gw.wait_frame(|f| f["k"] == "see" && f["char"] == 12).is_none(), "C longe não deve ver ninguém");
+
+    // B anda: A recebe `states` com B e nenhum jogador longe aparece
+    gw.send(json!({ "k": "pos", "list": [{ "id": 11, "x": 1040.0, "y": 100.0, "z": 1005.0, "h": 90.0, "s": "run" }] }));
+    let st = gw.wait_s2c(1, "states").expect("states para A");
+    assert_eq!(st["list"][0][0], 11);
+    assert_eq!(st["list"][0][5], "run");
+
+    // B fica invisível: A (não staff) recebe leave; com A staff, volta a ver
+    gw.send(json!({ "k": "flags", "char": 11, "untargetable": true, "invis": true, "staff": false }));
+    let leave = gw.wait_frame(|f| f["k"] == "see" && f["char"] == 10 && f["leave"].as_array().is_some_and(|a| !a.is_empty())).expect("leave");
+    assert_eq!(leave["leave"], json!([11]));
+    gw.send(json!({ "k": "flags", "char": 10, "untargetable": false, "invis": false, "staff": true }));
+    let back = gw.wait_frame(|f| f["k"] == "see" && f["char"] == 10 && f["enter"].as_array().is_some_and(|a| !a.is_empty())).expect("staff volta a ver");
+    assert_eq!(back["enter"], json!([11]));
+    let s = gw.stats();
+    assert!(s.see_enter >= 3 && s.see_leave >= 1);
+    let _ = h.stop.send(());
+}

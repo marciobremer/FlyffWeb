@@ -169,3 +169,15 @@ GAME_ENGINE=rust GAME_LINK_SECRET=SEGREDO npm start             # opcionais: GAM
 **Testes ponta a ponta** (servidor Node na 9080 + Rust na 9201): `tools/test-aoi.ts` (6 checks, passa com o Rust no comando), `tools/test-rust-e2e.ts` (jogador real: Rust conhece o jogador; mobs chegam pelo relay; **mob agressivo da IA do Rust golpeia o jogador**; golpe gera `hit`; Rust recebe o dano; `mdie`; tick médio 0,68 ms / pior 1,35 ms com 7368 mobs).
 
 **Limites conhecidos**: um mundo (Madrigal) por processo Rust; falta o terreno com altura/colisão de objetos; o espelho de mobs invocados não entra na grade do Node (só importa no fallback); no fallback os mobs continuam de onde o espelho estava (não do estado interno do Rust); PvP/skills ainda calculados no Node; nenhuma persistência no Rust; Admin Panel ainda não liga/mostra o processo Rust.
+
+### 11.3 Jogadores no Rust: visão e movimento (2026-11-02, quarta etapa)
+
+Com `GAME_ENGINE=rust` a **área de visão de jogadores** e o **fan-out de movimento** passam para o Rust (era o que mais crescia com o número de jogadores):
+- O Node manda `pos` (x, y, z, rumo, estado) de quem se mexeu e `flags` (morto, **invisível**, **staff**) a cada tick.
+- O Rust mantém dois conjuntos de visão por jogador, **separados** (mobs: até 80; jogadores: até 100), sobre a mesma grade de 64 u (janela de entrada 7×7, saída 9×9). Invisível só aparece para staff.
+- Mudanças de visão de jogadores vão ao Node como `see{char, enter[], leave[]}`; o Node responde com o `enter`/`leave` de sempre (PlayerView), mantendo `seen`/`viewers` para `look`, `job`, `level`, `pdie`… (`toWatchers` não mudou).
+- O `states` (posição dos que o jogador vê) sai pronto do Rust (`s2c`) e o Node só repassa. `refreshView`, `introduce` e a montagem de `states` do Node ficam desligados para quem está no mundo do Rust (voltam sozinhos se o link cair).
+
+Testes: `cargo test` (4 de integração TCP, incluindo "jogadores só se veem por perto e invisível some para não-staff"); `tools/test-rust-players.ts` (2 jogadores reais: `enter` mútuo, `states` de movimento, GM invisível visto por staff, `leave` ao se afastar; Rust contou see_enter/see_leave/state_updates). `test-aoi.ts` e `test-rust-e2e.ts` seguem passando.
+
+Limites: a visão de jogadores é por janela de células (≈ até 270 u nas diagonais; o Node usava círculo de 150 u); ações entre jogadores (trade, pm, convites por id) ainda não conferem a visão; não foi medido com centenas de bots (próximo: `tools/loadtest.ts` Node × Rust).

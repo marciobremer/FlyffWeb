@@ -21,6 +21,8 @@ use std::time::{Duration, Instant};
 pub const PLAYER_BASE: EntityId = 1 << 30;
 /// limite de mobs conhecidos por jogador (MOB_MAX do Node)
 const AOI_MAX: usize = 80;
+/// limite de jogadores conhecidos por jogador (VIEW_MAX do Node)
+const PLAYER_VIEW_MAX: usize = 100;
 /// maior deslocamento aceito entre duas mensagens de posição (MAX_STEP do Node)
 const MAX_STEP: f64 = 60.0;
 
@@ -100,6 +102,14 @@ struct Player {
     hp: i64,
     max_hp: i64,
     dead: bool,
+    y: f64,
+    h: f64,
+    st: String,
+    /// invisível (só staff o vê) e se ESTE jogador é staff
+    invis: bool,
+    staff: bool,
+    /// mexeu desde o último envio de rede
+    moved: bool,
     attacker: Attacker,
     defender: Defender,
     reach: f64,
@@ -124,11 +134,14 @@ fn state_str(s: MobState) -> &'static str {
     match s { MobState::Stand => "stand", MobState::Walk => "walk", MobState::Run => "run", MobState::Dead => "dead" }
 }
 fn r1(v: f64) -> f64 { (v * 10.0).round() / 10.0 }
+fn r2(v: f64) -> f64 { (v * 100.0).round() / 100.0 }
 
 struct MapState<T: Terrain> {
     cfg: Config,
     mobs: MobWorld<Xorshift32, T>,
+    /// visão de mobs e visão de jogadores têm limites próprios (80 e 100) e não competem entre si
     aoi: Aoi,
+    aoi_p: Aoi,
     links: HashMap<u64, Link>,
     players: HashMap<EntityId, Player>,
     by_conn: HashMap<(u64, u32), EntityId>,
@@ -169,6 +182,7 @@ impl<T: Terrain> MapState<T> {
         if let Some(p) = self.players.remove(&ent) {
             self.by_conn.remove(&(p.link, p.conn));
             self.aoi.remove_observer(ent);
+            self.aoi_p.remove_observer(ent);
             self.mobs.grid_mut().remove(ent);
             self.mobs.forget(ent);
         }
@@ -200,26 +214,35 @@ impl<T: Terrain> MapState<T> {
                 if defender.level == 0 { defender.level = ch.level; }
                 self.mobs.grid_mut().set(ent, ch.x as f32, ch.z as f32);
                 self.aoi.add_observer(ent);
+                self.aoi_p.add_observer(ent);
                 self.by_conn.insert((link, conn), ent);
                 self.players.insert(ent, Player {
-                    link, conn, ent, name: ch.name, level: ch.level, x: ch.x, z: ch.z, hp: ch.hp, max_hp: ch.max_hp.max(1), dead: ch.hp <= 0,
+                    link, conn, ent, name: ch.name, level: ch.level, x: ch.x, z: ch.z, y: 0.0, h: 0.0, st: "stand".into(), invis: false, staff: false, moved: false, hp: ch.hp, max_hp: ch.max_hp.max(1), dead: ch.hp <= 0,
                     attacker, defender, reach: ch.reach, interval_ms: ch.interval_ms, next_atk: 0,
                 });
             }
             LinkIn::Detach { conn } => { if let Some(&e) = self.by_conn.get(&(link, conn)) { self.drop_player(e); } }
             LinkIn::Pos { list } => {
-                for (id, x, z) in list {
-                    let ent = PLAYER_BASE + id;
+                for u in list {
+                    let ent = PLAYER_BASE + u.id;
                     if let Some(p) = self.players.get_mut(&ent) {
-                        p.x = x;
-                        p.z = z;
-                        self.mobs.grid_mut().set(ent, x as f32, z as f32);
+                        p.x = u.x;
+                        p.y = u.y;
+                        p.z = u.z;
+                        p.h = u.h;
+                        p.st = u.s;
+                        p.moved = true;
+                        self.mobs.grid_mut().set(ent, u.x as f32, u.z as f32);
                     }
                 }
             }
             LinkIn::Forget { char } => self.mobs.forget(PLAYER_BASE + char),
-            LinkIn::Flags { char, untargetable } => {
-                if let Some(p) = self.players.get_mut(&(PLAYER_BASE + char)) { p.dead = untargetable; }
+            LinkIn::Flags { char, untargetable, invis, staff } => {
+                if let Some(p) = self.players.get_mut(&(PLAYER_BASE + char)) {
+                    p.dead = untargetable;
+                    p.invis = invis;
+                    p.staff = staff;
+                }
                 if untargetable { self.mobs.forget(PLAYER_BASE + char); }
             }
             LinkIn::Damage { char, mob, dmg, peaceful } => {
@@ -316,9 +339,10 @@ impl<T: Terrain> MapState<T> {
         for ent in ents {
             let diff = {
                 let mobs = &self.mobs;
-                let visible = |t: EntityId| t >= PLAYER_BASE || mobs.get(t).is_some_and(|m| !(m.s == MobState::Dead && now.saturating_sub(m.died_at) > CORPSE_MS));
+                let visible = |t: EntityId| t < PLAYER_BASE && mobs.get(t).is_some_and(|m| !(m.s == MobState::Dead && now.saturating_sub(m.died_at) > CORPSE_MS));
                 self.aoi.refresh(ent, mobs.grid(), AOI_MAX, visible)
             };
+            self.send_player_view(ent);
             let (mut a, mut u, mut d) = (Vec::new(), Vec::new(), Vec::new());
             for t in &diff.enter {
                 if *t >= PLAYER_BASE { continue; } // jogadores entram numa etapa seguinte (enter/leave de PlayerView)
@@ -340,6 +364,38 @@ impl<T: Terrain> MapState<T> {
             }
         }
         self.mobs.clear_dirty();
+        for p in self.players.values_mut() { p.moved = false; }
+    }
+
+    /// visão de jogadores de `ent`: quem entrou/saiu (o Node manda o `enter`/`leave` com os dados do personagem) e os
+    /// movimentos de quem ele vê. Invisível só aparece para staff.
+    fn send_player_view(&mut self, ent: EntityId) {
+        let staff = self.players.get(&ent).is_some_and(|p| p.staff);
+        let diff = {
+            let players = &self.players;
+            let visible = |t: EntityId| t >= PLAYER_BASE && players.get(&t).is_some_and(|q| !(q.invis && !staff));
+            self.aoi_p.refresh(ent, self.mobs.grid(), PLAYER_VIEW_MAX, visible)
+        };
+        let ids = |v: &[EntityId]| -> Vec<u32> { v.iter().map(|t| t - PLAYER_BASE).collect() };
+        if !diff.enter.is_empty() || !diff.leave.is_empty() {
+            self.stats.see_enter += diff.enter.len() as u64;
+            self.stats.see_leave += diff.leave.len() as u64;
+            if let Some(p) = self.players.get(&ent) {
+                self.send(p.link, &LinkOut::See { char: ent - PLAYER_BASE, enter: ids(&diff.enter), leave: ids(&diff.leave) });
+            }
+        }
+        // movimentos de quem ele conhece (os que acabaram de entrar já chegam com a posição no `enter` do Node)
+        let Some(set) = self.aoi_p.set_of(ent) else { return };
+        let list: Vec<Value> = set.iter()
+            .filter(|t| !diff.enter.contains(t))
+            .filter_map(|t| self.players.get(t))
+            .filter(|q| q.moved)
+            .map(|q| json!([q.ent - PLAYER_BASE, r2(q.x), r2(q.y), r2(q.z), q.h.round(), q.st]))
+            .collect();
+        if !list.is_empty() {
+            self.stats.state_updates += list.len() as u64;
+            self.to_player(ent, json!({ "t": "states", "list": list }));
+        }
     }
 }
 
@@ -347,7 +403,7 @@ fn run_map<T: Terrain>(rx: Receiver<Inbound>, stop: Receiver<()>, cfg: Config, m
     let tick = Duration::from_millis(cfg.tick_ms);
     let dt = cfg.tick_ms as f64 / 1000.0;
     let mut st = MapState {
-        cfg, mobs, aoi: Aoi::new(), links: HashMap::new(), players: HashMap::new(), by_conn: HashMap::new(),
+        cfg, mobs, aoi: Aoi::new(), aoi_p: Aoi::new(), links: HashMap::new(), players: HashMap::new(), by_conn: HashMap::new(),
         rng: Xorshift32::new(0x9e3779b1), stats: Stats::default(), tick_sum_ms: 0.0,
     };
     let _ = st.rng.next_f64();

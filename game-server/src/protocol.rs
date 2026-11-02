@@ -57,6 +57,10 @@ impl From<&DefenderIn> for Defender {
     fn from(d: &DefenderIn) -> Self { Defender { level: d.level, dodge: d.dodge, def: d.def } }
 }
 
+/// movimento de um personagem (mesmo formato do `states` do cliente: id, x, y, z, rumo em graus, estado)
+#[derive(Debug, Clone, Deserialize)]
+pub struct PosIn { pub id: u32, pub x: f64, pub y: f64, pub z: f64, pub h: f64, pub s: String }
+
 /// Gateway → Rust
 #[derive(Debug, Deserialize)]
 #[serde(tag = "k", rename_all = "snake_case")]
@@ -67,14 +71,14 @@ pub enum LinkIn {
     /// mensagem do cliente, no protocolo JSON dele
     C2s { conn: u32, msg: Value },
     Stats,
-    /// posições aceitas pelo Node (autoritativo: teleportes e movimento já validados lá): [id do personagem, x, z][]
-    Pos { list: Vec<(u32, f64, f64)> },
+    /// posições aceitas pelo Node (autoritativo: teleportes e movimento já validados lá): quem se mexeu desde o último envio
+    Pos { list: Vec<PosIn> },
     /// o Node calculou um dano (golpe, skill) em um mob: o Rust confere a visão, aplica e é dono do HP/morte
     Damage { char: u32, mob: u32, dmg: i64, peaceful: bool },
     /// o personagem saiu/morreu: mobs que o atacavam desistem
     Forget { char: u32 },
-    /// morto ou invisível: os mobs não o veem
-    Flags { char: u32, untargetable: bool },
+    /// morto ou invisível: os mobs não o veem. `invis`: só quem é `staff` (GM/admin) o enxerga na visão de jogadores
+    Flags { char: u32, untargetable: bool, #[serde(default)] invis: bool, #[serde(default)] staff: bool },
     /// invoca mobs (painel de GM)
     Summon { spawn: crate::pack::SpawnIn, x: f64, z: f64, y: f64, n: u32 },
 }
@@ -90,6 +94,8 @@ pub enum LinkOut {
     Error { error: String },
     /// um mob golpeou o personagem (modo em que o Node calcula o dano)
     MobAttack { char: u32, mob: u32 },
+    /// mudança na visão de JOGADORES de `char`: quem entrou e quem saiu da área dele (o Node manda o `enter` com o PlayerView)
+    See { char: u32, enter: Vec<u32>, leave: Vec<u32> },
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -101,6 +107,10 @@ pub struct Stats {
     pub tick_max_ms: f64,
     pub hits: u64,
     pub mob_hits: u64,
+    /// entradas/saídas de jogadores na visão e atualizações de posição enviadas
+    pub see_enter: u64,
+    pub see_leave: u64,
+    pub state_updates: u64,
     /// golpes de mob anotados pela IA (resolvidos aqui ou enviados ao Node)
     pub mob_attacks: u64,
     pub kills: u64,

@@ -544,7 +544,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       if (isStaff(o)) send(o.ws, { t: 'invis', id: p.id, on });
       else if (on) hideFrom(o, c);
     }
-    if (!on) introduce(c);
+    if (!on && !rustHere(c)) introduce(c);
     send(c.ws, { t: 'invis', id: p.id, on });
     if (on) W(c).mobs?.forget(p.id); else fx();
   }
@@ -1790,8 +1790,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   const rustWorld = process.env.GAME_ENGINE === 'rust' ? (worlds.get(process.env.GAME_ENGINE_WORLD ?? MAIN) ?? null) : null;
   const rustMobs = rustWorld?.mobs ?? null;
   let rust: RustLink | null = null;
-  /** personagens anexados ao Rust → último valor de "intocável" (morto/invisível) enviado */
-  const rustAttached = new Map<number, boolean>();
+  /** personagens anexados ao Rust → últimos flags enviados (morto, invisível, staff) */
+  const rustAttached = new Map<number, string>();
   const rustOn = () => !!rust?.up;
   const rustHere = (c: Conn) => !!rustMobs && rustOn() && c.player?.w === rustWorld!.name;
   if (rustWorld && rustMobs) {
@@ -1843,6 +1843,11 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
             for (const id of msg.d ?? []) c.mobs.delete(id);
           }
           send(c.ws, msg);
+        } else if (m.k === 'see') {
+          const c = byId.get(m.char);
+          if (!c?.player) return;
+          for (const id of m.leave ?? []) { const o = byId.get(id); if (o) hideFrom(c, o); }
+          for (const id of m.enter ?? []) { const o = byId.get(id); if (o?.player && !o.switching && o.player.w === c.player.w) showTo(c, o); }
         } else if (m.k === 'mob_attack') {
           const mob = mw.byId.get(m.mob), c = connOf(m.char);
           if (mob && c?.player?.w === rustWorld.name) mobAttack(mob, m.char);
@@ -1853,21 +1858,23 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   /** a cada tick: anexa ao Rust quem entrou no mundo dele, manda posições e "intocável", solta quem saiu */
   function rustSync() {
     if (!rust?.up || !rustWorld) return;
-    const here = new Set<number>(), pos: [number, number, number][] = [];
+    const here = new Set<number>(), pos: { id: number; x: number; y: number; z: number; h: number; s: string }[] = [];
     for (const c of byId.values()) {
       const p = c.player;
       if (!p || c.switching || p.w !== rustWorld.name) continue;
       here.add(p.id);
-      const unt = !!(c.cb?.dead || c.invis);
+      const unt = !!(c.cb?.dead || c.invis), flags = `${unt ? 1 : 0}${c.invis ? 1 : 0}${isStaff(c) ? 1 : 0}`;
+      const flagsMsg = { k: 'flags', char: p.id, untargetable: unt, invis: !!c.invis, staff: isStaff(c) };
       if (!rustAttached.has(p.id)) {
         // o Rust recomeça o conjunto de visão do zero: limpa no cliente o que ele conhecia por outro caminho
         if (c.mobs.size) { send(c.ws, { t: 'mobs', a: [], u: [], d: [...c.mobs] }); c.mobs = new Set(); }
         rust.send({ k: 'attach', conn: p.id, ch: { id: p.id, name: p.name, level: p.level, x: p.p[0], z: p.p[2], hp: Math.max(1, c.cb?.hp ?? 1), maxHp: Math.max(1, c.cb?.maxHp ?? 1) } });
-        rust.send({ k: 'flags', char: p.id, untargetable: unt });
-        rustAttached.set(p.id, unt);
+        rust.send(flagsMsg);
+        pos.push({ id: p.id, x: p.p[0], y: p.p[1], z: p.p[2], h: p.h, s: p.s });
+        rustAttached.set(p.id, flags);
       } else {
-        if (c.dirty) pos.push([p.id, p.p[0], p.p[2]]);
-        if (rustAttached.get(p.id) !== unt) { rust.send({ k: 'flags', char: p.id, untargetable: unt }); rustAttached.set(p.id, unt); }
+        if (c.dirty) pos.push({ id: p.id, x: p.p[0], y: p.p[1], z: p.p[2], h: p.h, s: p.s });
+        if (rustAttached.get(p.id) !== flags) { rust.send(flagsMsg); rustAttached.set(p.id, flags); }
       }
     }
     for (const id of [...rustAttached.keys()]) if (!here.has(id)) { rust.send({ k: 'detach', conn: id }); rustAttached.delete(id); }
@@ -1953,8 +1960,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     send(c.ws, { t: 'bar', slots: barView(cleanBar(ch.shortcuts)) });
     if (c.cb) send(c.ws, skillsMsg(c));
     if (c.cb?.buffs.size) send(c.ws, buffsMsg(c));
-    refreshView(c);
-    introduce(c);
+    if (!rustHere(c)) { refreshView(c); introduce(c); } // com o Rust ligado, a visão de jogadores vem dele (mensagem 'see')
     void loadFriends(c);
     const pt = parties.of(id); // voltou de outro mundo: a party continua
     if (pt) pushParty(pt);
@@ -2374,7 +2380,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   function worldTick() {
     rebuildGrid();
     rustSync();
-    for (const c of byId.values()) if ((c.seq + tickN) % VIEW_EVERY === 0) refreshView(c);
+    for (const c of byId.values()) if ((c.seq + tickN) % VIEW_EVERY === 0 && !rustHere(c)) refreshView(c);
     // cada movimento vira texto uma vez só; cada cliente recebe a lista dos que ele vê
     const moved = new Map<Conn, string>();
     for (const c of byId.values()) {
@@ -2384,7 +2390,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       moved.set(c, JSON.stringify([p.id, +p.p[0].toFixed(2), +p.p[1].toFixed(2), +p.p[2].toFixed(2), Math.round(p.h), p.s]));
     }
     if (moved.size) for (const c of byId.values()) {
-      if (!c.seen.size || c.ws.readyState !== WebSocket.OPEN) continue;
+      if (!c.seen.size || c.ws.readyState !== WebSocket.OPEN || rustHere(c)) continue; // com o Rust, os `states` vêm dele
       const parts: string[] = [];
       for (const o of c.seen.values()) { const e = moved.get(o); if (e) parts.push(e); }
       if (parts.length) { c.ws.send(`{"t":"states","list":[${parts.join(',')}]}`); counters.msgOut++; }
