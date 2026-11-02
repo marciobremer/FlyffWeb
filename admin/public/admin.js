@@ -21,6 +21,8 @@ function show(view) {
   else if (view === 'world') loadRates();
   else if (view === 'database') loadDb();
   else if (view === 'items') loadItems();
+  else if (view === 'skills') loadSkills();
+  else if (view === 'loadtest') loadLoadtest(true);
   else refresh();
 }
 addEventListener('hashchange', () => show(location.hash.slice(1) || 'dashboard'));
@@ -562,3 +564,231 @@ $('itApply').addEventListener('click', async () => {
   if (!confirm('Reiniciar o servidor do jogo agora para valer as mudanças dos itens? Quem estiver online é desconectado.')) return;
   try { await api('/game/restart', { method: 'POST' }); say($('itMsg'), 'Servidor do jogo reiniciando com os itens novos.'); } catch (e) { say($('itMsg'), e.message, true); }
 });
+
+// ---------------- teste de carga: bots no jogo (admin/loadtest.ts) ----------------
+let ltState = null;
+/** resultado antigo aberto em "Ver" (null = o teste atual / último) */
+let ltOpen = null;
+const ltMs = (v) => (v == null ? '—' : Math.round(v) + ' ms');
+const ltScenario = (o) => o ? `${{ walk: 'andando', 'walk-chat': 'andando + chat', idle: 'parados' }[o.behavior] || o.behavior}, raio ${o.spread} u` : '—';
+
+async function loadLoadtest(withHistory = false) {
+  let s;
+  try { s = await api('/loadtest' + (withHistory ? '?history=1' : '')); } catch (e) {
+    say($('ltMsg'), /Rota desconhecida/.test(e.message) ? 'O painel precisa ser reiniciado para usar esta página: feche a janela do painel e abra de novo (.Iniciar Servidor.bat).' : 'Sem resposta do painel: ' + e.message, true);
+    return;
+  }
+  const wasRunning = ltState && ltState.status !== 'parado';
+  ltState = s;
+  const running = s.status !== 'parado';
+  $('ltStart').disabled = running || !s.gameRunning;
+  $('ltStop').disabled = s.status !== 'rodando';
+  $('ltRemove').disabled = running || !s.botAccounts;
+  for (const el of $('ltForm').elements) el.disabled = running;
+  $('ltBotAcc').textContent = s.botAccounts == null ? '' : s.botAccounts ? `${s.botAccounts} contas de bot no banco agora` : 'nenhuma criada ainda';
+  if (!s.gameRunning && !running && !$('ltMsg').textContent) say($('ltMsg'), 'Inicie o servidor do jogo (Dashboard → Iniciar) para testar.', true);
+  if (running) ltOpen = null;
+  if (!ltOpen) ltRender({ samples: s.samples, summary: s.summary, options: s.options, limits: s.limits, live: running });
+  const box = $('ltLog'), follow = box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
+  box.textContent = s.logs.map((l) => `[${new Date(l.t).toLocaleTimeString('pt-BR')}] ${l.text}`).join('\n');
+  if (follow) box.scrollTop = box.scrollHeight;
+  if (wasRunning && !running) { say($('ltMsg'), 'Teste concluído' + (s.lastResult ? ` — salvo em data/loadtests/${s.lastResult}.` : '.')); loadLoadtest(true); }
+  if (s.history) ltHistory(s.history);
+}
+
+function ltRender(r) {
+  const S = r.samples || [], last = S[S.length - 1], L = r.limits || { lagP99: 50, rttP95: 150, gapP95: 200 }, o = r.options;
+  const mark = (el, v, lim) => { el.classList.toggle('bad', v != null && v > lim); };
+  $('ltBots').textContent = last ? last.bots : '—';
+  $('ltBotsSub').textContent = o ? `de ${o.count} · ${ltScenario(o)}` : 'nenhum teste ainda';
+  $('ltLag').textContent = ltMs(last?.lagP99); mark($('ltLag'), last?.lagP99, L.lagP99);
+  $('ltLagSub').textContent = `limite ${L.lagP99} ms · máx. ${ltMs(last?.lagMax)}`;
+  $('ltRtt').textContent = ltMs(last?.rttP95); mark($('ltRtt'), last?.rttP95, L.rttP95);
+  $('ltRttSub').textContent = `limite ${L.rttP95} ms`;
+  $('ltCpu').textContent = last?.cpu != null ? last.cpu + '%' : '—';
+  $('ltCpu').classList.toggle('warn', (last?.cpu ?? 0) > 80);
+  $('ltCpuSub').textContent = '100% = um núcleo inteiro (o jogo usa um)';
+  $('ltConn').textContent = last ? last.connected : '—';
+  $('ltFail').textContent = last ? last.failed : '—';
+  $('ltRx').textContent = last ? (last.rxKBps / 1024).toFixed(1) + ' MB/s (' + Math.round(last.rxKBps * 8 / 1024) + ' Mbit/s)' : '—';
+  $('ltSrvOut').textContent = last?.srvMsgOut != null ? last.srvMsgOut + '/s' : '—';
+  $('ltRtt50').textContent = ltMs(last?.rttP50);
+  $('ltGap').textContent = ltMs(last?.gapP95);
+  $('ltRam').textContent = last?.rssMb != null ? last.rssMb + ' MB' : '—';
+  $('ltBotLag').textContent = ltMs(last?.botLag);
+  $('ltBotLag').classList.toggle('ltbad', (last?.botLag ?? 0) > 50);
+  $('ltPulls').textContent = last ? last.pulls : '—';
+  $('ltTime').textContent = last ? `${Math.round(last.at / 1000)} s${o ? ' de ' + o.duration + ' s' : ''}` : '—';
+
+  // veredito
+  const v = $('ltVerdict'), sm = r.summary;
+  v.hidden = !sm;
+  if (sm) {
+    const bad = sm.degradedAt != null;
+    v.classList.toggle('bad', bad);
+    const botsBusy = sm.worst.botLag > 50 ? `<p>⚠️ A máquina dos bots também ficou sobrecarregada (atraso de até ${sm.worst.botLag} ms): parte da piora pode ser dela. Use menos threads de bots ou outra máquina.</p>` : '';
+    const fails = sm.failed ? `<p>${sm.failed} bots falharam ao entrar ou caíram (veja o registro).</p>` : '';
+    const head = r.live ? (bad ? `Degradou com ~${sm.degradedAt} bots (teste ainda rodando)` : `Rodando: sem degradar até agora, com ${sm.peakJoined} bots`)
+      : bad ? `Degradou com ~${sm.degradedAt} bots` : `Aguentou ${sm.peakJoined} bots sem degradar${sm.stoppedEarly ? ' (teste interrompido)' : ''}`;
+    v.innerHTML = `<h4 class="${bad ? 'ltbad' : 'ltok'}">${bad ? '✗' : '✓'} ${esc(head)}</h4>`
+      + (bad ? `<p>Motivo: ${esc(sm.degradedWhy)}. Funcionou bem até <b>${sm.maxOkBots}</b> bots.</p>` : '')
+      + `<p>Piores valores: event loop ${sm.worst.lagP99} ms · RTT p95 ${sm.worst.rttP95} ms · intervalo dos 'states' ${sm.worst.gapP95} ms · CPU ${sm.worst.cpu}% · RAM ${sm.worst.rssMb} MB · ${sm.worst.rxMBps} MB/s para os bots.</p>`
+      + fails + botsBusy;
+  }
+
+  const span = Math.max(o ? o.duration * 1000 : 0, last?.at ?? 0, 10_000);
+  ltChart($('ltChart1'), S, span, [
+    { key: 'bots', color: '#a78bfa', axis: 'l' },
+    { key: (s) => s.rxKBps / 1024, color: '#2dd4bf', axis: 'r' },
+  ]);
+  ltChart($('ltChart2'), S, span, [
+    { key: 'lagP99', color: '#f5a524', axis: 'l' },
+    { key: 'rttP95', color: '#2dd4bf', axis: 'l' },
+    { key: 'gapP95', color: '#38bdf8', axis: 'l' },
+  ], [L.lagP99, L.rttP95, L.gapP95]);
+  $('ltNote1').textContent = $('ltNote2').textContent = S.length ? (r.live ? 'ao vivo' : r.file ? 'teste de ' + fmtDate(r.startedAt) : 'último teste') : 'sem dados';
+}
+
+/** linhas ao longo do tempo do teste; eixo esquerdo e (opcional) direito com escalas próprias; `limits` = linhas tracejadas */
+function ltChart(c, S, span, series, limits = []) {
+  const dpr = devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== w * dpr) { c.width = w * dpr; c.height = h * dpr; }
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const pad = { l: 40, r: 40, t: 8, b: 18 };
+  const val = (s, k) => (typeof k === 'function' ? k(s) : s[k]);
+  const top = (axis) => Math.max(1, ...series.filter((x) => x.axis === axis).flatMap((x) => S.map((s) => val(s, x.key) ?? 0)), ...(axis === 'l' ? limits : [])) * 1.15;
+  const tops = { l: top('l'), r: top('r') };
+  const X = (at) => pad.l + ((w - pad.l - pad.r) * at) / span, Y = (v, axis) => pad.t + (h - pad.t - pad.b) * (1 - v / tops[axis]);
+  g.strokeStyle = '#1f2b40'; g.fillStyle = '#5d6c84'; g.font = '11px system-ui'; g.lineWidth = 1;
+  const fmt = (v) => (v >= 100 ? String(Math.round(v)) : v.toFixed(1));
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + ((h - pad.t - pad.b) * i) / 4;
+    g.beginPath(); g.moveTo(pad.l, y); g.lineTo(w - pad.r, y); g.stroke();
+    g.fillText(fmt(tops.l - (tops.l * i) / 4), 4, y + 4);
+    if (series.some((x) => x.axis === 'r')) g.fillText(fmt(tops.r - (tops.r * i) / 4), w - pad.r + 4, y + 4);
+  }
+  g.fillText(Math.round(span / 1000) + ' s', w - pad.r - 26, h - 4);
+  g.setLineDash([5, 4]); g.strokeStyle = '#e5484d';
+  for (const lim of limits) { g.beginPath(); g.moveTo(pad.l, Y(lim, 'l')); g.lineTo(w - pad.r, Y(lim, 'l')); g.stroke(); }
+  g.setLineDash([]);
+  for (const sr of series) {
+    g.strokeStyle = sr.color; g.lineWidth = 2; g.beginPath();
+    let on = false;
+    for (const s of S) {
+      const v = val(s, sr.key);
+      if (v == null) { on = false; continue; }
+      if (on) g.lineTo(X(s.at), Y(v, sr.axis)); else g.moveTo(X(s.at), Y(v, sr.axis));
+      on = true;
+    }
+    g.stroke();
+  }
+  // segundos com algum limite estourado: marca vermelha embaixo
+  g.fillStyle = 'rgb(229 72 77 / .6)';
+  for (const s of S) if (!s.ok) g.fillRect(X(s.at) - 2, h - pad.b, 4, 3);
+}
+
+function ltHistory(list) {
+  $('ltRows').innerHTML = list.length ? list.map((r) => {
+    const sm = r.summary, o = r.options, okRun = sm.degradedAt == null;
+    return `<tr><td>${fmtDate(r.startedAt)}</td><td>${sm.peakJoined}/${o.count}</td><td>${esc(ltScenario(o))}, ${o.duration} s</td>
+      <td class="${okRun ? 'ltok' : ''}">${okRun ? '✓ ' + sm.peakJoined : sm.maxOkBots}</td>
+      <td class="${okRun ? '' : 'ltbad'}">${okRun ? '—' : '~' + sm.degradedAt}</td>
+      <td>${sm.worst.lagP99} / ${sm.worst.rttP95} ms</td><td>${sm.worst.cpu}% / ${sm.worst.rssMb} MB</td>
+      <td><div class="dbacts"><button class="btn sm" data-ltview="${esc(r.file)}">Ver</button><button class="btn sm" data-ltdel="${esc(r.file)}">Apagar</button></div></td></tr>`;
+  }).join('') : '<tr><td colspan="8" class="empty">Nenhum teste ainda.</td></tr>';
+}
+
+$('ltRows').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('button');
+  if (!b) return;
+  try {
+    if (b.dataset.ltview) {
+      const r = await api('/loadtest/results/' + b.dataset.ltview);
+      ltOpen = b.dataset.ltview;
+      ltRender({ ...r, live: false, file: ltOpen });
+      say($('ltMsg'), `Mostrando o teste de ${fmtDate(r.startedAt)}. Inicie um teste novo para voltar ao vivo.`);
+      scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (b.dataset.ltdel && confirm('Apagar este resultado?')) {
+      await api('/loadtest/results/' + b.dataset.ltdel, { method: 'DELETE' });
+      if (ltOpen === b.dataset.ltdel) ltOpen = null;
+      loadLoadtest(true);
+    }
+  } catch (e) { say($('ltMsg'), e.message, true); }
+});
+for (const b of document.querySelectorAll('[data-preset]')) b.addEventListener('click', () => {
+  const [n, ramp, dur] = b.dataset.preset.split(',');
+  $('ltCount').value = n; $('ltRamp').value = ramp; $('ltDuration').value = dur;
+});
+$('ltStart').addEventListener('click', async () => {
+  if (!$('ltForm').reportValidity()) return;
+  const n = Number($('ltCount').value);
+  if (n >= 300 && !confirm(`Colocar ${n} bots no servidor? Jogadores de verdade online vão ver os bots e sentir o peso do teste.`)) return;
+  ltOpen = null;
+  say($('ltMsg'), 'Preparando as contas de bot e as sessões…');
+  try {
+    await api('/loadtest/start', { method: 'POST', body: JSON.stringify({
+      count: n, ramp: Number($('ltRamp').value), duration: Number($('ltDuration').value), behavior: $('ltBehavior').value,
+      spread: Number($('ltSpread').value), center: [Number($('ltX').value), Number($('ltZ').value)], workers: Number($('ltWorkers').value),
+    }) });
+    say($('ltMsg'), 'Teste rodando.');
+  } catch (e) { say($('ltMsg'), e.message, true); }
+  loadLoadtest();
+});
+$('ltStop').addEventListener('click', async () => {
+  try { await api('/loadtest/stop', { method: 'POST' }); say($('ltMsg'), 'Parando: os bots estão saindo…'); } catch (e) { say($('ltMsg'), e.message, true); }
+  loadLoadtest();
+});
+$('ltRemove').addEventListener('click', async () => {
+  if (!confirm('Apagar todas as contas de bot (lt_bot0001…) e os personagens delas? Os resultados dos testes continuam guardados.')) return;
+  try { const r = await api('/loadtest/bots', { method: 'DELETE' }); say($('ltMsg'), `${r.removed} contas de bot apagadas.`); } catch (e) { say($('ltMsg'), e.message, true); }
+  loadLoadtest();
+});
+setInterval(() => { if (!$('view-loadtest').hidden && !document.hidden) loadLoadtest(); }, 1000);
+
+// ---------------- skills: modo auto/manual e lista por classe ----------------
+var skJob = 0; // var: o show() inicial roda antes deste trecho
+const skIcon = (f) => (f ? '/admin/skill-icons/' + encodeURIComponent(f) : '');
+const fmtN = (n) => (Number.isInteger(n) ? n : n.toFixed(1));
+async function loadSkills(job = skJob || 0) {
+  let r;
+  try { r = await api('/skills?job=' + job); } catch (e) { say($('skMsg'), e.message, true); return; }
+  skJob = r.job;
+  for (const i of document.querySelectorAll('input[name=skMode]')) i.checked = i.value === r.mode;
+  $('skTabs').innerHTML = r.jobs.map((j) => `<button class="sktab${j.id === r.job ? ' on' : ''}" role="tab" data-job="${j.id}">${esc(j.name)} <small>${j.count}</small></button>`).join('');
+  skList = r.skills;
+  $('skGrid').innerHTML = r.skills.length ? r.skills.map((s, i) => `<div class="skcell" data-i="${i}" tabindex="0">
+      <img src="${skIcon(s.icon)}" alt="" width="40" height="40" /><span class="skname">${esc(s.name)}</span><span class="dim">Nv. ${s.req} · máx. ${s.max}</span></div>`).join('')
+    : '<p class="empty">Esta classe não tem skills.</p>';
+}
+var skList = [];
+$('skTabs').addEventListener('click', (e) => { const b = e.target.closest('[data-job]'); if (b) loadSkills(Number(b.dataset.job)); });
+for (const i of document.querySelectorAll('input[name=skMode]')) i.addEventListener('change', async () => {
+  try { const r = await api('/skills/mode', { method: 'PUT', body: JSON.stringify({ mode: i.value }) }); say($('skMsg'), r.mode === 'auto' ? 'Auto-skill ligado: as skills abrem sozinhas ao chegar no nível.' : 'Manual-skill ligado: o jogador distribui os pontos.'); }
+  catch (e) { say($('skMsg'), e.message, true); loadSkills(); }
+});
+function skTipHtml(s) {
+  const rows = s.levels.map((l, n) => {
+    const fx = l.fx.map((f) => `${esc(f.dst)} ${f.val > 0 ? '+' : ''}${f.val}`).join(', ');
+    return `<tr><td>${n + 1}</td><td>${l.mp || ''}</td><td>${l.fp || ''}</td><td>${l.cd ? fmtN(l.cd) + 's' : ''}</td><td>${l.max ? l.min + '–' + l.max : ''}</td><td>${l.time ? fmtN(l.time) + 's' : ''}</td><td>${fx}</td></tr>`;
+  }).join('');
+  return `<div class="skth"><img src="${skIcon(s.icon)}" alt="" width="40" height="40" /><div><b>${esc(s.name)}</b><br><span class="dim">${esc(s.symbol)} · ${esc(s.kind)}</span></div></div>
+    <p>${esc(s.desc) || '<span class="dim">Sem descrição.</span>'}</p>
+    <p class="dim">${esc(s.type)} · pede nível ${s.req} · máx. ${s.max} · ${s.cost} ponto(s) por nível${s.pre.length ? ' · pede ' + s.pre.map((p) => esc(p.name) + ' Nv. ' + p.lv).join(', ') : ''}</p>
+    <table><thead><tr><th>Nv</th><th>MP</th><th>FP</th><th>Espera</th><th>Dano</th><th>Duração</th><th>Efeito</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+const skTip = $('skTip');
+function skMove(ev) {
+  const w = skTip.offsetWidth, h = skTip.offsetHeight;
+  skTip.style.left = Math.max(8, Math.min(ev.clientX + 16, innerWidth - w - 8)) + 'px';
+  skTip.style.top = Math.max(8, Math.min(ev.clientY + 16, innerHeight - h - 8)) + 'px';
+}
+$('skGrid').addEventListener('mouseover', (ev) => {
+  const c = ev.target.closest('.skcell');
+  if (!c) return;
+  skTip.innerHTML = skTipHtml(skList[Number(c.dataset.i)]);
+  skTip.hidden = false; skMove(ev);
+});
+$('skGrid').addEventListener('mousemove', (ev) => { if (!skTip.hidden) skMove(ev); });
+$('skGrid').addEventListener('mouseout', (ev) => { if (!ev.relatedTarget || !ev.relatedTarget.closest || !ev.relatedTarget.closest('.skcell')) skTip.hidden = true; });

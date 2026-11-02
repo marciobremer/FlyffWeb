@@ -34,14 +34,14 @@ export function encodePng(w: number, h: number, rgba: Uint8Array | Uint8ClampedA
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
 }
 
-/** PNG do ícone `file` (nome do szIcon, em Data/Item), ou null se não existe/não decodifica */
-export function itemIconPng(roots: ResRoot[], file: string): Buffer | null {
-  const key = file.toLowerCase();
+/** PNG do ícone `file` (nome do szIcon, em Data/<dir>: Item por padrão, Icon para skills), ou null se não existe/não decodifica */
+export function itemIconPng(roots: ResRoot[], file: string, dir: 'Item' | 'Icon' = 'Item'): Buffer | null {
+  const key = `${dir}/${file.toLowerCase()}`;
   if (cache.has(key)) return cache.get(key)!;
   let out: Buffer | null = null;
   try {
     if (/^[\w .()+-]+\.(dds|png)$/i.test(file)) {
-      const p = resolveRes(roots, `Data/Item/${file}`);
+      const p = resolveRes(roots, `Data/${dir}/${file}`);
       if (p && /\.png$/i.test(p)) out = fs.readFileSync(p);
       else if (p) {
         const b = fs.readFileSync(p);

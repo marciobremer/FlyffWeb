@@ -16,13 +16,14 @@
       <a href="#account" data-view="account">👥 <span>Account</span></a>
       <a href="#world" data-view="world">🌐 <span>World</span></a>
       <a href="#database" data-view="database">🗄️ <span>Database</span></a>
+      <a href="#loadtest" data-view="loadtest">🧪 <span>Teste de carga</span></a>
       <h6>Conteúdo</h6>
       <a class="off" title="Em breve">📍 <span>Zones</span></a>
       <a href="#items" data-view="items">📦 <span>Items</span></a>
       <a class="off" title="Em breve">🏰 <span>Guild</span></a>
       <a class="off" title="Em breve">😈 <span>Mobs</span></a>
       <h6>Sistemas</h6>
-      <a class="off" title="Em breve">⚡ <span>Skills</span></a>
+      <a href="#skills" data-view="skills">⚡ <span>Skills</span></a>
       <a class="off" title="Em breve">🛡️ <span>Characters</span></a>
     </nav>
   </aside>
@@ -231,6 +232,94 @@
       </div>
     </section>
 
+    <!-- ================= TESTE DE CARGA ================= -->
+    <section id="view-loadtest" class="view" hidden>
+      <header class="top">
+        <div><h1>Teste de carga</h1><p>Bots entram no jogo como jogadores e medem até quantos o servidor aguenta sem perder desempenho</p></div>
+        <div class="actions">
+          <button class="btn go" id="ltStart">▶ Iniciar teste</button>
+          <button class="btn stop" id="ltStop">■ Parar</button>
+          <button class="btn" id="ltRemove" title="Apaga as contas lt_bot0001… e os personagens delas">🗑 Remover bots</button>
+        </div>
+      </header>
+      <p id="ltMsg" class="msg" role="status"></p>
+
+      <form class="card ltform" id="ltForm" autocomplete="off">
+        <h5>⚙️ Configuração</h5>
+        <div class="ltpresets">
+          <span class="dim small">Atalhos:</span>
+          <button class="btn sm" type="button" data-preset="50,10,60">Rápido · 50 bots</button>
+          <button class="btn sm" type="button" data-preset="300,20,180">Médio · 300 bots</button>
+          <button class="btn sm" type="button" data-preset="1000,25,300">Alvo · 1000 bots</button>
+        </div>
+        <div class="ltfields">
+          <label>Bots <input id="ltCount" type="number" min="1" max="2000" value="100" required /></label>
+          <label>Entrada (bots/s) <input id="ltRamp" type="number" min="1" max="500" value="20" required /></label>
+          <label>Duração (s) <input id="ltDuration" type="number" min="10" max="3600" value="120" required /></label>
+          <label>Comportamento
+            <select id="ltBehavior">
+              <option value="walk" selected>Andando</option>
+              <option value="walk-chat">Andando + chat</option>
+              <option value="idle">Parados</option>
+            </select>
+          </label>
+          <label title="0 = todos no mesmo ponto (pior caso); 150 = mesma área de visão; 1000+ = espalhados pelo mapa">Raio da área (u) <input id="ltSpread" type="number" min="0" max="3000" value="150" required /></label>
+          <label>Centro X <input id="ltX" type="number" min="1" max="15359" value="6976" required /></label>
+          <label>Centro Z <input id="ltZ" type="number" min="1" max="15359" value="3327" required /></label>
+          <label title="Threads do processo dos bots; 0 = metade dos núcleos">Threads <input id="ltWorkers" type="number" min="0" max="32" value="0" required /></label>
+        </div>
+        <p class="dim small">Os bots rodam nesta máquina, num processo separado, e disputam CPU e rede com o servidor. Se o <b>atraso dos bots</b> subir, o limite medido é o desta máquina, não o do servidor.
+          Para um número fiel, rode o jogo em uma máquina e o painel com os bots em outra (ou num servidor com folga de núcleos).
+          Centro padrão: Flaris. Contas usadas: <code>lt_bot0001…</code> (sem senha; não dá para entrar nelas pelo login) — <span id="ltBotAcc">…</span>.</p>
+      </form>
+
+      <div class="cards">
+        <div class="card stat"><h5>Bots no mundo</h5><b id="ltBots">—</b><small id="ltBotsSub">de —</small><i>🤖</i></div>
+        <div class="card stat"><h5>Event loop p99</h5><b id="ltLag">—</b><small id="ltLagSub">limite —</small><i>⏱️</i></div>
+        <div class="card stat"><h5>RTT p95</h5><b id="ltRtt">—</b><small id="ltRttSub">limite —</small><i>📶</i></div>
+        <div class="card stat"><h5>CPU do jogo</h5><b id="ltCpu">—</b><small id="ltCpuSub">—</small><i>🔥</i></div>
+      </div>
+
+      <div class="card ltverdict" id="ltVerdict" hidden></div>
+
+      <div class="cards two">
+        <div class="card chart">
+          <div class="chead"><h5>Bots e tráfego</h5><span id="ltNote1" class="dim">—</span></div>
+          <canvas id="ltChart1" height="190" aria-label="Gráfico de bots no mundo e banda recebida"></canvas>
+          <div class="legend"><span class="l2">Bots no mundo</span><span class="l1">Recebido pelos bots (MB/s)</span></div>
+        </div>
+        <div class="card chart">
+          <div class="chead"><h5>Tempos (ms)</h5><span id="ltNote2" class="dim">—</span></div>
+          <canvas id="ltChart2" height="190" aria-label="Gráfico de atraso do event loop, RTT e intervalo entre atualizações"></canvas>
+          <div class="legend"><span class="la">Event loop p99</span><span class="l1">RTT p95</span><span class="lb">Intervalo dos 'states' p95</span><span class="lr">Limite</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h5>📈 Último segundo</h5>
+        <dl class="ltnow">
+          <dt>Conectados</dt><dd id="ltConn">—</dd><dt>Falhas</dt><dd id="ltFail">—</dd>
+          <dt>Banda p/ bots</dt><dd id="ltRx">—</dd><dt>Msg enviadas (servidor)</dt><dd id="ltSrvOut">—</dd>
+          <dt>RTT p50</dt><dd id="ltRtt50">—</dd><dt>Intervalo 'states' p95</dt><dd id="ltGap">—</dd>
+          <dt>RAM do jogo</dt><dd id="ltRam">—</dd><dt>Atraso dos bots</dt><dd id="ltBotLag">—</dd>
+          <dt>Puxões anti-speedhack</dt><dd id="ltPulls">—</dd><dt>Tempo</dt><dd id="ltTime">—</dd>
+        </dl>
+      </div>
+
+      <div class="card logs">
+        <div class="chead"><h5>Registro do teste</h5></div>
+        <pre id="ltLog" tabindex="0" aria-label="Registro do teste de carga"></pre>
+      </div>
+
+      <div class="card">
+        <h5>🗂️ Testes anteriores</h5>
+        <table class="grid">
+          <thead><tr><th>Data</th><th>Bots</th><th>Cenário</th><th>Aguentou</th><th>Degradou em</th><th>Pior lag / RTT</th><th>CPU / RAM</th><th>Ações</th></tr></thead>
+          <tbody id="ltRows"><tr><td colspan="8" class="empty">Carregando…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
     <!-- ================= ACCOUNT ================= -->
     <section id="view-account" class="view" hidden>
       <header class="top">
@@ -277,6 +366,27 @@
         <button class="btn ok" type="submit">Remover ban</button>
       </form>
     </section>
+    <!-- ================= SKILLS ================= -->
+    <section id="view-skills" class="view" hidden>
+      <header class="top">
+        <div><h1>Skills</h1><p>Modo de skills do servidor e as skills de cada classe</p></div>
+      </header>
+      <p id="skMsg" class="msg" role="status"></p>
+
+      <div class="card skmode">
+        <h3>Modo de skills</h3>
+        <label class="skopt"><input type="radio" name="skMode" value="auto" /> <b>Auto-skill</b>
+          <span class="dim">Sem pontos de skill. Ao chegar no nível pedido, a skill da classe abre sozinha no nível máximo.</span></label>
+        <label class="skopt"><input type="radio" name="skMode" value="manual" /> <b>Manual-skill</b>
+          <span class="dim">O jogador ganha pontos a cada nível e distribui na janela de Habilidades.</span></label>
+        <p class="dim skhint">Vale para todos os jogadores. O jogo aplica em até 2 segundos, sem reiniciar.</p>
+      </div>
+
+      <div class="sktabs" id="skTabs" role="tablist" aria-label="Classe"></div>
+      <div class="card"><div class="skgrid" id="skGrid"><p class="empty">Carregando…</p></div></div>
+      <div id="skTip" class="sktip" hidden></div>
+    </section>
+
   </main>
 
   <!-- diálogos de ação (banir / trocar senha) -->

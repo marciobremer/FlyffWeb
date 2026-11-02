@@ -7,7 +7,7 @@ import { GameWindow } from './ui';
  * (coroa) e as habilidades de party que o líder liga — e a lista de todas as partys do servidor (tecla L), com nível,
  * tamanho e os buffs ligados.
  */
-export interface PartyMember { id: number; name: string; level: number; job: number; hp: number; on: boolean }
+export interface PartyMember { id: number; name: string; level: number; job: number; hp: number; on: boolean; /** mundo e posição (x, z) de quem está online — o mapa mostra mesmo longe */ w?: string; x?: number; z?: number }
 export interface PartyView {
   id: number; name: string; leader: number; level: number; exp: number; expNext: number; points: number;
   members: PartyMember[]; skills: { k: string; left: number }[];

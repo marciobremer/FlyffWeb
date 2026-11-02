@@ -135,6 +135,18 @@ export class GameProcess {
     } catch { return null; }
   }
 
+  /** teste de carga: sessões para as contas de bot (`sessions`) ou encerrar as delas (`revoke`); null se o jogo não responder */
+  async loadtest<T>(op: 'sessions' | 'revoke', accountIds: number[]): Promise<T | null> {
+    if (!this.child || !this.token) return null;
+    try {
+      const r = await fetch(`http://127.0.0.1:${this.port}/internal/loadtest/${op}`, {
+        method: 'POST', headers: { 'x-admin-token': this.token, 'content-type': 'application/json' },
+        body: JSON.stringify({ accountIds }), signal: AbortSignal.timeout(10000),
+      });
+      return r.ok ? await r.json() as T : null;
+    } catch { return null; }
+  }
+
   async kick(accountId: number, reason: string): Promise<{ kicked: number; revoked: number } | null> {
     if (!this.child || !this.token) return null;
     try {
@@ -148,6 +160,9 @@ export class GameProcess {
 }
 
 export interface GameStats {
-  uptimeMs: number; rssMb: number; inventory?: { cached: number; pending: number }; dbQueries?: number; dbTransactions?: number; sessions: number; connections: number; msgIn: number; msgOut: number; sockets: number; mobs: number;
+  uptimeMs: number; rssMb: number;
+  /** último segundo: atraso do event loop (ms, p50/p99/máx.) e CPU do processo (% de um núcleo) */
+  perf?: { lagP50: number; lagP99: number; lagMax: number; cpu: number } | null;
+  inventory?: { cached: number; pending: number }; dbQueries?: number; dbTransactions?: number; sessions: number; connections: number; msgIn: number; msgOut: number; sockets: number; mobs: number;
   players: { accountId: number; characterId: number; name: string; level: number; p: [number, number, number] }[];
 }

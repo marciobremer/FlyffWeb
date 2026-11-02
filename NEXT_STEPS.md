@@ -1040,3 +1040,19 @@ Comparado com o MikePanqueca (Blade 73) do servidor oficial local (banco CHARACT
 ## 59. GM: teleporte pelo mini mapa (2026-10-28)
 - GM/admin: duplo clique no mini mapa (tecla N) teleporta na hora para o ponto clicado (manda //tp x z; o servidor confere a
   autoridade). Jogador comum: o duplo clique não faz nada.
+
+## 60. Painel admin → Teste de carga (2026-10-28)
+- Aba "Teste de carga": N bots (até 2000) entram no mundo pelo WebSocket como jogadores, andam (ou ficam parados, ou andam e
+  falam no chat) numa área de raio escolhido e medem RTT (ping/pong), intervalo entre os 'states' e banda recebida; o jogo
+  mede o próprio atraso do event loop e a CPU (/internal/stats → perf, servers/world/internal.ts). "Degradou" = 3 s seguidos
+  com event loop p99 > 50 ms, RTT p95 > 150 ms, 'states' p95 > 200 ms ou bots caindo. Resultado em data/loadtests/*.json
+  (fora do git), com histórico, gráficos e "Ver" na própria aba.
+- Peças: admin/loadtest.ts (contas lt_bot0001… sem senha + personagem LtBot0001…, sessões por /internal/loadtest/sessions,
+  só para contas com esse nome), tools/loadtest.ts (os bots, em worker threads; uma linha JSON por segundo). "Remover bots"
+  apaga as contas (cascata nos personagens/itens).
+- Os bots rodam na mesma máquina e disputam CPU: se o "atraso dos bots" subir, parte do limite é da máquina dos bots.
+- Primeira medição (esta máquina, 12 núcleos, bots e jogo juntos, andando): 1000 bots entram sem falhas, mas degrada com
+  ~400 numa área de raio 150 e ~530 espalhados (raio 3000); com 1000, event loop ~160–260 ms, RTT p95 ~200–400 ms e
+  120–200 MB/s para os bots. Causa: 'states' de cada jogador vai para o mapa inteiro (sem filtro por distância) e os laços
+  sobre todas as conexões (connOf, playersNear, sendNear, itens no chão). Ver a análise de desempenho: o próximo passo é
+  filtrar 'states'/'enter'/'leave' por área e indexar os jogadores por id e por célula.

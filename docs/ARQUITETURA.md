@@ -246,3 +246,8 @@ Limites: PvP não existe em nenhum dos lados; a espera entre golpe do jogador e 
 - Equivalência: 400 casos de `skill_damage` iguais ao `meleePower − mobSkillDefense` do Node (`tools/combat-vectors.ts`).
 
 **Persistência e segundo mapa — decidido não fazer agora.** Posição, HP e exp já nascem no Node (o cliente manda a posição ao Node; o Rust só espelha; o Node recebe `hurt`/`kill` e grava): gravar do Rust duplicaria escritas e criaria dois donos das mesmas colunas, sem ganho. Azria em outro processo Rust obrigaria o WebSocket de cada jogador a viver em um processo diferente do mapa dele (o navegador abre um só WebSocket) e ainda precisaria generalizar a ponte do Node, para um mapa de pouca carga (1873 mobs); o Node continua cuidando de Azria.
+
+## Contrato: modo de skills (auto/manual) — Admin → Game
+- O painel (aba Skills) grava `data/skill-mode.json` → `{ "mode": "auto" | "manual" }` via `servers/common/skillmode.ts` (`skillMode()` relê o arquivo a cada 2 s; sem arquivo = `manual`).
+- **manual**: comportamento atual (pontos a cada nível, o jogador distribui).
+- **auto**: sem pontos de skill; ao atingir `reqLevel` cada skill da classe (`SkillCatalog.forJob`) abre sozinha em `max`, respeitando pré-requisitos. A implementação no jogo (`servers/world/realtime.ts`, `skills.ts`, Rust) é do master Game.

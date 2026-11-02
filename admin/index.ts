@@ -10,6 +10,8 @@ import { RATES_FILE, RATE_MAX, RATE_MIN, rates, saveRates } from '../servers/com
 import { AdminError, banAccount, createAccount, dbStatus, listAccounts, setPassword, unbanAccount, unbanByName } from '../servers/auth/accounts';
 import { dbHealth, installDatabase } from '../servers/common/db/install';
 import { itemIcon, itemsApi } from './items-api';
+import { skillIcon, skillsApi } from './skills-api';
+import { LoadTest } from './loadtest';
 import { ADMIN_APP, DbOpError, backupPath, createBackup, deleteBackup, listBackups, otherConnections, resetDatabase, restoreBackup, toolsReady } from '../servers/common/db/backup';
 
 // conexões do painel com o nome dele (o jogo e o site que ele inicia usam outro): "banco em uso" não conta o próprio painel
@@ -30,6 +32,8 @@ const HOST = process.env.ADMIN_HOST ?? '127.0.0.1';
 const game = new GameProcess(ROOT, GAME_PORT);
 /** o site (htdocs) liga e desliga junto com o jogo */
 const site = new SiteProcess(SITE_DIR, SITE_PORT, (t) => game.log('site', t));
+/** teste de carga com bots (aba "Teste de carga") */
+const loadtest = new LoadTest(ROOT, game, GAME_PORT);
 const bootedAt = Date.now();
 
 const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
@@ -154,8 +158,19 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
     return send(res, 200, r);
   }
 
+  // ---------------- Teste de carga: bots entrando no jogo (admin/loadtest.ts) ----------------
+  if (p === '/loadtest' && m === 'GET') return send(res, 200, { ...loadtest.state(), history: url.searchParams.has('history') ? loadtest.history() : undefined, botAccounts: await loadtest.botCount().catch(() => null), gameRunning: game.status === 'rodando' });
+  if (p === '/loadtest/start' && m === 'POST') { await loadtest.start(await readJson(req) as Parameters<typeof loadtest.start>[0]); return send(res, 200, loadtest.state()); }
+  if (p === '/loadtest/stop' && m === 'POST') { loadtest.stop(); return send(res, 200, loadtest.state()); }
+  if (p === '/loadtest/bots' && m === 'DELETE') return send(res, 200, { removed: await loadtest.removeBots() });
+  const lt = /^\/loadtest\/results\/([\d-]+\.json)$/.exec(p);
+  if (lt && m === 'GET') return send(res, 200, loadtest.result(lt[1]));
+  if (lt && m === 'DELETE') { loadtest.deleteResult(lt[1]); return send(res, 200, { ok: true }); }
+
   // ---------------- Items: lista, busca, edição, criação e remoção (admin/items-api.ts) ----------------
   if (await itemsApi(p, m, url, () => readJson(req), (status, body) => send(res, status, body))) return;
+  // ---------------- Skills: modo auto/manual e lista por classe (admin/skills-api.ts) ----------------
+  if (await skillsApi(p, m, url, () => readJson(req), (status, body) => send(res, status, body))) return;
 
   // ---------------- Database: backup, baixar, apagar, restaurar e zerar ----------------
   if (p === '/db' && m === 'GET') {
@@ -268,6 +283,7 @@ const server = http.createServer((req, res) => {
   if (hostName !== '127.0.0.1' && hostName !== 'localhost' && host !== `${HOST}:${PORT}`) { res.statusCode = 421; res.end('host não permitido'); return; }
   // ícones dos itens (PNG) para a aba Items: só imagem, sem o cabeçalho x-admin (o <img> não manda cabeçalho)
   if (url.pathname.startsWith('/admin/icons/')) { itemIcon(res, url.pathname.slice('/admin/icons/'.length)); return; }
+  if (url.pathname.startsWith('/admin/skill-icons/')) { skillIcon(res, url.pathname.slice('/admin/skill-icons/'.length)); return; }
   if (url.pathname.startsWith('/admin/api/')) {
     if (req.headers['x-admin'] !== '1') return send(res, 403, { error: 'Cabeçalho x-admin ausente.' });
     api(req, res, url).catch((e) => {
@@ -320,6 +336,7 @@ async function autoStart() {
 
 async function shutdown() {
   console.log('\nFechando o painel…');
+  loadtest.kill();
   if (site.pid) { try { await site.stop(); } catch { /* já parado */ } }
   if (game.pid) { try { await game.stop(); } catch { /* já parado */ } }
   await pool.end().catch(() => {});

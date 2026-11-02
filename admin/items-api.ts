@@ -18,7 +18,7 @@ import { AdminError } from '../servers/auth/accounts';
  *   GET    /admin/icons/<arquivo>                           ícone em PNG (sem cabeçalho: é só imagem)
  */
 let catalog: ItemCatalog | null = null;
-const cat = () => (catalog ??= new ItemCatalog(RES_DIR).load());
+export const cat = () => (catalog ??= new ItemCatalog(RES_DIR).load());
 
 const EDIT_FIELDS = ['name', 'desc', 'icon', 'parts', 'kind1', 'kind2', 'kind3', 'sex', 'job', 'level', 'abilityMin', 'abilityMax', 'attackSpeed',
   'packMax', 'cost', 'grade', 'handed', 'weaponType', 'element', 'ignorePart', 'shopAble', 'fx', 'look'] as const;
