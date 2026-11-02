@@ -175,9 +175,9 @@ net.onMobs = (add, upd, del) => {
   const d = view.data, mm = view.moverMgr;
   if (!d) return;
   for (const id of del) mm.removeExternal(id);
-  for (const [id, modelId, x, z, h, s, y, hp] of add) {
+  for (const [id, modelId, x, z, h, s, y, hp, ag] of add) {
     const entry = d.dynaModels.get(`${OT.MOVER}:${modelId}`);
-    if (entry) mm.addExternal(id, entry, x, z, h, s, y ?? null, hp ?? 1000);
+    if (entry) mm.addExternal(id, entry, x, z, h, s, y ?? null, hp ?? 1000, false, !!ag);
   }
   for (const [id, x, z, h, s, hp] of upd) {
     mm.moveExternal(id, x, z, h, s, hp);
@@ -527,6 +527,10 @@ function mapView(): MapView | null {
   for (const o of d.movers) dots.push({ x: o.pos[0], z: o.pos[2], kind: 'npc' });
   for (const [x, z] of view.moverMgr.externalPositions()) dots.push({ x, z, kind: 'mob' });
   for (const r of remotes.positions()) dots.push({ x: r.x, z: r.z, kind: r.party ? 'party' : 'player', name: r.name });
+  // membros da party fora da área de visão: a posição que vem com a party (a cada 1,5 s)
+  for (const m of partyWnd.current?.members ?? []) {
+    if (m.on && m.id !== net.myId && m.w === d.name && m.x !== undefined && m.z !== undefined && !remotes.pos(m.id)) dots.push({ x: m.x, z: m.z, kind: 'party', name: m.name });
+  }
   return { world: d.name, landW: d.wld.width, landH: d.wld.height, hasTile: (x, z) => d.hasTile(x, z), tileSize: 128 * d.wld.mpu, x: p.pos[0], z: p.pos[2], heading: p.heading, dots };
 }
 hud.onParty = () => partyWnd.toggle();

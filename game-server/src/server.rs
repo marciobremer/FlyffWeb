@@ -504,7 +504,7 @@ impl<T: Terrain> MapState<T> {
             for t in &diff.enter {
                 if let Some(m) = self.mobs.get(*t) {
                     let y = if m.flying { format!("{:.1}", m.y) } else { "null".into() };
-                    a.push(format!("[{},{},{:.1},{:.1},{},\"{}\",{},{}]", m.id, m.model_id, m.x, m.z, m.h.round() as i64, state_str(m.s), y, mob_hp(m)));
+                    a.push(format!("[{},{},{:.1},{:.1},{},\"{}\",{},{},{}]", m.id, m.model_id, m.x, m.z, m.h.round() as i64, state_str(m.s), y, mob_hp(m), m.aggressive as u8));
                 }
             }
             for t in &diff.leave { d.push(t.to_string()); }

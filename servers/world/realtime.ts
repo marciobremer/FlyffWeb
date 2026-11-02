@@ -2491,7 +2491,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       for (const m of near) {
         seen.add(m.id);
         if (!c.mobs.has(m.id)) {
-          a.push([m.id, m.modelId, +m.x.toFixed(1), +m.z.toFixed(1), Math.round(m.h), m.s, m.flying ? +m.y.toFixed(1) : null, mobHp(m)]);
+          a.push([m.id, m.modelId, +m.x.toFixed(1), +m.z.toFixed(1), Math.round(m.h), m.s, m.flying ? +m.y.toFixed(1) : null, mobHp(m), m.aggressive ? 1 : 0]);
         } else if (m.dirty) u.push([m.id, +m.x.toFixed(1), +m.z.toFixed(1), Math.round(m.h), m.s, mobHp(m)]);
       }
       for (const id of c.mobs) if (!seen.has(id)) d.push(id);

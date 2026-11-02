@@ -273,7 +273,12 @@ export class RemotePlayers {
       else { c[0] += (tx - c[0]) * k; c[1] += (ty - c[1]) * k; c[2] += (tz - c[2]) * k; }
       const dh = ((r.h - r.curH + 540) % 360) - 180; // menor ângulo
       r.curH = (r.curH + dh * k + 360) % 360;
-      if (r.inst) { r.inst.place([c[0], c[1], c[2]], r.curH); r.inst.update(dt); }
+      if (r.inst) {
+        // quem não tem altura confiável (bot, ou ponto numa encosta) não pode ficar abaixo do terreno; acima (ponte, voo, pulo) vale a do servidor
+        const ground = r.s.startsWith('fly') ? null : this.world.sampleHeight(c[0], c[2]);
+        r.inst.place([c[0], ground === null ? c[1] : Math.max(c[1], ground), c[2]], r.curH);
+        r.inst.update(dt);
+      }
     }
   }
 }
@@ -292,7 +297,7 @@ export class NetClient {
   private pingTimer = 0;
   onStatus: (text: string, error?: boolean) => void = () => {};
   /** mobs do servidor perto do jogador: entraram, mudaram, saíram (ver protocolo em server/realtime.ts) */
-  onMobs: (add: [number, number, number, number, number, string, number | null, number?][], upd: [number, number, number, number, string, number?][], del: number[]) => void = () => {};
+  onMobs: (add: [number, number, number, number, number, string, number | null, number?, number?][], upd: [number, number, number, number, string, number?][], del: number[]) => void = () => {};
   /** combate: golpe (k 'p' jogador→mob, 'm' mob→jogador), mob morreu, jogador morreu, seus atributos */
   /** `fx` = efeitos da skill usada (ids XI_*): c ao lançar, h no alvo, s no lançador */
   onHit: (k: 'p' | 'm', a: number, d: number, dmg: number, flags: number, hp: number, fx?: SkillFx, sn?: [number, number]) => void = () => {};

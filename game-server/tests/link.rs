@@ -194,3 +194,21 @@ fn players_see_each_other_only_nearby_and_invisible_hides_from_non_staff() {
     assert!(s.see_enter >= 3 && s.see_leave >= 1);
     let _ = h.stop.send(());
 }
+
+#[test]
+fn aggressive_mobs_are_flagged_in_the_view_message() {
+    // respawn com 3 mobs e 1 agressivo (o primeiro): o nome vermelho no cliente depende desse 9º campo do `mobs`
+    let mut s = spawn(1000.0, 3, 100);
+    s.attack_count = 1;
+    let mobs = MobWorld::new(&[s], Xorshift32::new(1), Open);
+    let h = start("127.0.0.1:0", Config { secret: "s3".into(), tick_ms: 20, rust_combat: true, ws_listen: None }, mobs).unwrap();
+    let mut gw = Gw::connect(h.addr);
+    gw.send(json!({ "k": "hello", "secret": "s3", "version": VERSION }));
+    assert_eq!(gw.recv().unwrap()["k"], "hello_ok");
+    attach(&mut gw, 1, 42, 1005.0, 1005.0);
+    let m = gw.wait_s2c(1, "mobs").expect("mobs");
+    let mut ag: Vec<(u64, u64)> = m["a"].as_array().unwrap().iter().map(|e| (e[0].as_u64().unwrap(), e[8].as_u64().unwrap())).collect();
+    ag.sort();
+    assert_eq!(ag, vec![(1, 1), (2, 0), (3, 0)]);
+    let _ = h.stop.send(());
+}

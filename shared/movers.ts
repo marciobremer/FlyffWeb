@@ -682,7 +682,7 @@ export class MoverManager {
    * Cria um mob vindo do servidor: modelo pelo `entry`, nome/seleção como os mobs de spawn (`owner` 'spawns').
    * `pet`: pet coletor de um jogador (`owner` 'pets'): sem nome, não dá para clicar nem aparece no mini mapa.
    */
-  addExternal(id: number, entry: ModelEntry, x: number, z: number, h: number, state: string, y: number | null, hp = 1000, pet = false) {
+  addExternal(id: number, entry: ModelEntry, x: number, z: number, h: number, state: string, y: number | null, hp = 1000, pet = false, aggressive = false) {
     this.removeExternal(id);
     const flying = y !== null;
     const gy = flying ? y : this.floorAt(x, z) ?? 100;
@@ -696,7 +696,8 @@ export class MoverManager {
       const inst = new MoverInstance(tpl, obj, objectMatrix({ pos: e.cur, rot: [0, e.curH, 0], scale: [s, s, s] }, new Matrix4()));
       inst.owner = pet ? 'pets' : 'spawns';
       const label = pet ? null : this.labelOf('spawns', obj);
-      if (label) inst.setLabel(label, this.labelClassOf('spawns', obj));
+      // mob agressivo (ataca quem chega perto): nome vermelho; o servidor diz qual é (a lista dos agressivos é por respawn)
+      if (label) inst.setLabel(label, aggressive ? 'boss' : this.labelClassOf('spawns', obj));
       inst.play(...mobMotion(e.s));
       this.parent.add(inst.group);
       this.active.set(obj, inst);
