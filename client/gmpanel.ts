@@ -120,7 +120,6 @@ export class GmPanel extends GameWindow {
       tab.setAttribute('aria-selected', String(on));
       page.hidden = !on;
     }
-    if (key === 'items' && !this.results.childElementCount) this.search(this.q.value, this.kind.value, Number(this.grade.value));
     if (key === 'mobs' && !this.mobList.childElementCount) this.renderMobs();
   }
 
@@ -215,44 +214,28 @@ export class GmPanel extends GameWindow {
   }
 
   // ---------- aba Itens ----------
+  /** abre a Wikipedia de itens (o catálogo organizado por categoria): clicar escolhe o item aqui, duplo clique cria */
+  openCatalog: () => void = () => {};
+
   private itemsPage() {
-    const go = () => this.search(this.q.value, this.kind.value, Number(this.grade.value));
-    this.grade.addEventListener('change', go);
-    this.q.addEventListener('input', () => { clearTimeout(this.timer); this.timer = window.setTimeout(go, 300); });
-    this.q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(this.timer); go(); } });
-    this.kind.addEventListener('change', go);
     this.element.addEventListener('change', () => { this.elementLv.disabled = this.element.value === '0' || this.upgrade.disabled; });
-    this.results.setAttribute('role', 'listbox');
-    this.results.setAttribute('aria-label', 'Itens encontrados');
-    this.results.addEventListener('click', (e) => {
-      const li = (e.target as HTMLElement).closest<HTMLLIElement>('li[data-id]');
-      if (li) this.pick(this.found.get(Number(li.dataset.id)) ?? null);
-    });
-    this.results.addEventListener('dblclick', (e) => { if ((e.target as HTMLElement).closest('li[data-id]')) this.create(); });
-    // dica completa do item ao passar o mouse (a mesma do inventário: ataque/defesa, velocidade, bônus, classe, conjunto…),
-    // com o enchant/elemento escolhidos no painel quando é o item selecionado
-    let tipId = -1;
-    this.results.addEventListener('mousemove', (e) => {
-      const li = (e.target as HTMLElement).closest<HTMLLIElement>('li[data-id]');
-      const d = li ? this.found.get(Number(li.dataset.id)) : undefined;
-      if (!d) { if (tipId >= 0) { hideItemTip(); tipId = -1; } return; }
-      if (d.id === tipId) { moveItemTip(e); return; }
-      tipId = d.id;
-      const sel = this.picked?.id === d.id;
-      const it = { id: d.id, n: 1, u: sel ? Number(this.upgrade.value) : 0, e: sel ? Number(this.element.value) : 0, el: sel ? Number(this.elementLv.value) : 0,
-        ...(sel && Number(this.piercing.value) ? { p: new Array<number>(Number(this.piercing.value)).fill(0) } : {}) };
-      showItemTip(e, d, it, ELEMENT_NAMES);
-    });
-    this.results.addEventListener('mouseleave', () => { hideItemTip(); tipId = -1; });
     this.pick(null);
     return el('div', { className: 'gm-items' },
-      el('div', { className: 'gm-row' }, this.q, this.kind, this.grade),
-      this.results,
+      el('div', { className: 'gm-row' }, btn('Abrir catálogo de itens (Wikipedia)', () => this.openCatalog())),
+      el('p', { className: 'gm-hint', textContent: 'No catálogo: clique escolhe o item; duplo clique cria na bolsa do alvo com as opções abaixo.' }),
       this.pickBox,
       el('div', { className: 'gm-row wrap' }, field('Qtd.', this.qty), field('Enchant', this.upgrade), field('Elemento', this.element), field('Nv.', this.elementLv), this.piercingField),
       el('div', { className: 'gm-row' }, btn('Criar item na bolsa do alvo', () => this.create())),
     );
   }
+
+  /** o catálogo escolheu um item (linha leve da Wikipedia) */
+  pickRow(r: { id: number; sym: string; name: string; icon: string; lv: number; parts: number; pack: number; gr: number }) {
+    this.pick({ id: r.id, sym: r.sym, name: r.name, icon: r.icon, lv: r.lv, parts: r.parts, pack: r.pack, gr: r.gr } as unknown as ItemView);
+  }
+
+  /** duplo clique no catálogo: escolhe e cria */
+  createRow(r: Parameters<GmPanel['pickRow']>[0]) { this.pickRow(r); this.create(); }
 
   private found = new Map<number, ItemView>();
 

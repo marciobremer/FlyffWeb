@@ -29,6 +29,7 @@ import { TeleportWindow } from './teleport';
 import { MotionWindow } from './motionwnd';
 import { lookSymbol } from '../shared/look';
 import { FriendsWindow, friendRequestPrompt } from './friends';
+import { WikiWindow } from './wiki';
 import { PartyListWindow, PartyWindow } from './party';
 import { GuildWindow } from './guild';
 import { NpcMenu, type NpcMenuOption } from './npcmenu';
@@ -568,6 +569,16 @@ hud.onMessenger = () => friendsWnd.toggle();
 friendsWnd.onRemove = (id) => net.friendDel(id);
 friendsWnd.onSend = (id, text) => { if (!net.pm(id, text)) chat.system('Sem conexão com o servidor.'); };
 friendsWnd.onNotice = (text) => chat.system(text);
+friendsWnd.onAddByName = (name) => { if (!net.friendAddName(name)) chat.system('Sem conexão com o servidor.'); };
+// Wikipedia de itens (tecla Y ou /wiki) e o painel de GM, que escolhe o item por ela
+const wikiWnd = new WikiWindow(document.body);
+wikiWnd.query = (p) => net.wiki(p);
+wikiWnd.tipFor = (id) => { net.wikiTip(id); };
+wikiWnd.onPick = (r) => { if (gmPanel.visible) gmPanel.pickRow(r); };
+wikiWnd.onActivate = (r) => { if (gmPanel.visible) gmPanel.createRow(r); };
+net.onWiki = (m) => wikiWnd.setPage(m);
+net.onWikiTip = (v) => wikiWnd.setTip(v);
+gmPanel.openCatalog = () => wikiWnd.show();
 net.onFriends = (list) => friendsWnd.set(list);
 net.onFriendOn = (id, on) => friendsWnd.online(id, on);
 net.onFriendNew = (f) => friendsWnd.add(f);
@@ -592,6 +603,7 @@ net.onTeleport = (p, revive) => { if (revive) { view.player?.revive(); deathScre
 chat.onSend = (text) => {
   // comando de emoticon (/laugh, /sad…): mostra a carinha em vez de mandar o texto
   // /say Nome mensagem (ou /s): mensagem privada — se a pessoa está online abre a janela de conversa
+  if (/^\/wiki\s*$/i.test(text.trim())) { wikiWnd.show(); return true; }
   const say = /^\/(?:say|s)\s+(\S+)\s+(.+)$/i.exec(text.trim());
   if (say) return net.pmName(say[1], say[2]);
   if (/^\/(?:say|s)(\s|$)/i.test(text.trim())) { chat.system('Uso: /say NomeDoJogador mensagem (ou /s NomeDoJogador mensagem)'); return true; }
@@ -818,6 +830,7 @@ addEventListener('keydown', (e) => {
   else if (e.code === 'KeyV' && !e.repeat) teleportWnd.toggle();
   else if (e.code === 'KeyO' && !e.repeat) motionWnd.toggle();
   else if (e.code === 'KeyE' && !e.repeat) friendsWnd.toggle();
+  else if (e.code === 'KeyY' && !e.repeat) wikiWnd.toggle();
   else if (e.code === 'KeyP' && !e.repeat) partyWnd.toggle();
   else if (e.code === 'KeyG' && !e.repeat) guildWnd.toggle();
   else if (e.code === 'KeyL' && !e.repeat) partyListWnd.toggle();

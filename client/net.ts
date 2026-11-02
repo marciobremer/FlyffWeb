@@ -376,6 +376,9 @@ export class NetClient {
   /** painel de GM: abrir, resultado da busca de itens; teleporte feito por um GM */
   onGmOpen: () => void = () => {};
   onGmItems: (list: ItemView[]) => void = () => {};
+  /** Wikipedia de itens: uma página da lista e a dica completa de um item */
+  onWiki: (m: { req: number; off: number; total: number; rows: (number | string)[][] }) => void = () => {};
+  onWikiTip: (item: ItemView) => void = () => {};
   onTeleport: (p: [number, number, number], revive: boolean) => void = () => {};
   /** o próprio nível mudou (comando de GM) */
   onLevel: (level: number) => void = () => {};
@@ -448,6 +451,10 @@ export class NetClient {
         this.onInvError(String(m.error));
       } else if (m.t === 'gmOpen') {
         this.onGmOpen();
+      } else if (m.t === 'wiki') {
+        this.onWiki(m as never);
+      } else if (m.t === 'wikiTip') {
+        this.onWikiTip(m.item as ItemView);
       } else if (m.t === 'gmItems') {
         this.onGmItems((m.list ?? []) as ItemView[]);
       } else if (m.t === 'teleport') {
@@ -613,6 +620,7 @@ export class NetClient {
   party(t: 'partyInvite' | 'partyAnswer' | 'partyLeave' | 'partyKick' | 'partyLead' | 'partySkill' | 'partyList', extra: Record<string, unknown> = {}) { return this.raw({ t, ...extra }); }
   /** Mensageiro: pedir amizade, responder pedido, desfazer, mensagem privada */
   friendAdd(id: number) { return this.raw({ t: 'friendAdd', id }); }
+  friendAddName(name: string) { return this.raw({ t: 'friendAdd', name }); }
   friendAnswer(id: number, ok: boolean) { return this.raw({ t: 'friendAnswer', id, ok }); }
   friendDel(id: number) { return this.raw({ t: 'friendDel', id }); }
   pm(to: number, text: string) { return this.raw({ t: 'pm', to, text }); }
@@ -651,6 +659,8 @@ export class NetClient {
   /** pede a lista de destinos do teleporte */
   teleports() { return this.raw({ t: 'teleports' }); }
   /** painel de GM: busca no catálogo de itens (nome/símbolo, categoria) */
+  wiki(p: { req: number; q: string; cat: string; job: number; sex: number; lo: number; hi: number; sort: string; desc: boolean; off: number; n: number }) { return this.raw({ t: 'wiki', ...p }); }
+  wikiTip(id: number) { return this.raw({ t: 'wikiTip', id }); }
   gmItems(q: string, k: string, g = 0) { return this.raw({ t: 'gmItems', q, k, g }); }
   /** a cada 2 s manda o carimbo do relógio; o pong volta com ele e dá o ping */
   private startPing() {

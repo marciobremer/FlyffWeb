@@ -147,6 +147,7 @@ interface Conn { ws: WebSocket; player: PlayerView | null; accountId: number; di
   /** guild do personagem (cargo: 0 mestre … 4 rookie) e convites de guild recebidos */ guild?: { id: number; name: string; rank: number } | null; guildReqs?: Map<number, number>;
   /** último emote/emoticon (ms) — no máximo 3 por segundo */ emoteAt?: number;
   /** último grito (/shout), ms */ shoutAt?: number;
+  /** última busca da Wikipedia de itens, ms */ wikiAt?: number;
   /** anti-speedhack: última mensagem de posição (ms), reserva de deslocamento (u), último puxão de volta e quantos já levou */
   move?: { at: number; budget: number; pulledAt: number; pulls: number };
   /** área de visão: jogadores que este cliente conhece (id → conexão) e conexões que conhecem este jogador */
@@ -2098,6 +2099,14 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         if (Number.isFinite(h)) c.player.h = ((h % 360) + 360) % 360;
         if (typeof msg.s === 'string' && STATES.has(msg.s)) c.player.s = msg.s;
         c.dirty = true;
+      } else if (msg.t === 'friendAdd' && c.player && typeof msg.name === 'string' && !Number.isInteger(msg.id)) {
+        // janela "Add Friend": o pedido vai pelo nome (o jogador precisa estar online)
+        const nick = msg.name.trim().slice(0, 32).toLowerCase();
+        let target: Conn | null = null;
+        for (const x of conns) if (x.player && x.player.name.toLowerCase() === nick) target = x;
+        if (!nick) return;
+        if (!target?.player) send(ws, { t: 'chat', id: 0, name: '', text: `${msg.name.trim().slice(0, 32)} não está online.` });
+        else void friendMsg(c, 'friendAdd', target.player.id, false);
       } else if ((msg.t === 'friendAdd' || msg.t === 'friendAnswer' || msg.t === 'friendDel') && c.player && Number.isInteger(msg.id)) {
         void friendMsg(c, msg.t, msg.id as number, msg.ok === true);
       } else if (msg.t === 'revive' && c.player) {
@@ -2350,6 +2359,21 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         if (Number.isInteger(msg.id)) playerAttack(c, msg.id as number);
       } else if (msg.t === 'stance' && c.player && !c.cb?.dead) {
         setPeace(c, !c.peace);
+      } else if (msg.t === 'wiki' && c.player && inventory) {
+        // Wikipedia de itens (qualquer jogador): catálogo por categoria, com filtros e página
+        const now = Date.now();
+        if (now - (c.wikiAt ?? 0) < 60) return;
+        c.wikiAt = now;
+        const int = (v: unknown, d: number, lo: number, hi: number) => (Number.isFinite(Number(v)) ? Math.min(hi, Math.max(lo, Math.trunc(Number(v)))) : d);
+        const r = inventory.catalog.wiki({
+          q: typeof msg.q === 'string' ? msg.q.slice(0, 40) : '', cat: typeof msg.cat === 'string' ? msg.cat.slice(0, 16) : 'all', job: int(msg.job, -1, -1, 63),
+          sex: int(msg.sex, -1, -1, 1), lo: int(msg.lo, 0, 0, 999), hi: int(msg.hi, 0, 0, 999), sort: typeof msg.sort === 'string' ? msg.sort : 'name', desc: msg.desc === true,
+          off: int(msg.off, 0, 0, 100000), n: int(msg.n, 40, 1, 80),
+        });
+        send(ws, { t: 'wiki', req: int(msg.req, 0, 0, 1e9), off: int(msg.off, 0, 0, 100000), ...r });
+      } else if (msg.t === 'wikiTip' && c.player && inventory && Number.isInteger(msg.id)) {
+        const d = inventory.catalog.byId.get(msg.id as number);
+        if (d) send(ws, { t: 'wikiTip', item: inventory.catalog.viewFull(d) });
       } else if (msg.t === 'gmItems' && c.player && inventory) {
         const q = typeof msg.q === 'string' ? msg.q.slice(0, 40) : '', kind = typeof msg.k === 'string' ? msg.k : '', grade = Number.isInteger(msg.g) ? msg.g as number : 0;
         gmAuthority(c.accountId).then((a) => {

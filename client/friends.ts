@@ -34,6 +34,9 @@ export class FriendsWindow extends GameWindow {
   onSend: (id: number, text: string) => void = () => {};
   /** aviso no chat (ex.: amigo offline) */
   onNotice: (text: string) => void = () => {};
+  /** pedido de amizade pelo nome (janela Add Friend) */
+  onAddByName: (name: string) => void = () => {};
+  private addDlg: AddFriendWindow | null = null;
   private list = document.createElement('ul');
   private empty = document.createElement('p');
   private friends = new Map<number, FriendView>();
@@ -134,10 +137,10 @@ export class FriendsWindow extends GameWindow {
     const add = document.createElement('button');
     add.type = 'button';
     add.className = 'fr-tool';
-    add.title = 'Adicionar amigo: clique num jogador e escolha "Adicionar como amigo"';
+    add.title = 'Adicionar amigo';
     add.setAttribute('aria-label', add.title);
     add.textContent = '+';
-    add.addEventListener('click', () => this.onNotice('Para adicionar um amigo, clique no jogador e escolha "Adicionar como amigo".'));
+    add.addEventListener('click', () => this.addFriendDialog());
     const mail = document.createElement('button');
     mail.type = 'button';
     mail.className = 'fr-tool mail';
@@ -148,6 +151,12 @@ export class FriendsWindow extends GameWindow {
 
     this.body.append(head, cols, main, tabs, foot);
     this.render();
+  }
+
+  /** janela "Add Friend": digita o nick (o jogador precisa estar online) */
+  addFriendDialog() {
+    this.addDlg ??= new AddFriendWindow(this.parent, (name) => this.onAddByName(name));
+    this.addDlg.open();
   }
 
   /** o seu personagem no topo: nome, classe e mapa (o servidor é o nome do jogo) */
@@ -261,6 +270,46 @@ export class FriendsWindow extends GameWindow {
       }
       this.list.append(li);
     }
+  }
+}
+
+/** janela "Add Friend": "Enter Name", campo de texto, OK e Cancel */
+class AddFriendWindow extends GameWindow {
+  private input = document.createElement('input');
+
+  constructor(parent: HTMLElement, private submit: (name: string) => void) {
+    super(parent, { id: 'addFriendWnd', title: 'Add Friend', store: 'flyff.wnd.addfriend', initial: { x: 90, y: 250, w: 250, h: 150 }, min: { w: 220, h: 130 }, resizable: false });
+    this.body.classList.add('af');
+    const label = document.createElement('p');
+    label.textContent = 'Enter Name';
+    this.input.className = 'af-in';
+    this.input.maxLength = 32;
+    this.input.setAttribute('aria-label', 'Nome do jogador');
+    this.input.addEventListener('keydown', (e) => {
+      e.stopPropagation(); // teclas do jogo não valem enquanto digita
+      if (e.key === 'Enter') this.ok();
+      if (e.key === 'Escape') this.hide();
+    });
+    const ok = document.createElement('button'), cancel = document.createElement('button');
+    ok.type = cancel.type = 'button';
+    ok.className = cancel.className = 'af-btn';
+    ok.textContent = 'OK'; cancel.textContent = 'Cancel';
+    ok.addEventListener('click', () => this.ok());
+    cancel.addEventListener('click', () => this.hide());
+    const row = document.createElement('div');
+    row.className = 'af-row';
+    row.append(ok, cancel);
+    this.body.append(label, this.input, row);
+    void themeImage('ButtOk.tga'); // pré-carrega
+  }
+
+  open() { this.input.value = ''; this.show(); this.input.focus(); }
+
+  private ok() {
+    const name = this.input.value.trim();
+    if (!name) { this.input.focus(); return; }
+    this.hide();
+    this.submit(name);
   }
 }
 

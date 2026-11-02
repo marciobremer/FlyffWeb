@@ -438,6 +438,54 @@ export class ItemCatalog {
     return out.slice(0, max);
   }
 
+  /**
+   * Wikipedia de itens: categorias (árvore da janela) e filtros. `cat`: all, weapons, sets, jewelry, cs (Cash Shop: equipamento),
+   * othercs (Cash Shop: o resto), pets, furniture, other e, dentro de other, cards, beads, gems, tickets, powerup, food.
+   * Itens sem nome de verdade (o nome é só o símbolo II_*) ficam de fora.
+   */
+  wikiInCategory(d: ItemDef, cat: string): boolean {
+    const k3 = d.kind3, k2 = d.kind2, k1 = d.kind1;
+    const pet = k3 === 100 || k3 === 120, furniture = k1 === 7 || [34, 35, 38, 39, 40].includes(k2);
+    const jewelry = k2 === 13, weapon = k1 === 1, set = this.setByItem.has(d.id), cashEquip = [9, 10, 32].includes(k2), cashOther = k1 === 6;
+    switch (cat) {
+      case 'all': return true;
+      case 'weapons': return weapon;
+      case 'sets': return set;
+      case 'jewelry': return jewelry;
+      case 'cs': return cashEquip;
+      case 'othercs': return cashOther;
+      case 'pets': return pet;
+      case 'furniture': return furniture;
+      case 'cards': return [37, 62, 63, 248].includes(k3);
+      case 'beads': return /bead/i.test(d.name);
+      case 'gems': return k2 === 16 || k3 === 34;
+      case 'tickets': return k3 === 122 || /ticket/i.test(d.symbol);
+      case 'powerup': return k2 === 50 || [51, 119, 165, 166, 167, 168, 203, 204, 207, 208, 224, 225, 226].includes(k3) || (k3 === 50 && /stone|rune|protection|hammer|enchant|upgrade/i.test(d.name));
+      case 'food': return k3 !== 256 && (k2 === 14 || [30, 31, 32, 35, 59, 161, 218].includes(k3)); // k3 256 = badge
+      case 'other': return !weapon && !set && !jewelry && !cashEquip && !cashOther && !pet && !furniture;
+      default: return true;
+    }
+  }
+
+  /** busca da Wikipedia: filtros, ordenação (`name`, `job` ou `level`) e página (`off`/`n`); devolve o total e as linhas leves */
+  wiki(o: { q: string; cat: string; job: number; sex: number; lo: number; hi: number; sort: string; desc: boolean; off: number; n: number }) {
+    const s = o.q.trim().toLowerCase();
+    const list: ItemDef[] = [];
+    for (const d of this.byId.values()) {
+      if (d.name === d.symbol || !d.name) continue;
+      if (o.lo > 0 && d.level < o.lo) continue;
+      if (o.hi > 0 && d.level > o.hi) continue;
+      if (o.sex >= 0 && d.sex >= 0 && d.sex !== o.sex) continue;
+      if (o.job >= 0 && !jobCanUse(d.job, o.job)) continue;
+      if (s && !d.name.toLowerCase().includes(s)) continue;
+      if (!this.wikiInCategory(d, o.cat)) continue;
+      list.push(d);
+    }
+    const dir = o.desc ? -1 : 1;
+    list.sort((a, b) => (o.sort === 'level' ? a.level - b.level || a.name.localeCompare(b.name) : o.sort === 'job' ? a.job - b.job || a.name.localeCompare(b.name) : a.name.localeCompare(b.name)) * dir);
+    return { total: list.length, rows: list.slice(o.off, o.off + o.n).map((d) => [d.id, d.symbol, d.name, d.icon, d.level, d.job, d.sex, d.kind1, d.parts, d.packMax, d.grade]) };
+  }
+
   /** o que o cliente precisa para desenhar (nome, ícone, empilhamento, onde equipa) */
   /** dados do item para o cliente (inclui o que a dica do item mostra: ataque/defesa, velocidade, classe, bônus de atributo) */
   static view(d: ItemDef) {
