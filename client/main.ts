@@ -191,6 +191,13 @@ net.onMobs = (add, upd, del) => {
 const combat = new Combat(view);
 combat.sendAttack = (id) => { net.attack(id); };
 combat.sendSkill = (sk, id) => { net.castSkill(sk, id); };
+let myMp = 0, myFp = 0;
+combat.skillBlock = (id) => {
+  const s = skillWnd.get(id), L = s?.levels[skillWnd.levelOf(id) - 1];
+  if (!s || !L) return null;
+  return L.mp > myMp ? 'MP insuficiente.' : L.fp > myFp ? 'FP insuficiente.' : null;
+};
+combat.onBlocked = (why) => chat.system(why);
 net.onBuffs = (list) => buffBar.set(list);
 buffBar.onRemove = (id) => { net.removeBuff(id); };
 net.onSkills = (points, levels, list, auto) => { const ch = characters.find((c) => c.slot === selectedSlot); skillWnd.set(points, levels, list, ch?.level ?? 1, !!auto); };
@@ -500,6 +507,7 @@ net.onStats = (s) => {
   if (s.mv) moveSpeed = s.mv;
   if (view.player) view.player.runSpeed = moveSpeed;
   combat.range = s.range ?? 2;
+  myMp = s.mp; myFp = s.fp;
   const expPct = s.expMax > 0 ? (s.exp / s.expMax) * 100 : 0;
   hud.setStatus({ name: ch.name, level: s.level, hp: s.hp, maxHp: s.maxHp, mp: s.mp, maxMp: s.maxMp, fp: s.fp, maxFp: s.maxFp, expPct });
   charWnd.setName(ch.name);

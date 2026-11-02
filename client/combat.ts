@@ -29,6 +29,9 @@ export class Combat {
   /** manda o golpe / a skill ao servidor */
   sendAttack: (mobId: number) => void = () => {};
   sendSkill: (skillId: number, mobId: number) => void = () => {};
+  /** motivo de não dar para lançar a skill agora (MP/FP insuficiente…), ou null — conferido antes da animação */
+  skillBlock: (skillId: number) => string | null = () => null;
+  onBlocked: (why: string) => void = () => {};
   /** skill esperando chegar ao alcance (lança no lugar do próximo golpe) */
   private queued: QueuedSkill | null = null;
   /** Action Slot em andamento: as próximas skills da sequência e quantas já saíram */
@@ -82,7 +85,9 @@ export class Combat {
       else this.endChain();
       if (q) {
         this.nextAtk = now + Math.max(this.interval, 1200);
-        if (q.buff) this.sendSkill(q.id, 0); // buff da sequência vale em quem lança (o movimento toca quando o servidor aceita)
+        const why = q.buff ? null : this.skillBlock(q.id);
+        if (why) { this.onBlocked(why); this.endChain(); this.queued = null; this.nextAtk = now + 400; }
+        else if (q.buff) this.sendSkill(q.id, 0); // buff da sequência vale em quem lança (o movimento toca quando o servidor aceita)
         else { p.cast(q.motion); this.sendSkill(q.id, id); if (q.once) { this.endChain(); this.targetId = null; } }
       } else {
         this.nextAtk = now + this.interval;
