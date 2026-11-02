@@ -1475,8 +1475,9 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       sendNear(p.w, p.p[0], p.p[2], { t: 'skillfx', a: p.id, fx, tg: m!.id });
       if (Math.random() * 100 >= (L.prob > 0 ? L.prob : 100)) { reply(c, `${s.name} não afetou o alvo.`); return; }
       const dur = L.time > 0 ? L.time : 5000;
-      m!.frozenUntil = now + dur;
-      if (rustHere(c)) rust?.send({ k: 'freeze', mob: m!.id, ms: dur });
+      // o efeito no alvo só aparece depois do movimento de lançar (~0,9 s, CAST_MS do cliente): o debuff vale da mesma hora
+      m!.frozenUntil = now + 900 + dur;
+      if (rustHere(c)) rust?.send({ k: 'freeze', mob: m!.id, ms: 900 + dur });
       sendNear(p.w, m!.x, m!.z, { t: 'mdebuff', id: m!.id, sk: skillId, name: s.name, icon: s.icon, ms: dur });
       return;
     }
