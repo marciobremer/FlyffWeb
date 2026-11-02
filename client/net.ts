@@ -309,7 +309,7 @@ export class NetClient {
   /** como ficariam os atributos com os pontos ainda não aplicados (janela de personagem) */
   onStatPreview: (s: PlayerStats) => void = () => {};
   /** suas skills (pontos, níveis, lista da classe) e skill lançada (espera) */
-  onSkills: (points: number, levels: Record<string, number>, list: import('./skillwnd').SkillView[]) => void = () => {};
+  onSkills: (points: number, levels: Record<string, number>, list: import('./skillwnd').SkillView[], auto?: boolean) => void = () => {};
   onSkillUsed: (id: number, cd: number) => void = () => {};
   onBuffs: (list: import('./buffbar').BuffView[]) => void = () => {};
   /** efeitos de skill de buff/cura (quem lançou e os ids XI_*) */
@@ -466,7 +466,7 @@ export class NetClient {
       } else if (m.t === 'pdie') {
         this.onPlayerDie(Number(m.id));
       } else if (m.t === 'skills') {
-        this.onSkills(Number(m.points) || 0, (m.levels ?? {}) as Record<string, number>, (m.list ?? []) as never);
+        this.onSkills(Number(m.points) || 0, (m.levels ?? {}) as Record<string, number>, (m.list ?? []) as never, !!m.auto);
       } else if (m.t === 'buffs') {
         this.onBuffs((m.list ?? []) as never);
       } else if (m.t === 'skillfx') {

@@ -15,6 +15,7 @@ import { ItemCatalog, jobCanUse } from '../common/items';
 import type { CombatRules, Equipped, Fighter } from './combat';
 import { MOB_ATTACK_RANGE, isBoss, type Mob } from './mobs';
 import { RustLink, LinkSocket } from './rustlink';
+import { skillMode } from '../common/skillmode';
 import { GROUND_MS, OWNER_MS, type DropRules } from './drops';
 import { notifyInventory } from '../character/inventory';
 import type { ShopCatalog } from './shops';
@@ -422,6 +423,27 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     cb.points = Math.max(0, rules.totalGp(level) - ((b.str - 15) + (b.sta - 15) + (b.dex - 15) + (b.int - 15)));
   }
 
+  /**
+   * Modo de skills (data/skill-mode.json, aba Skills do painel admin): `manual` = pontos a cada nível, o jogador distribui
+   * (reconcilePoints); `auto` = sem pontos de skill, e cada skill da classe abre sozinha no nível máximo ao chegar no
+   * `reqLevel`, respeitando os pré-requisitos. Chamado ao entrar, ao subir de nível, no //set-level, ao mudar de classe e
+   * quando o modo muda.
+   */
+  function reconcileSkills(cb: PlayerCombat, level: number) {
+    reconcilePoints(cb, level); // atributos, skills de outra classe e (manual) os pontos de skill
+    if (!skillCat || skillMode() !== 'auto') return;
+    const list = skillCat.forJob(cb.f.job);
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const s of list) {
+        if (level < s.reqLevel || (cb.skills.get(s.id) ?? 0) >= s.max) continue;
+        if (s.pre.every(([pid, plv]) => (cb.skills.get(pid) ?? 0) >= plv)) { cb.skills.set(s.id, s.max); changed = true; }
+      }
+    }
+    cb.skillPoints = 0;
+  }
+  let lastSkillMode = skillMode();
+
   /** aplica a mudança de classe: banco, atributos de luta, postura da arma, skills e aviso a todos */
   async function changeJob(c: Conn, job: number) {
     const p = c.player, cb = c.cb;
@@ -430,6 +452,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     p.job = job;
     cb.f.job = job;
     await query('UPDATE characters SET job = $2, updated_at = now() WHERE id = $1', [p.id, job]);
+    if (skillMode() === 'auto') { reconcileSkills(cb, p.level); send(c.ws, skillsMsg(c)); }
     const st = await inventory.state(p.id);
     refreshFighter(c, st);
     send(c.ws, skillsMsg(c));
@@ -658,6 +681,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     let up = false;
     const cap = rules.levelCap(cb.f.job);
     while (p.level < cap && rules.expToNext[p.level] > 0 && cb.exp >= rules.expToNext[p.level]) { cb.exp -= rules.expToNext[p.level]; p.level++; cb.points += rules.gpAt[p.level] ?? 2; if (skillCat) cb.skillPoints += skillCat.gainAt(p.level); up = true; }
+    if (up && skillMode() === 'auto') reconcileSkills(cb, p.level);
     if (p.level >= cap && cb.f.job < 6) cb.exp = 0; // no teto da Vagrant/1ª classe a exp não sobe até mudar de classe
     if (up) {
       recalcMax(c, true);
@@ -1368,7 +1392,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   // ---------- skills (server/skills.ts) ----------
   function skillsMsg(c: Conn) {
     const cb = c.cb!, job = c.player!.job;
-    return { t: 'skills', points: cb.skillPoints, levels: Object.fromEntries(cb.skills), list: skillCat ? skillCat.forJob(job).map((s) => skillCat.view(s)) : [] };
+    return { t: 'skills', points: skillMode() === 'auto' ? 0 : cb.skillPoints, ...(skillMode() === 'auto' ? { auto: 1 } : {}), levels: Object.fromEntries(cb.skills), list: skillCat ? skillCat.forJob(job).map((s) => skillCat.view(s)) : [] };
   }
 
   /** aprender/subir: { id: nível novo } validado como no original */
@@ -1378,6 +1402,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     const want = new Map<number, number>();
     for (const [k, v] of Object.entries(raw as Record<string, unknown>)) if (Number.isInteger(Number(k)) && Number.isInteger(v)) want.set(Number(k), v as number);
     if (!want.size) return;
+    if (skillMode() === 'auto') { reply(c, 'As skills abrem sozinhas neste servidor.'); send(c.ws, skillsMsg(c)); return; }
     const r = skillCat.validate(p.job, p.level, cb.skills, want, cb.skillPoints);
     if (typeof r === 'string') { reply(c, r); send(c.ws, skillsMsg(c)); return; }
     cb.skillPoints -= r;
@@ -1971,6 +1996,23 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (pos.length) rust.send({ k: 'pos', list: pos });
   }
 
+  // o modo de skills mudou no painel: auto → abre as skills de todos; manual → devolve os pontos (as skills abertas sozinhas voltam a zero)
+  const skillModeTick = setInterval(() => {
+    const now = skillMode();
+    if (now === lastSkillMode) return;
+    const from = lastSkillMode;
+    lastSkillMode = now;
+    for (const o of conns) {
+      const cb = o.cb, p = o.player;
+      if (!cb || !p || !skillCat) continue;
+      if (from === 'auto' && now === 'manual') cb.skills.clear(); // as skills não foram pagas: o jogador recebe os pontos e distribui
+      reconcileSkills(cb, p.level);
+      send(o.ws, skillsMsg(o));
+      void saveCombat(p.id, cb, p.level).catch((e) => console.error('realtime: salvar skills (modo)', e));
+    }
+    console.log(`skills: modo ${now}`);
+  }, 2000);
+
   // recuperação fora de combate (a cada 3 s, 5 s depois do último golpe recebido) e envio dos atributos que mudaram
   const regen = setInterval(() => {
     const now = Date.now();
@@ -1988,7 +2030,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   const statsTick = setInterval(() => {
     for (const c of conns) if (c.cb?.dirty && c.player) { c.cb.dirty = false; send(c.ws, statsMsg(c)); }
   }, 200);
-  http.on('close', () => { clearInterval(regen); clearInterval(statsTick); clearInterval(autosaveTimer); });
+  http.on('close', () => { clearInterval(skillModeTick); clearInterval(regen); clearInterval(statsTick); clearInterval(autosaveTimer); });
 
   async function join(c: Conn, msg: Record<string, unknown>) {
     const tok = typeof msg.token === 'string' ? msg.token : null;
@@ -2032,7 +2074,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         exp: Number(ch.exp) || 0, dead: false, nextAtk: 0, lastHurt: 0, dirty: false, points: ch.stat_points ?? 0, readyAt: new Map(),
         skills: new Map(Object.entries(ch.skills ?? {}).map(([k, v]) => [Number(k), Number(v)] as [number, number]).filter(([k, v]) => Number.isInteger(k) && v > 0)),
         skillPoints: ch.skill_points ?? 0, skillReady: new Map(), buffs };
-      reconcilePoints(c.cb, ch.level);
+      reconcileSkills(c.cb, ch.level);
     }
     c.onlineSet = query('UPDATE characters SET online = true WHERE id = $1', [id]).then(() => {}, () => {}); // o site mostra quem está online
     const me = c.player;
@@ -2258,7 +2300,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
                     toWatchers(o, { t: 'job', id, job: okJob });
                   }
                   o.cb.skills.clear();
-                  reconcilePoints(o.cb, level);
+                  reconcileSkills(o.cb, level);
                   send(o.ws, skillsMsg(o));
                   send(o.ws, buffsMsg(o));
                   void inventory?.state(id).then((st) => { refreshFighter(o, st); const mt = stanceOf(o, inventory!.combatMotion(st, o.player!.job)); if (o.player && mt !== o.player.mt) { o.player.mt = mt; toWatchers(o, { t: 'look', id, eq: o.player.eq, mt }); } });

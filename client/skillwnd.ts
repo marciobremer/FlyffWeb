@@ -30,6 +30,8 @@ export class SkillWindow extends GameWindow {
   private tree = document.createElement('div');
   private info = document.createElement('div');
   private pointsEl = document.createElement('output');
+  /** a linha "Pontos de skill" (some no modo automático: as skills abrem sozinhas) */
+  private ptsEl = document.createElement('span');
   private applyBtn = document.createElement('button');
   private resetBtn = document.createElement('button');
   private plusUrl: string | null = null;
@@ -49,7 +51,7 @@ export class SkillWindow extends GameWindow {
     this.info.className = 'sk-info';
     const foot = document.createElement('div');
     foot.className = 'sk-foot';
-    const pts = document.createElement('span');
+    const pts = this.ptsEl;
     pts.append('Pontos de skill: ', this.pointsEl);
     for (const [btn, label] of [[this.resetBtn, 'Desfazer'], [this.applyBtn, 'Aplicar']] as const) { btn.type = 'button'; btn.className = 'gm-btn'; btn.textContent = label; }
     this.applyBtn.addEventListener('click', () => {
@@ -67,8 +69,9 @@ export class SkillWindow extends GameWindow {
   }
 
   /** dados vindos do servidor */
-  set(points: number, levels: Record<string, number>, list: SkillView[], charLevel: number) {
+  set(points: number, levels: Record<string, number>, list: SkillView[], charLevel: number, auto = false) {
     this.points = points;
+    this.ptsEl.hidden = auto;
     this.levels = new Map(Object.entries(levels).map(([k, v]) => [Number(k), v]));
     this.list = list;
     this.charLevel = charLevel;

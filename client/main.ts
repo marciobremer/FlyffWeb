@@ -193,7 +193,7 @@ combat.sendAttack = (id) => { net.attack(id); };
 combat.sendSkill = (sk, id) => { net.castSkill(sk, id); };
 net.onBuffs = (list) => buffBar.set(list);
 buffBar.onRemove = (id) => { net.removeBuff(id); };
-net.onSkills = (points, levels, list) => { const ch = characters.find((c) => c.slot === selectedSlot); skillWnd.set(points, levels, list, ch?.level ?? 1); };
+net.onSkills = (points, levels, list, auto) => { const ch = characters.find((c) => c.slot === selectedSlot); skillWnd.set(points, levels, list, ch?.level ?? 1, !!auto); };
 net.onSkillUsed = (id, cd) => {
   actionBar.cooldown(id, cd, 'skill');
   const s = skillWnd.get(id);
