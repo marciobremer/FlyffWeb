@@ -808,7 +808,28 @@ export class WorldView {
     const meshes: Object3D[] = [];
     this.moverGroup.traverse((o) => { if (o instanceof Mesh && o.visible) meshes.push(o); });
     const hit = this.setRay(ev).intersectObjects(meshes, false)[0];
-    return (hit && this.moverMgr.instanceOf(hit.object)) || this.moverMgr.nearestOnScreen(ev.clientX, ev.clientY, this.camera, innerWidth, innerHeight);
+    const inst = (hit && this.moverMgr.instanceOf(hit.object)) || this.moverMgr.nearestOnScreen(ev.clientX, ev.clientY, this.camera, innerWidth, innerHeight);
+    // só o que dá para ver: não vale NPC/mob longe demais (na neblina) nem escondido atrás do morro
+    return inst && this.moverVisible(inst) ? inst : null;
+  }
+
+  /**
+   * O mover está à vista? Perto da câmera (um pouco além da distância dos nomes) e sem terreno entre a câmera e o corpo
+   * (a linha da câmera até a altura do peito é amostrada sobre o mapa de alturas).
+   */
+  private moverVisible(inst: MoverInstance) {
+    if (inst.owner === 'players' || inst.owner === 'pets') return true; // jogadores e pets têm a própria checagem
+    const cam = this.camera.position, base = new Vector3().setFromMatrixPosition(inst.group.matrixWorld);
+    if (base.distanceTo(cam) > this.moverMgr.labelDistance + 10) return false;
+    const chest = base.clone();
+    chest.y += Math.max(0.6, (inst.tpl.height + (inst.tpl.lift ?? 0)) * (inst.tpl.entry.scale || 1) * 0.7);
+    const N = 16;
+    for (let i = 1; i < N; i++) {
+      const t = i / N, x = cam.x + (chest.x - cam.x) * t, y = cam.y + (chest.y - cam.y) * t, z = cam.z + (chest.z - cam.z) * t;
+      const h = this.sampleHeight(x, -z);
+      if (h !== null && h > y + 0.3) return false; // morro na frente
+    }
+    return true;
   }
 
   /** alguma tecla de andar/pular apertada? (cancela o ataque automático) */
