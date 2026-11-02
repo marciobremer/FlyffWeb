@@ -94,6 +94,10 @@ pub enum LinkOut {
     Error { error: String },
     /// um mob golpeou o personagem (modo em que o Node calcula o dano)
     MobAttack { char: u32, mob: u32 },
+    /// conjunto de mobs conhecidos de `char` mudou (as ações do Node conferem nele): ids que entraram e que saíram
+    Known { char: u32, add: Vec<u32>, del: Vec<u32> },
+    /// espelho dos mobs que alguém vê: [id, modelo, x, z, rumo, estado, y|null, hp em milésimos][] (uma vez por envio)
+    Mirror { list: Vec<Value> },
     /// mudança na visão de JOGADORES de `char`: quem entrou e quem saiu da área dele (o Node manda o `enter` com o PlayerView)
     See { char: u32, enter: Vec<u32>, leave: Vec<u32> },
 }

@@ -181,3 +181,23 @@ Com `GAME_ENGINE=rust` a **área de visão de jogadores** e o **fan-out de movim
 Testes: `cargo test` (4 de integração TCP, incluindo "jogadores só se veem por perto e invisível some para não-staff"); `tools/test-rust-players.ts` (2 jogadores reais: `enter` mútuo, `states` de movimento, GM invisível visto por staff, `leave` ao se afastar; Rust contou see_enter/see_leave/state_updates). `test-aoi.ts` e `test-rust-e2e.ts` seguem passando.
 
 Limites: a visão de jogadores é por janela de células (≈ até 270 u nas diagonais; o Node usava círculo de 150 u); ações entre jogadores (trade, pm, convites por id) ainda não conferem a visão; não foi medido com centenas de bots (próximo: `tools/loadtest.ts` Node × Rust).
+
+### 11.4 Medição Node × Rust com bots (2026-11-02)
+
+`npx tsx tools/bench-engines.ts <node|rust> <bots> <segundos> <espalhar>`: sobe o servidor sozinho (porta 9080), entra com N bots `lt_bot*` no mesmo campo (6744, 2995; espalhados em 300 u, comportamento "walk", 60 s) e mede. Máquina de desenvolvimento (Windows, mesma para bots e servidor — os bots também gastam CPU).
+
+| bots | motor | CPU Node (média/pior) | CPU game-server | lag do event loop p99 | RTT p50 / p95 | recebido pelos bots |
+|---|---|---|---|---|---|---|
+| 500 | Node | 30 % / 35 % | – | 42 ms | 28 / 45 ms | 19,4 MB/s |
+| 500 | Rust | 33 % / 44 % | 17 % | **16 ms** | **6 / 20 ms** | 25,4 MB/s |
+| 1000 | Node | 58 % / 64 % | – | 74 ms | 40 / 79 ms | 38,8 MB/s |
+| 1000 | Rust | 68 % / 82 % | 35 % | **29 ms** | **18 / 46 ms** | 50,8 MB/s |
+
+Leitura honesta:
+- **Latência melhora ~2×** (lag do event loop e RTT p95 caem pela metade), porque o Node deixa de calcular IA/visão/montagem de `states`.
+- **A CPU do Node não cai**: o gargalo que sobra é escrever nos WebSockets, e o Rust ainda gasta um núcleo parcial (17–35 %). Somado, o Rust consome mais CPU total; o ganho é tirar a conta de dentro da thread única do Node.
+- Os bots recebem ~30 % mais dados no Rust porque os `mobs` saem a 10 Hz (o Node mandava a 5 Hz) e a janela de visão é por células. Ajustável (`send_views` a cada 4 ticks).
+- A 1ª versão do caminho Rust (JSON por observador + parse/stringify no Node) era **pior** que o Node (Node a 71 % com 500 bots); o que resolveu foi: texto de cada mob/jogador montado uma vez por envio, quadros "crus" (o Node repassa os bytes), revisão de visão escalonada e espelho dos mobs enviado uma vez por envio.
+- O `gap` entre atualizações de posição subiu (≈210 ms p95 contra ≈150 ms): a fase do envio de rede do Rust não está alinhada com os `pos` do Node.
+
+Para ganhar CPU de verdade falta tirar o envio pelos WebSockets de dentro do Node (o Rust falar WebSocket com o navegador — a opção que o memorando deixou para quando o Node virar gargalo).

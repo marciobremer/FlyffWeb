@@ -148,6 +148,8 @@ struct MapState<T: Terrain> {
     rng: Xorshift32,
     stats: Stats,
     tick_sum_ms: f64,
+    /// contador dos envios de rede (escalona a revisão da visão)
+    net_n: u64,
 }
 
 impl<T: Terrain> MapState<T> {
@@ -333,69 +335,103 @@ impl<T: Terrain> MapState<T> {
         }
     }
 
-    /// 10 Hz: revê o conjunto de visão de cada jogador e manda os mobs que entraram, mudaram e saíram (formato `mobs` do cliente)
+    /// envia ao cliente `conn` um JSON JÁ PRONTO (quadro "cru": o Node repassa os bytes ao WebSocket sem ler)
+    fn send_raw(&self, link: u64, conn: u32, payload: &[u8]) {
+        if let Some(l) = self.links.get(&link) {
+            let mut f = Vec::with_capacity(payload.len() + 9);
+            f.extend_from_slice(&((payload.len() + 5) as u32).to_be_bytes());
+            f.push(1);
+            f.extend_from_slice(&conn.to_be_bytes());
+            f.extend_from_slice(payload);
+            let _ = l.out.send(f);
+        }
+    }
+
+    /// 10 Hz: revê (escalonado) a visão de cada jogador e manda mobs e jogadores que entraram, mudaram e saíram.
+    /// Cada mob/jogador que mudou vira texto UMA vez; cada observador só junta os pedaços que ele conhece.
     fn send_views(&mut self, now: u64) {
+        self.net_n += 1;
+        let n = self.net_n;
+        // texto de cada mob que mudou (formato `u` do cliente) e de cada jogador que andou (formato do `states`)
+        let mut mob_u: HashMap<EntityId, String> = HashMap::new();
+        for m in self.mobs.mobs() {
+            if m.dirty { mob_u.insert(m.id, format!("[{},{:.1},{:.1},{},\"{}\",{}]", m.id, m.x, m.z, m.h.round() as i64, state_str(m.s), mob_hp(m))); }
+        }
+        let moved: HashMap<EntityId, String> = self.players.values().filter(|p| p.moved)
+            .map(|p| (p.ent, format!("[{},{:.2},{:.2},{:.2},{},\"{}\"]", p.ent - PLAYER_BASE, p.x, p.y, p.z, p.h.round() as i64, p.st)))
+            .collect();
         let ents: Vec<EntityId> = self.players.keys().copied().collect();
+        let mut mirror: HashMap<EntityId, ()> = HashMap::new();
         for ent in ents {
-            let diff = {
+            let Some(p) = self.players.get(&ent) else { continue };
+            let (link, conn, staff) = (p.link, p.conn, p.staff);
+
+            // ---- mobs: conjunto de visão revisto a cada 2 envios (ou sempre, se está vazio) ----
+            let due_m = (n + ent as u64) % 2 == 0 || self.aoi.set_of(ent).is_none_or(|s| s.is_empty());
+            let diff = if due_m {
                 let mobs = &self.mobs;
                 let visible = |t: EntityId| t < PLAYER_BASE && mobs.get(t).is_some_and(|m| !(m.s == MobState::Dead && now.saturating_sub(m.died_at) > CORPSE_MS));
                 self.aoi.refresh(ent, mobs.grid(), AOI_MAX, visible)
-            };
-            self.send_player_view(ent);
-            let (mut a, mut u, mut d) = (Vec::new(), Vec::new(), Vec::new());
+            } else { Default::default() };
+            let (mut a, mut u, mut d) = (Vec::<String>::new(), Vec::<&str>::new(), Vec::<String>::new());
             for t in &diff.enter {
-                if *t >= PLAYER_BASE { continue; } // jogadores entram numa etapa seguinte (enter/leave de PlayerView)
                 if let Some(m) = self.mobs.get(*t) {
-                    a.push(json!([m.id, m.model_id, r1(m.x), r1(m.z), m.h.round(), state_str(m.s), if m.flying { json!(r1(m.y)) } else { Value::Null }, mob_hp(m)]));
+                    let y = if m.flying { format!("{:.1}", m.y) } else { "null".into() };
+                    a.push(format!("[{},{},{:.1},{:.1},{},\"{}\",{},{}]", m.id, m.model_id, m.x, m.z, m.h.round() as i64, state_str(m.s), y, mob_hp(m)));
                 }
             }
-            for t in &diff.leave { if *t < PLAYER_BASE { d.push(json!(t)); } }
+            for t in &diff.leave { d.push(t.to_string()); }
             if let Some(set) = self.aoi.set_of(ent) {
                 for t in set {
-                    if *t >= PLAYER_BASE || diff.enter.contains(t) { continue; }
-                    if let Some(m) = self.mobs.get(*t).filter(|m| m.dirty) {
-                        u.push(json!([m.id, r1(m.x), r1(m.z), m.h.round(), state_str(m.s), mob_hp(m)]));
+                    if let Some(s) = mob_u.get(t) {
+                        if !diff.enter.contains(t) { u.push(s); }
+                        mirror.insert(*t, ());
                     }
                 }
             }
+            for t in &diff.enter { mirror.insert(*t, ()); }
             if !a.is_empty() || !u.is_empty() || !d.is_empty() {
-                self.to_player(ent, json!({ "t": "mobs", "a": a, "u": u, "d": d }));
+                let msg = format!("{{\"t\":\"mobs\",\"a\":[{}],\"u\":[{}],\"d\":[{}]}}", a.join(","), u.join(","), d.join(","));
+                self.send_raw(link, conn, msg.as_bytes());
             }
+            if !diff.enter.is_empty() || !diff.leave.is_empty() {
+                // o Node mantém o conjunto `c.mobs` (as ações conferem nele)
+                self.send(link, &LinkOut::Known { char: ent - PLAYER_BASE, add: diff.enter.clone(), del: diff.leave.clone() });
+            }
+
+            // ---- jogadores: revisão a cada 4 envios (ou sempre, se vazio) ----
+            let due_p = (n + ent as u64) % 4 == 0 || self.aoi_p.set_of(ent).is_none_or(|s| s.is_empty());
+            let pdiff = if due_p {
+                let players = &self.players;
+                let visible = |t: EntityId| t >= PLAYER_BASE && players.get(&t).is_some_and(|q| !(q.invis && !staff));
+                self.aoi_p.refresh(ent, self.mobs.grid(), PLAYER_VIEW_MAX, visible)
+            } else { Default::default() };
+            if !pdiff.enter.is_empty() || !pdiff.leave.is_empty() {
+                self.stats.see_enter += pdiff.enter.len() as u64;
+                self.stats.see_leave += pdiff.leave.len() as u64;
+                let ids = |v: &[EntityId]| -> Vec<u32> { v.iter().map(|t| t - PLAYER_BASE).collect() };
+                self.send(link, &LinkOut::See { char: ent - PLAYER_BASE, enter: ids(&pdiff.enter), leave: ids(&pdiff.leave) });
+            }
+            // movimentos de quem ele conhece (quem acabou de entrar já chega com a posição no `enter` do Node)
+            if !moved.is_empty() {
+                if let Some(set) = self.aoi_p.set_of(ent) {
+                    let list: Vec<&str> = set.iter().filter(|t| !pdiff.enter.contains(t)).filter_map(|t| moved.get(t)).map(|s| s.as_str()).collect();
+                    if !list.is_empty() {
+                        self.stats.state_updates += list.len() as u64;
+                        let msg = format!("{{\"t\":\"states\",\"list\":[{}]}}", list.join(","));
+                        self.send_raw(link, conn, msg.as_bytes());
+                    }
+                }
+            }
+        }
+        // espelho para o Node (só mobs que alguém vê): posição, estado e HP completos, uma vez por envio
+        if !mirror.is_empty() {
+            let list: Vec<Value> = mirror.keys().filter_map(|id| self.mobs.get(*id)).map(|m| json!([m.id, m.model_id, r1(m.x), r1(m.z), m.h.round(), state_str(m.s), if m.flying { json!(r1(m.y)) } else { Value::Null }, mob_hp(m)])).collect();
+            let link = self.links.iter().find(|(_, l)| l.authed).map(|(k, _)| *k);
+            if let Some(link) = link { self.send(link, &LinkOut::Mirror { list }); }
         }
         self.mobs.clear_dirty();
         for p in self.players.values_mut() { p.moved = false; }
-    }
-
-    /// visão de jogadores de `ent`: quem entrou/saiu (o Node manda o `enter`/`leave` com os dados do personagem) e os
-    /// movimentos de quem ele vê. Invisível só aparece para staff.
-    fn send_player_view(&mut self, ent: EntityId) {
-        let staff = self.players.get(&ent).is_some_and(|p| p.staff);
-        let diff = {
-            let players = &self.players;
-            let visible = |t: EntityId| t >= PLAYER_BASE && players.get(&t).is_some_and(|q| !(q.invis && !staff));
-            self.aoi_p.refresh(ent, self.mobs.grid(), PLAYER_VIEW_MAX, visible)
-        };
-        let ids = |v: &[EntityId]| -> Vec<u32> { v.iter().map(|t| t - PLAYER_BASE).collect() };
-        if !diff.enter.is_empty() || !diff.leave.is_empty() {
-            self.stats.see_enter += diff.enter.len() as u64;
-            self.stats.see_leave += diff.leave.len() as u64;
-            if let Some(p) = self.players.get(&ent) {
-                self.send(p.link, &LinkOut::See { char: ent - PLAYER_BASE, enter: ids(&diff.enter), leave: ids(&diff.leave) });
-            }
-        }
-        // movimentos de quem ele conhece (os que acabaram de entrar já chegam com a posição no `enter` do Node)
-        let Some(set) = self.aoi_p.set_of(ent) else { return };
-        let list: Vec<Value> = set.iter()
-            .filter(|t| !diff.enter.contains(t))
-            .filter_map(|t| self.players.get(t))
-            .filter(|q| q.moved)
-            .map(|q| json!([q.ent - PLAYER_BASE, r2(q.x), r2(q.y), r2(q.z), q.h.round(), q.st]))
-            .collect();
-        if !list.is_empty() {
-            self.stats.state_updates += list.len() as u64;
-            self.to_player(ent, json!({ "t": "states", "list": list }));
-        }
     }
 }
 
@@ -404,7 +440,7 @@ fn run_map<T: Terrain>(rx: Receiver<Inbound>, stop: Receiver<()>, cfg: Config, m
     let dt = cfg.tick_ms as f64 / 1000.0;
     let mut st = MapState {
         cfg, mobs, aoi: Aoi::new(), aoi_p: Aoi::new(), links: HashMap::new(), players: HashMap::new(), by_conn: HashMap::new(),
-        rng: Xorshift32::new(0x9e3779b1), stats: Stats::default(), tick_sum_ms: 0.0,
+        rng: Xorshift32::new(0x9e3779b1), stats: Stats::default(), tick_sum_ms: 0.0, net_n: 0,
     };
     let _ = st.rng.next_f64();
     let start = Instant::now();

@@ -59,3 +59,4 @@ data/mappack/
 # link com o game-server em Rust (segredo e pid desta maquina)
 data/rust-link.secret
 data/rust.pid
+data/bench/

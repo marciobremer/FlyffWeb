@@ -1832,6 +1832,12 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     rust = new RustLink(process.env.RUST_LINK_HOST ?? '127.0.0.1', Number(process.env.RUST_LINK_PORT ?? 9201), process.env.GAME_LINK_SECRET ?? '', {
       onUp: () => { rustAttached.clear(); console.log('rust-link: conectado — mobs de', rustWorld.name, 'agora são do Rust'); },
       onDown: () => { rustAttached.clear(); },
+      onRaw: (conn, payload) => {
+        const c = byId.get(conn);
+        if (!c || c.ws.readyState !== WebSocket.OPEN) return;
+        c.ws.send(payload, { binary: false }); // JSON pronto do Rust: repassa os bytes
+        counters.msgOut++;
+      },
       onMessage: (m) => {
         if (m.k === 's2c') {
           const c = byId.get(m.conn);
@@ -1843,6 +1849,13 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
             for (const id of msg.d ?? []) c.mobs.delete(id);
           }
           send(c.ws, msg);
+        } else if (m.k === 'known') {
+          const c = byId.get(m.char);
+          if (!c) return;
+          for (const id of m.add ?? []) c.mobs.add(id);
+          for (const id of m.del ?? []) c.mobs.delete(id);
+        } else if (m.k === 'mirror') {
+          for (const e of m.list ?? []) mirror(e[0], { model: e[1], x: e[2], z: e[3], h: e[4], s: e[5], y: e[6], hp: e[7] });
         } else if (m.k === 'see') {
           const c = byId.get(m.char);
           if (!c?.player) return;

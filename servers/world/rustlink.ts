@@ -7,6 +7,8 @@ import net from 'node:net';
  */
 export interface RustLinkHandlers {
   onMessage(msg: any): void;
+  /** quadro cru do Rust: JSON já pronto para o cliente `conn` (o Node só repassa os bytes) */
+  onRaw(conn: number, payload: Buffer): void;
   onUp(): void;
   onDown(): void;
 }
@@ -35,6 +37,13 @@ export class RustLink {
       this.buf = this.buf.length ? Buffer.concat([this.buf, d]) : d;
       while (this.buf.length >= 4 && this.buf.length >= 4 + this.buf.readUInt32BE(0)) {
         const n = this.buf.readUInt32BE(0);
+        // byte 1 = quadro cru [1][conn u32][JSON do cliente]; qualquer outro começa com '{' (JSON do link)
+        if (n >= 5 && this.buf[4] === 1) {
+          const conn = this.buf.readUInt32BE(5), payload = this.buf.subarray(9, 4 + n);
+          this.buf = this.buf.subarray(4 + n);
+          this.h.onRaw(conn, payload);
+          continue;
+        }
         let msg: any;
         try { msg = JSON.parse(this.buf.subarray(4, 4 + n).toString()); } catch { s.destroy(); return; }
         this.buf = this.buf.subarray(4 + n);

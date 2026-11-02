@@ -20,6 +20,11 @@ impl Gw {
     /// próximo quadro, se chegar a tempo
     fn recv(&mut self) -> Option<Value> {
         match read_frame(&mut self.0) {
+            // quadro cru (byte 1): [1][conn u32][JSON do cliente] → vira {"k":"s2c","conn":…,"msg":…} para os asserts
+            Ok(b) if b.first() == Some(&1) => {
+                let conn = u32::from_be_bytes([b[1], b[2], b[3], b[4]]);
+                Some(json!({ "k": "s2c", "conn": conn, "msg": serde_json::from_slice::<Value>(&b[5..]).unwrap() }))
+            }
             Ok(b) => Some(serde_json::from_slice(&b).unwrap()),
             Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => None,
             Err(_) => None,
@@ -113,8 +118,16 @@ fn killing_a_mob_sends_mdie_with_exp_and_far_player_never_hears_about_it() {
     let (h, mut gw) = boot();
     attach(&mut gw, 1, 42, 1005.0, 1005.0); // perto
     attach(&mut gw, 2, 43, 6005.0, 1005.0); // longe (vê só o mob 4)
-    gw.wait_s2c(1, "mobs").unwrap();
-    let far = gw.wait_s2c(2, "mobs").unwrap();
+    // os dois `mobs` chegam no mesmo envio, em ordem qualquer
+    let (mut near, mut far) = (None, None);
+    let end = Instant::now() + Duration::from_secs(3);
+    while (near.is_none() || far.is_none()) && Instant::now() < end {
+        if let Some(f) = gw.recv() {
+            if f["k"] == "s2c" && f["msg"]["t"] == "mobs" { if f["conn"] == 1 { near = Some(f["msg"].clone()); } else if f["conn"] == 2 { far = Some(f["msg"].clone()); } }
+        }
+    }
+    near.expect("mobs de 1");
+    let far = far.expect("mobs de 2");
     assert_eq!(far["a"].as_array().unwrap().len(), 1);
 
     // o jogador longe tenta atacar o mob 1 (perto do outro jogador): recusado

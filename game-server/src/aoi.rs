@@ -3,9 +3,9 @@
 use crate::grid::{EntityId, Grid};
 use std::collections::{HashMap, HashSet};
 
-/// Raio (em células) para entrar no conjunto (7×7 = 448 u) e para sair (9×9): histerese de 1 célula.
-pub const ENTER_R: i32 = 3;
-pub const LEAVE_R: i32 = 4;
+/// Raio (em células) para entrar no conjunto (5×5 = 320 u, cobre os 150 u de visão do Node) e para sair (7×7): histerese de 1 célula.
+pub const ENTER_R: i32 = 2;
+pub const LEAVE_R: i32 = 3;
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Diff {
@@ -90,12 +90,12 @@ mod tests {
     #[test]
     fn hysteresis_on_border() {
         let (mut g, mut a) = world();
-        g.set(20, 100.0 + 3.0 * 64.0, 100.0);
+        g.set(20, 100.0 + ENTER_R as f32 * 64.0, 100.0);
         assert!(a.refresh(1, &g, 80, |_| true).enter.contains(&20));
-        g.set(20, 100.0 + 4.0 * 64.0, 100.0);
+        g.set(20, 100.0 + LEAVE_R as f32 * 64.0, 100.0);
         let d = a.refresh(1, &g, 80, |_| true);
         assert!(d.leave.is_empty() && d.enter.is_empty());
-        g.set(20, 100.0 + 6.0 * 64.0, 100.0);
+        g.set(20, 100.0 + (LEAVE_R + 2) as f32 * 64.0, 100.0);
         assert_eq!(a.refresh(1, &g, 80, |_| true).leave, vec![20]);
     }
 
