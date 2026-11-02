@@ -242,7 +242,7 @@ export class SfxInstance {
     const m = this.matRot.clone().multiply(rowYPR(pr[1], pr[0], pr[2]));
     void withKeyRotate;
     const t = transformCoord(key.pos, m);
-    if (this.flattenAbove !== null && t[1] > this.flattenAbove) t[1] = 0.3; // partes que o efeito põe lá no alto descem para a linha do chão
+    if (this.flattenAbove !== null && t[1] > this.flattenAbove) t[1] = -0.1; // partes que o efeito põe lá no alto descem para a linha do chão
     return [this.pos[0] + t[0] * this.scale[0], this.pos[1] + t[1] * this.scale[1], this.pos[2] + t[2] * this.scale[2]];
   }
 
