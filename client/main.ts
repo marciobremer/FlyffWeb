@@ -94,6 +94,7 @@ const FLARIS = { x: 6976, z: 3327 };
 const LIMITS = { hair: 5, head: 5 };
 
 interface CharacterInfo {
+  /** classe (JOB_*) */ job?: number;
   id: number; slot: number; name: string; sex: number; hairMesh: number; hairColor?: number; headMesh: number; level: number; worldId: number; pos: [number, number, number]; hp: number; mp: number; fp: number; exp: number;
   /** equipado (com enchant) e postura da arma: a prévia da seleção fica igual ao personagem no jogo */
   equip?: LookPiece[]; mt?: number;
@@ -502,7 +503,7 @@ guildWnd.onCreate = (name) => net.guild('guildCreate', { name });
 guildWnd.onLeave = () => net.guild('guildLeave');
 guildWnd.onKick = (id) => net.guild('guildKick', { id });
 guildWnd.onDisband = () => net.guild('guildDisband');
-net.onGuildView = (g) => { guildWnd.set(g, net.myId); net.onMyGuildTag(g?.name ?? null, !!g && g.master === net.myId); };
+net.onGuildView = (g) => { guildWnd.set(g, net.myId); friendsWnd.setGuild((g?.members ?? []).map((m) => ({ id: m.id, name: m.name, level: m.level, job: m.job, on: m.on }))); net.onMyGuildTag(g?.name ?? null, !!g && g.master === net.myId); };
 net.onMyGuildTag = (g, master) => { myGuild = g; myGuildMaster = master; view.player?.inst?.setGuildTag(g, master); };
 net.onGuildReq = (id, name, guild) => friendRequestPrompt(document.body, name, (ok) => net.guild('guildAnswer', { id, ok }), `${name} convidou você para a guild ${guild}.`);
 /** party (tecla P) e lista de partys (tecla L) */
@@ -541,6 +542,7 @@ partyWnd.onLead = (id) => net.party('partyLead', { id });
 partyWnd.onSkill = (k) => net.party('partySkill', { k });
 partyListWnd.onRefresh = () => net.party('partyList');
 net.onParty = (p) => {
+  friendsWnd.setParty((p?.members ?? []).map((m) => ({ id: m.id, name: m.name, level: m.level, job: m.job, on: m.on })));
   const was = partyWnd.current;
   partyWnd.set(p, net.myId);
   partyBuffs.set(p);
@@ -1379,6 +1381,7 @@ async function enter() {
   try { queue = JSON.parse(localStorage.getItem(`flyff.queue.${ch.id}`) ?? '[]') as (BarItem | null)[]; } catch { /* sem armazenamento */ }
   actionBar.setQueue(Array.isArray(queue) ? queue : []);
   view.player?.inst?.setLabel(ch.name, rankOf(account.authority), PLAYER_LABEL_LIFT);
+  friendsWnd.setSelf(ch.name, ch.job ?? 0);
   view.player?.inst?.setGuildTag(myGuild, myGuildMaster);
   view.labelRenderer.domElement.hidden = false;
   view.playerControl = true;
