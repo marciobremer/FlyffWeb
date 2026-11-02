@@ -223,10 +223,12 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   const tickets = (() => {
     const m = new Map<string, { define: string; pos: [number, number, number] }>();
     if (!inventory) return m;
+    let last = '';
     try {
       for (const line of fs.readFileSync(path.join(inventory.catalog.resDir, 'ticket.inc'), 'latin1').split(/\r?\n/)) {
         const f = line.replace(/\/\/.*$/, '').trim().split(/\s+/);
-        if (f.length >= 5 && /^II_/.test(f[0]) && /^WI_WORLD_/.test(f[1])) m.set(f[0], { define: f[1], pos: [Number(f[2]), Number(f[3]), Number(f[4])] });
+        if (f.length >= 5 && /^II_/.test(f[0]) && /^WI_WORLD_/.test(f[1])) { last = f[1]; m.set(f[0], { define: f[1], pos: [Number(f[2]), Number(f[3]), Number(f[4])] }); }
+        else if (f.length >= 5 && /^II_/.test(f[0]) && /^II_/.test(f[1]) && last) m.set(f[1], { define: last, pos: [Number(f[2]), Number(f[3]), Number(f[4])] }); // linha com o item no lugar do mundo (DARKRARTESIA_15): vale o mundo da anterior
       }
     } catch { /* sem a tabela */ }
     return m;
