@@ -1373,12 +1373,13 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   const USE_KINDS = new Set([D('IK2_POTION'), D('IK2_FOOD'), D('IK2_REFRESHER')]);
 
   /** `chat`: macro de texto (o que o jogador arrastou da caixa de chat) — repete a mensagem ao clicar */
+  const BAR_SLOTS = 27;
   type BarEntry = { k: 'item' | 'skill'; id: number } | { k: 'chat'; id: 0; text: string } | null;
-  /** barra salva: 10 posições, cada uma null, { k: 'item', id } de um item ou { k: 'skill', id } de uma skill que existe */
+  /** barra salva: BAR_SLOTS posições (1–9, 0 e 17 sem tecla), cada uma null, { k: 'item', id } de um item ou { k: 'skill', id } de uma skill que existe */
   function cleanBar(v: unknown): BarEntry[] {
     const out: BarEntry[] = [];
     const arr = Array.isArray(v) ? v : [];
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < BAR_SLOTS; i++) {
       const e = arr[i] as { k?: unknown; id?: unknown; text?: unknown } | null | undefined;
       if (e?.k === 'chat' && typeof e.text === 'string' && e.text.trim()) { out.push({ k: 'chat', id: 0, text: e.text.trim().slice(0, 200) }); continue; }
       const ok = e && Number.isInteger(e.id) && ((e.k === 'item' && inventory?.catalog.byId.has(e.id as number)) || (e.k === 'skill' && skillCat?.byId.has(e.id as number)));
