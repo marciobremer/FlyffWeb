@@ -57,7 +57,7 @@ const key = (x: number, y: number) => `${x},${y}`;
 /** distância mínima/máxima da câmera ao personagem (zoom pela roda ou arrastando) */
 const CAM_MIN_DIST = 4, CAM_MAX_DIST = 18;
 /** inclinação em graus acima do horizonte: máximo olhando de cima, mínimo (negativo) olhando de baixo */
-const CAM_PITCH_MAX_DEG = 80, CAM_PITCH_MIN_DEG = -60;
+const CAM_PITCH_MAX_DEG = 80, CAM_PITCH_MIN_DEG = -89;
 /** folga mínima da câmera acima do terreno no ponto onde ela está */
 const CAM_GROUND_MARGIN = 1.0;
 /** quanto a câmera fica antes do obstáculo (terreno/objeto) entre ela e o personagem */
@@ -97,6 +97,16 @@ export class WorldView {
   /** colisão com objetos estáticos (malha m_collObj) por tile; `collReady` resolve quando o tile termina de montar */
   readonly collision = new CollisionWorld();
   private collReady = new Map<string, Promise<void>>();
+  private propCollTimer = 0;
+
+  /** refaz a colisão dos props (.glb do editor) a partir das posições atuais; agrupa várias mudanças seguidas */
+  refreshPropCollision() {
+    clearTimeout(this.propCollTimer);
+    this.propCollTimer = window.setTimeout(() => {
+      this.collision.clearExtras();
+      this.props.nodes.forEach((n, i) => { const t = this.props.collisionTris(n); if (t) this.collision.setExtra('p' + i, t); });
+    }, 120);
+  }
   readonly sfxLib: SfxLibrary;
   readonly sfxMgr: SfxManager;
   readonly terrainTex = new TerrainTextures(new Map(), new Set());
@@ -118,6 +128,8 @@ export class WorldView {
   player: Player | null = null;
   /** true enquanto outra ferramenta usa o mouse/teclado (ex.: modo edição do editor) */
   inputBlocked: () => boolean = () => false;
+  /** quando definido, assume a câmera sem personagem (o WASD do voo livre fica de fora); só o editor define */
+  editorCamera: ((dt: number) => void) | null = null;
 
   onStatus: (text: string) => void = () => {};
   /** texto "hh:mm · continente" quando o ambiente muda */
@@ -173,6 +185,7 @@ export class WorldView {
     this.skyScene.add(this.sky.group);
     this.root.scale.z = -1;
     this.scene.add(this.root, this.props.group);
+    this.props.onChanged = () => this.refreshPropCollision();
     this.root.add(this.tilesGroup, this.overlays, this.moverGroup, this.sfxFxGroup, this.playerGroup);
 
     this.controls = new OrbitControls(this.camera, canvas);
@@ -1116,6 +1129,8 @@ export class WorldView {
       // a câmera acompanha o personagem (deslocamento em D3D → Three: z invertido)
       camera.position.add(new Vector3(d3[0], d3[1], -d3[2]));
       controls.target.set(player.pos[0], player.pos[1] + 1.8, -player.pos[2]);
+    } else if (this.editorCamera) {
+      this.editorCamera(dt); // editor: câmera livre estilo Unreal (editor/flycam.ts); o jogo nunca define isso
     } else if (keys.size && !this.inputBlocked()) {
       const { fwd, right, delta } = this;
       camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();
