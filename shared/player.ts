@@ -36,6 +36,8 @@ const GRAVITY = 28, JUMP_V = 9 * Math.sqrt(3);
 const RUN_DEFAULT = 0.1 * TICKS_PER_SEC, WALK_RATIO = 0.25;
 /** maior degrau que se sobe andando; raio do corpo e alturas dos raios de parede (joelho e peito) */
 const STEP = 0.7, RADIUS = 0.35, WALL_RAYS = [0.75, 1.5];
+/** alturas (acima de onde decolou) em que uma parede entre a decolagem e o pouso invalida o pulo: acima do que o pulo alcança */
+const JUMP_WALL_RAYS = [1.6, 2.6, 3.6];
 
 export class Player {
   inst: MoverInstance | null = null;
@@ -54,6 +56,8 @@ export class Player {
   /** Anda até (x, z) FlyFF (clique no mapa). */
   moveTo(x: number, z: number) { this.target = [x, z]; this.bestDist = Infinity; this.stuckT = 0; }
   private grounded = true;
+  /** onde decolou no pulo/queda atual (para a checagem do pouso) */
+  private takeoff: [number, number, number] | null = null;
   private source: WorldObject | null = null;
   /**
    * Estado de animação. O pulo segue as 4 fases do mdlDyna.inc (GenJump1–4): JUMP1 = impulso no chão (toca uma vez e só então sai do
@@ -396,16 +400,22 @@ export class Player {
       inst.play(...motionOf(st, this.combat));
     };
     if (input.jump && this.grounded && this.state !== 'jump1') set('jump1');
-    if (this.state === 'jump1' && inst.finished) { this.vy = JUMP_V; this.grounded = false; set('jump2'); }
+    if (this.state === 'jump1' && inst.finished) { this.vy = JUMP_V; this.takeoff = [...this.pos]; this.grounded = false; set('jump2'); }
     if (!this.grounded) {
       this.vy -= GRAVITY * dt;
       this.pos[1] += this.vy * dt;
       if (this.vy < 0 && this.state !== 'jump3') set('jump3');
-      if (this.pos[1] <= ground) { this.pos[1] = ground; this.vy = 0; this.grounded = true; set('jump4'); }
+      if (this.pos[1] <= ground) {
+        this.pos[1] = ground; this.vy = 0; this.grounded = true; set('jump4');
+        // checagem extra do pouso: se entre a decolagem e o pouso há uma parede alta (mais que o pulo alcança), o pulo atravessou — volta para onde decolou
+        const t = this.takeoff;
+        if (t && this.world.blocked?.(t[0], t[2], this.pos[0], this.pos[2], t[1], RADIUS, JUMP_WALL_RAYS)) { this.pos[0] = t[0]; this.pos[1] = t[1]; this.pos[2] = t[2]; }
+        this.takeoff = null;
+      }
     } else {
       // acompanha o chão (sobe/desce suavemente)
       this.pos[1] += (ground - this.pos[1]) * Math.min(1, dt * 18);
-      if (this.pos[1] - ground > 0.6) { this.grounded = false; this.vy = 0; } // saiu de uma borda
+      if (this.pos[1] - ground > 0.6) { this.takeoff = [...this.pos]; this.grounded = false; this.vy = 0; } // saiu de uma borda
     }
 
     if (this.state === 'atk' && !moving && inst.finished && this.castNext) { const n = this.castNext; this.castNext = null; inst.play(n, false); }
@@ -463,7 +473,9 @@ export class Player {
   private canMove(dx: number, dz: number) {
     const [x, y, z] = this.pos;
     const nx = x + dx, nz = z + dz;
-    if (this.world.blocked?.(x, z, nx, nz, y, RADIUS, WALL_RAYS)) return false;
+    // três feixes (centro e as duas laterais do corpo): uma fresta ou quina entre triângulos não deixa passar pela parede
+    const dl = Math.hypot(dx, dz) || 1, px = -dz / dl * RADIUS * 0.8, pz = dx / dl * RADIUS * 0.8;
+    for (const o of [0, 1, -1]) if (this.world.blocked?.(x + px * o, z + pz * o, nx + px * o, nz + pz * o, y, RADIUS, WALL_RAYS)) return false;
     // atributos do terreno (NoWalk/NoMove/Die) só valem pisando no terreno, não sobre pontes/pisos de objetos
     const t = this.world.heightAt(nx, nz) ?? y;
     const o = this.world.objectGround?.(nx, nz, y + STEP) ?? null;
