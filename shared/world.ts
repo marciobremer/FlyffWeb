@@ -1011,7 +1011,9 @@ export class WorldView {
   /** distância pedida pelo jogador (zoom) e a última que a câmera usou: ao bater no chão a câmera encurta a distância e a recupera ao subir */
   private camWantR = 0; private camLastR = 0;
   /** posição escolhida × posição mostrada neste quadro, quando um obstáculo encurtou a câmera */
-  private camFix: { shown: Vector3; wanted: Vector3 } | null = null;
+  private camFix: { shown: Vector3; wanted: Vector3; shownR: number; wantedR: number } | null = null;
+  /** altura do alvo da câmera acima dos pés: 1,8 afastada; desce até a altura dos olhos conforme o zoom entra */
+  private camOff = 1.8;
   private camDir = new Vector3(); private camProbe = new Vector3();
 
   /** Limites de zoom/pitch e botão direito girando (como no FlyFF) só com o personagem; fora dele, câmera livre do editor. */
@@ -1095,7 +1097,7 @@ export class WorldView {
     const gs = this.groundY(camera.position);
     if (gs !== null && camera.position.y < gs + CAM_GROUND_MARGIN) camera.position.y = gs + CAM_GROUND_MARGIN;
     camera.lookAt(t);
-    this.camFix = { shown: camera.position.clone(), wanted };
+    this.camFix = { shown: camera.position.clone(), wanted, shownR: this.camShownDist, wantedR: len };
   }
 
   // ---------- loop ----------
@@ -1136,6 +1138,12 @@ export class WorldView {
     // devolve a câmera à posição escolhida (a do quadro anterior foi encurtada por obstáculo), se ninguém a moveu desde então
     if (this.camFix) {
       if (camera.position.equals(this.camFix.shown)) camera.position.copy(this.camFix.wanted);
+      else {
+        // o jogador girou ou deu zoom enquanto um obstáculo encurtava a câmera: devolve a distância pedida na direção nova (com o mesmo zoom aplicado)
+        // — sem isso a distância encurtada virava "o zoom do jogador" e a câmera caía na primeira pessoa
+        const t = this.controls.target, off = camera.position.clone().sub(t), r = off.length(), f = this.camFix;
+        if (r > 1e-6 && f.shownR > 1e-6) camera.position.copy(t).addScaledVector(off.divideScalar(r), f.wantedR * (r / f.shownR));
+      }
       this.camFix = null;
     }
     this.setGameCamera(this.controlling && !!player);
@@ -1154,7 +1162,12 @@ export class WorldView {
       const d3 = player.update(dt, input, camera);
       // a câmera acompanha o personagem (deslocamento em D3D → Three: z invertido)
       camera.position.add(new Vector3(d3[0], d3[1], -d3[2]));
-      controls.target.set(player.pos[0], player.pos[1] + 1.8, -player.pos[2]);
+      // alvo da câmera: 1,8 acima dos pés com o zoom afastado; ao aproximar desce em direção aos olhos (câmera acompanha a mudança)
+      const eye = player.inst ? (player.inst.tpl.height + (player.inst.tpl.lift ?? 0)) * 0.9 : 1.5;
+      const off = eye + (1.8 - eye) * Math.min(1, Math.max(0, (this.camWantR - CAM_FIRST_PERSON) / 3));
+      camera.position.y += off - this.camOff;
+      this.camOff = off;
+      controls.target.set(player.pos[0], player.pos[1] + off, -player.pos[2]);
     } else if (this.editorCamera) {
       this.editorCamera(dt); // editor: câmera livre estilo Unreal (editor/flycam.ts); o jogo nunca define isso
     } else if (keys.size && !this.inputBlocked()) {
