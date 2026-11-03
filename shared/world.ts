@@ -55,7 +55,9 @@ const key = (x: number, y: number) => `${x},${y}`;
  * voltando devagar à distância escolhida. Fora do jogo (editor/câmera livre) nada disso se aplica.
  */
 /** distância mínima/máxima da câmera ao personagem (zoom pela roda ou arrastando) */
-const CAM_MIN_DIST = 4, CAM_MAX_DIST = 18;
+const CAM_MIN_DIST = 0.05, CAM_MAX_DIST = 18;
+/** abaixo desta distância a câmera está "dentro da cabeça" (primeira pessoa): o personagem some */
+const CAM_FIRST_PERSON = 0.9;
 /** inclinação em graus acima do horizonte: máximo olhando de cima, mínimo (negativo) olhando de baixo */
 const CAM_PITCH_MAX_DEG = 80, CAM_PITCH_MIN_DEG = -89;
 /** folga mínima da câmera acima do terreno no ponto onde ela está */
@@ -1006,6 +1008,8 @@ export class WorldView {
   private gameCamera = false;
   /** distância mostrada (≤ a escolhida quando há obstáculo) */
   private camShownDist = Infinity; private camShortened = false;
+  /** distância pedida pelo jogador (zoom) e a última que a câmera usou: ao bater no chão a câmera encurta a distância e a recupera ao subir */
+  private camWantR = 0; private camLastR = 0;
   /** posição escolhida × posição mostrada neste quadro, quando um obstáculo encurtou a câmera */
   private camFix: { shown: Vector3; wanted: Vector3 } | null = null;
   private camDir = new Vector3(); private camProbe = new Vector3();
@@ -1034,8 +1038,30 @@ export class WorldView {
   private constrainCamera(dt: number) {
     const camera = this.camera, t = this.controls.target, dir = this.camDir, p = this.camProbe;
     dir.subVectors(camera.position, t);
-    const r0 = dir.length();
+    let r0 = dir.length();
     if (r0 < 1e-6) return;
+    // câmera abaixo do alvo e o chão no caminho: escorrega pelo chão em direção ao personagem (encurta a distância, mantém o ângulo
+    // que o jogador puxou) até ficar embaixo dele; a distância pedida volta quando a câmera sobe
+    if (Math.abs(r0 - this.camLastR) > 1e-3) this.camWantR = r0; // zoom do jogador
+    if (dir.y < -1e-3 * r0) {
+      const du = dir.clone().divideScalar(r0);
+      let s = Math.max(this.camWantR, 0.05);
+      for (let i = 0; i < 4; i++) {
+        p.copy(t).addScaledVector(du, s);
+        const g = this.groundY(p);
+        if (g === null || p.y >= g + CAM_GROUND_MARGIN - 1e-3) break;
+        s = Math.max(0.05, (t.y - (g + CAM_GROUND_MARGIN)) / -du.y);
+      }
+      s = Math.min(s, this.camWantR);
+      camera.position.copy(t).addScaledVector(du, s);
+      dir.subVectors(camera.position, t);
+      this.camLastR = s;
+    } else {
+      // câmera acima do alvo: volta à distância que o jogador pediu (se tinha sido encurtada ao escorregar pelo chão)
+      if (r0 < this.camWantR - 1e-3) { camera.position.copy(t).addScaledVector(dir.clone().divideScalar(r0), this.camWantR); dir.subVectors(camera.position, t); }
+      this.camLastR = dir.length();
+    }
+    r0 = dir.length();
     // sobe a câmera até a folga do terreno girando sobre a esfera do orbit (mantém a distância, muda só a inclinação)
     for (let i = 0; i < 3; i++) {
       const g = this.groundY(camera.position);
@@ -1060,7 +1086,7 @@ export class WorldView {
     }
     const obj = this.collision.segmentHit(t.x, t.y, -t.z, dir.x, dir.y, -dir.z, hit);
     if (obj !== null) hit = obj;
-    const allowed = hit < len ? Math.max(0.5, hit - CAM_COLLISION_PAD) : len;
+    const allowed = hit < len ? Math.max(Math.min(0.5, len), hit - CAM_COLLISION_PAD) : len;
     // só volta devagar depois de um obstáculo; o zoom normal (sem nada no meio) é imediato
     this.camShownDist = Math.min(allowed, this.camShortened ? this.camShownDist + CAM_RECOVER_SPEED * dt : Infinity);
     this.camShortened = this.camShownDist < len - 1e-4;
@@ -1150,6 +1176,8 @@ export class WorldView {
     }
     controls.update();
     if (this.gameCamera) this.constrainCamera(dt);
+    // primeira pessoa: com a câmera dentro da cabeça o personagem some (senão se vê o interior do modelo)
+    if (player?.inst) { const fp = this.gameCamera && camera.position.distanceTo(controls.target) < CAM_FIRST_PERSON; if (player.inst.group.visible === fp) player.inst.group.visible = !fp; }
     this.stream(now);
     this.moverMgr.update(dt, camera.position);
     this.objAnims.update(dt);
