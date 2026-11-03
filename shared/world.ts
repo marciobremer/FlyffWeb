@@ -1176,8 +1176,8 @@ export class WorldView {
     }
     controls.update();
     if (this.gameCamera) this.constrainCamera(dt);
-    // primeira pessoa: com a câmera dentro da cabeça o personagem some (senão se vê o interior do modelo)
-    if (player?.inst) { const fp = this.gameCamera && this.camWantR > 0 && this.camWantR < CAM_FIRST_PERSON; // vale o zoom que o jogador pediu, não o encurtamento por obstáculo if (player.inst.group.visible === fp) player.inst.group.visible = !fp; }
+    // primeira pessoa (vale o zoom que o jogador pediu, não o encurtamento por obstáculo): com a câmera dentro da cabeça o personagem some (senão se vê o interior do modelo)
+    if (player?.inst) { const fp = this.gameCamera && this.camWantR > 0 && this.camWantR < CAM_FIRST_PERSON; if (player.inst.group.visible === fp) player.inst.group.visible = !fp; }
     this.stream(now);
     this.moverMgr.update(dt, camera.position);
     this.objAnims.update(dt);
