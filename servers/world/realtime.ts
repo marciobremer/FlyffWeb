@@ -97,6 +97,7 @@ import type { InvEdit } from '../character/inventory';
  *   { t: 'enter', player: PlayerView }              alguém entrou
  *   { t: 'invis', id, on }                          ficou invisível / visível (modo invisível de GM ou Dark Illusion; só GMs/admins e ele mesmo recebem)
  *   { t: 'god', on }                                seu modo imortal de GM/admin (//god; ligado ao entrar)
+ *   { t: 'gmFly', on }                              voo livre de GM/admin (//fly, botão Voar do painel //gm)
  *   { t: 'leave', id }                              alguém saiu
  *   { t: 'states', list: [id, x, y, z, h, s][] }    atualizações agrupadas, 10 por segundo, só de quem mudou
  *   { t: 'inv', gold, bag, items: [c, s, itemId, n][], defs }   inventário inteiro (ao entrar e a cada mudança)
@@ -144,6 +145,7 @@ interface Conn { ws: WebSocket; player: PlayerView | null; accountId: number; di
   /** convites de party recebidos (id de quem convidou → quando) */ partyReqs?: Map<number, number>;
   /** trade aberto e pedidos de trade recebidos (id de quem pediu → quando) */ trade?: Trade | null; tradeReqs?: Map<number, number>;
   /** recebendo os buffs do Buff Pang (um a cada 0,5 s) */ buffing?: boolean;
+  /** voo livre de GM (//fly): o servidor aceita a velocidade de voo */ gmFly?: boolean;
   /** última vez que pisou numa porta (evita repetir o aviso parado em cima dela) */ portalAt?: number;
   /** desde quando está numa dungeon de instância de outra party (sai depois de 3 min) */ instLeftAt?: number;
   /** trocando de mundo: a conexão fecha e o cliente entra de novo no mundo novo (não sai da party nem avisa os amigos) */ switching?: boolean;
@@ -651,7 +653,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   /** velocidade máxima no chão ou no ar (u/s) para o anti-speedhack */
   function maxSpeed(c: Conn) {
     const p = c.player!, run = rules && c.cb ? rules.runSpeed(c.cb.f, p.sex) : 6;
-    return p.eq.some((s) => s.startsWith(RIDE_TAG)) ? Math.max(run, FLY_MAX_SPEED) : run;
+    return c.gmFly || p.eq.some((s) => s.startsWith(RIDE_TAG)) ? Math.max(run, FLY_MAX_SPEED) : run;
   }
 
   /** confere um passo de `d` unidades contra a reserva de deslocamento; recusado, manda o cliente de volta à posição do servidor */
@@ -2398,6 +2400,11 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
               clockFixed = hour;
               for (const o of conns) if (o.player) send(o.ws, { t: 'clock', now: Date.now(), fixed: clockFixed });
               return hour === null ? 'Relógio do jogo andando de novo (dia 6h–19h em 21,6 min, noite em 7,2 min).' : `Hora do jogo fixada em ${String(Math.floor(hour) % 24).padStart(2, '0')}:${String(Math.round((hour % 1) * 60)).padStart(2, '0')} para todos (//time auto volta ao normal).`;
+            },
+            fly: (on) => {
+              c.gmFly = on ?? !c.gmFly;
+              send(ws, { t: 'gmFly', on: c.gmFly });
+              return c.gmFly ? 'Voo ligado: E sobe, Q desce e W A S D guiam.' : 'Voo desligado: você volta a pisar no chão.';
             },
             god: (on) => {
               c.god = on ?? !c.god;

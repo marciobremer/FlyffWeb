@@ -37,6 +37,8 @@ export interface GmContext {
   invis?(on?: boolean): string;
   /** imortal: liga (true), desliga (false) ou alterna (sem valor) — leva os golpes mas o HP não cai */
   god?(on?: boolean): string;
+  /** voar livremente (E sobe, Q desce, WASD guia) */
+  fly?(on?: boolean): string;
   /** larga `count` do item no chão em volta de quem digitou (sem dono; para testar o pet coletor) */
   drop?(itemId: number, count: number): string;
   /** dia e noite: fixa a hora do jogo para todos (1–24, decimal) ou volta a andar (null) */
@@ -143,6 +145,14 @@ export async function runGmCommand(ctx: GmContext, text: string): Promise<void> 
     // o CGameTimer conta 1–24; 0 = 24 (meia-noite)
     ctx.reply(ctx.time?.(h < 1 ? h + 24 : h) ?? 'Indisponível.');
     log(`time ${a}`);
+    return;
+  }
+
+  if (name === 'fly' || name === 'voar') {
+    const a = (args[0] ?? '').toLowerCase();
+    const r = ctx.fly?.(a === 'on' ? true : a === 'off' ? false : undefined);
+    if (r) ctx.reply(r);
+    log(`fly ${a || 'alterna'}`);
     return;
   }
 

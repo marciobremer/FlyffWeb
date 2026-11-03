@@ -25,6 +25,7 @@ import { computeEnvironment, findContinent, type Environment } from './environme
 import { attachSetSfx } from './setSfx';
 import { defaultFilter, PostFx } from './postfx';
 import { defaultShadow, type ShadowSettings } from './worldedits';
+import { PropLayer } from './props';
 import './world.css';
 
 /**
@@ -81,6 +82,8 @@ export class WorldView {
   /** marcadores/linhas do editor (o mundo não usa) */
   readonly overlays = new Group();
   readonly moverGroup = new Group();
+  /** props 3D extras (.glb de data/res-extra) das edições do mundo; fora de `root` (que inverte o z) */
+  readonly props = new PropLayer();
   readonly playerGroup = new Group();
   readonly sfxFxGroup = new Group();
 
@@ -169,7 +172,7 @@ export class WorldView {
     // skybox em cena própria, desenhado antes (sem profundidade) do mundo
     this.skyScene.add(this.sky.group);
     this.root.scale.z = -1;
-    this.scene.add(this.root);
+    this.scene.add(this.root, this.props.group);
     this.root.add(this.tilesGroup, this.overlays, this.moverGroup, this.sfxFxGroup, this.playerGroup);
 
     this.controls = new OrbitControls(this.camera, canvas);
@@ -615,6 +618,7 @@ export class WorldView {
     }
     this.postfx.settings = env?.filter ? { ...env.filter } : defaultFilter();
     this.setShadow(env?.shadow ?? defaultShadow());
+    this.props.set(d.edits.props ?? []);
     this.onWorldLoaded(d);
     this.refreshEnvironment(true);
   }
@@ -1105,6 +1109,7 @@ export class WorldView {
         turbo: this.turboPress,
         jump: k('Space'),
         steer: this.rightHeld,
+        up: player.gmFly ? (k('KeyE') ? 1 : 0) - (k('KeyQ') ? 1 : 0) : 0,
       };
       this.turboPress = false;
       const d3 = player.update(dt, input, camera);

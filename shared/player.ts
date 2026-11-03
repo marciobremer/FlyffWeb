@@ -13,7 +13,7 @@ import { attachRide, flyMotion, rideOf, type RideInfo } from './ride';
  * Personagem jogável: humano montado com Part_*.o3d (corpo padrão, cabeça/cabelo 01), anda sobre a altura do terreno e é
  * bloqueado por atributos do .lnd (NoWalk=1, NoMove=3, Die=4). Todas as posições em coordenadas FlyFF (D3D).
  */
-export interface PlayerInput { forward: number; right: number; /** andar em vez de correr (X alterna) */ walk: boolean; /** X apertado agora (voo: turbo) */ turbo?: boolean; jump: boolean; /** botão direito do mouse segurado (voo: segue a câmera) */ steer?: boolean }
+export interface PlayerInput { forward: number; right: number; /** andar em vez de correr (X alterna) */ walk: boolean; /** X apertado agora (voo: turbo) */ turbo?: boolean; jump: boolean; /** botão direito do mouse segurado (voo: segue a câmera) */ steer?: boolean; /** voo livre de GM: +1 sobe (E), −1 desce (Q) */ up?: number }
 
 export interface PlayerWorld {
   heightAt(x: number, z: number): number | null;
@@ -74,6 +74,10 @@ export class Player {
   private flyParams: [number, number, number] = [0.003, 0.7, 1.4];
   setFlyParams(p: [number, number, number] | null) { if (p && p[0] > 0) this.flyParams = p; }
   get flying() { return !!this.ride; }
+  /** voo livre de GM (//fly): sem prancha, sem gravidade; E sobe, Q desce, WASD guia. Ao desligar, cai pela gravidade normal */
+  private gmFlyOn = false;
+  get gmFly() { return this.gmFlyOn; }
+  set gmFly(on: boolean) { if (this.gmFlyOn && !on) { this.grounded = false; this.vy = 0; } this.gmFlyOn = on; }
   /** velocidade atual (unidades por segundo), para o painel de voo */
   get flySpeed() { return Math.hypot(...this.fv) * TICKS_PER_SEC; }
   get flyAcc() { return this.acc; }
@@ -346,6 +350,10 @@ export class Player {
       this.updateFly(dt, input, inst, camera);
       return [this.pos[0] - before[0], this.pos[1] - before[1], this.pos[2] - before[2]];
     }
+    if (this.gmFlyOn) {
+      this.updateGmFly(dt, input, inst, camera);
+      return [this.pos[0] - before[0], this.pos[1] - before[1], this.pos[2] - before[2]];
+    }
 
     // direção da câmera no plano XZ do Three → espaço FlyFF (z invertido)
     const f = camera.getWorldDirection(new Vector3());
@@ -409,6 +417,32 @@ export class Player {
     inst.update(dt);
     this.apply();
     return [this.pos[0] - before[0], this.pos[1] - before[1], this.pos[2] - before[2]];
+  }
+
+  /** voo livre de GM: anda no plano pela câmera (W A S D), sobe/desce com E/Q; atravessa tudo, só não entra no chão */
+  private updateGmFly(dt: number, input: PlayerInput, inst: MoverInstance, camera: Camera) {
+    const f = camera.getWorldDirection(new Vector3());
+    f.y = 0;
+    if (f.lengthSq() < 1e-6) f.set(0, 0, -1);
+    f.normalize();
+    const r = new Vector3(-f.z, 0, f.x);
+    const ux = f.x * input.forward + r.x * input.right, uz = -(f.z * input.forward + r.z * input.right);
+    const len = Math.hypot(ux, uz), up = input.up ?? 0;
+    this.target = null;
+    const speed = Math.max(this.runSpeed, 6) * 1.6;
+    if (len > 1e-4) {
+      this.pos[0] += (ux / len) * speed * dt;
+      this.pos[2] += (uz / len) * speed * dt;
+      this.heading = (Math.atan2(ux, -uz) * 180) / Math.PI;
+    }
+    this.pos[1] += up * speed * 0.8 * dt;
+    const floor = this.world.heightAt(this.pos[0], this.pos[2]);
+    if (floor !== null && this.pos[1] < floor) this.pos[1] = floor;
+    this.grounded = false; this.vy = 0;
+    const st: Player['state'] = len > 1e-4 || up !== 0 ? 'run' : 'stand';
+    if (st !== this.state) { this.state = st; inst.play(...motionOf(st, this.combat)); }
+    inst.update(dt);
+    this.apply();
   }
 
   /** Terreno ou chão de objeto mais alto até `yTop` (o terreno vale mesmo acima de yTop: não se atravessa o chão). */
