@@ -1,118 +1,118 @@
-# ReactioN MMO — FlyFF no navegador, com servidor em Rust
+# ReactioN MMO — FlyFF in your browser, with a Rust game server
 
-Um servidor de FlyFF que roda no **navegador** (Chrome, Edge, Firefox). Tudo em um projeto só:
+A FlyFF server that runs in the **web browser** (Chrome, Edge, Firefox). Everything lives in one project:
 
-- **o jogo** (gráficos em 3D com Three.js) → `http://localhost:8080/game/`
-- **o servidor do jogo** — login, personagens, combate, mobs, party, guild… O "cérebro" do combate, da IA dos monstros e do movimento é escrito em **Rust** (bem mais rápido: no teste de carga com bots, no mesmo computador, aguentou 1.000 jogadores sem engasgar, enquanto o motor antigo em Node já degradava com ~450)
-- **o painel admin** (liga/desliga o servidor, contas, itens, skills, taxas, backup do banco, teste de carga) → `http://127.0.0.1:8090/`
-- **o site** (cadastro, loja, ranking) → `http://localhost:8080/`
-- **o editor de mapas** (mover objetos, NPCs, terreno, props 3D; salva direto no mapa) → `http://localhost:8080/editor/`
+- **the game** (3D graphics with Three.js) → `http://localhost:8080/game/`
+- **the game server** — login, characters, combat, mobs, party, guild… The "brain" for combat, monster AI and movement is written in **Rust** (much faster: in our bot load test on a single computer it held 1,000 simulated players without lag, while the old Node engine was already degrading at ~450)
+- **the admin panel** (start/stop the server, accounts, items, skills, rates, database backup, load test) → `http://127.0.0.1:8090/`
+- **the website** (sign-up, shop, ranking) → `http://localhost:8080/`
+- **the map editor** (move objects, NPCs, terrain and 3D props; saves straight into the map) → `http://localhost:8080/editor/`
 
 ```
-Navegador ──► Node.js (login, API, site)  ──► Rust (combate, IA, movimento)
-                         │                              │
-                         └──────────► PostgreSQL ◄──────┘
+Browser ──► Node.js (login, API, website) ──► Rust (combat, AI, movement)
+                        │                              │
+                        └──────────► PostgreSQL ◄──────┘
 ```
 
-> **Os arquivos do jogo FlyFF/Titanium MMO NÃO vêm neste repositório** (são de terceiros e muito grandes).
-> Você precisa tê-los e colocá-los nas pastas certas — o passo 4 explica **exatamente** onde.
+> **The FlyFF / Titanium MMO game files are NOT included in this repository** (they belong to third parties and are very large).
+> You must have them yourself and put them in the right folders — step 4 explains **exactly** where.
 
 ---
 
-## Índice
+## Table of contents
 
-1. [O que você precisa ter](#1-o-que-você-precisa-ter)
-2. [O que está e o que NÃO está no repositório](#2-o-que-está-e-o-que-não-está-no-repositório)
-3. [Instalar os programas](#3-instalar-os-programas)
-4. [Baixar o projeto e colocar os arquivos do jogo](#4-baixar-o-projeto-e-colocar-os-arquivos-do-jogo)
-5. [Criar o banco de dados](#5-criar-o-banco-de-dados)
-6. [Configurar o site](#6-configurar-o-site)
-7. [Ligar tudo](#7-ligar-tudo)
-8. [Criar a sua conta de administrador e jogar](#8-criar-a-sua-conta-de-administrador-e-jogar)
-9. [Jogar com outras pessoas (rede/internet)](#9-jogar-com-outras-pessoas-redeinternet)
-10. [Deu problema?](#10-deu-problema)
-11. [Docker (opcional)](#11-docker-opcional)
-12. [Comandos do dia a dia, backup e pastas](#12-comandos-do-dia-a-dia-backup-e-pastas)
+1. [What you need](#1-what-you-need)
+2. [What is and what is NOT in the repository](#2-what-is-and-what-is-not-in-the-repository)
+3. [Install the programs](#3-install-the-programs)
+4. [Download the project and add the game files](#4-download-the-project-and-add-the-game-files)
+5. [Create the database](#5-create-the-database)
+6. [Configure the website](#6-configure-the-website)
+7. [Start everything](#7-start-everything)
+8. [Create your admin account and play](#8-create-your-admin-account-and-play)
+9. [Playing with other people (network / internet)](#9-playing-with-other-people-network--internet)
+10. [Troubleshooting](#10-troubleshooting)
+11. [Docker (optional)](#11-docker-optional)
+12. [Everyday commands, backup and folder map](#12-everyday-commands-backup-and-folder-map)
 
 ---
 
-## 1. O que você precisa ter
+## 1. What you need
 
 | | |
 |---|---|
-| Computador | Windows 10 ou 11 (64 bits), 8 GB de RAM ou mais, e espaço livre para os arquivos do jogo (vários GB) |
-| Internet | para baixar os programas e o projeto |
-| **Titanium MMO** | o cliente **e** a pasta `Resource` do Titanium MMO (veja o passo 4) — **obrigatório** |
-| **Mapa L2 Giran** | *opcional*: só se você quer o mapa extra de Giran (veja o passo 4) |
-| Tempo | uns 30–40 minutos na primeira vez (a maior parte é esperar downloads e a primeira compilação) |
+| Computer | Windows 10 or 11 (64-bit), 8 GB RAM or more, and free disk space for the game files (several GB) |
+| Internet | to download the programs and the project |
+| **Titanium MMO** | the client **and** the `Resource` folder of Titanium MMO (see step 4) — **required** |
+| **L2 Giran map** | *optional*: only if you want the extra Giran map (see step 4) |
+| Time | about 30–40 minutes the first time (mostly waiting for downloads and the first compilation) |
 
-Você **não** precisa saber programar. Todos os comandos abaixo são para copiar e colar.
+You do **not** need to know how to program. Every command below can be copied and pasted.
 
-> **Como abrir o "terminal"** (onde se cola os comandos): aperte a tecla **Windows**, digite `PowerShell` e aperte Enter.
-> Para colar no terminal: clique com o botão direito dentro da janela.
+> **How to open the "terminal"** (where you paste commands): press the **Windows** key, type `PowerShell` and press Enter.
+> To paste into the terminal, right-click inside the window.
 
 ---
 
-## 2. O que está e o que NÃO está no repositório
+## 2. What is and what is NOT in the repository
 
-### Está aqui (baixado junto com o projeto)
+### Included (downloaded with the project)
 
-| Pasta / arquivo | Para quê |
+| Folder / file | What it is for |
 |---|---|
-| `servers/` | servidor do jogo em Node.js: login, personagens, mundo, party, guild, comandos de GM… |
-| `game-server/` | **o motor em Rust**: combate, IA dos monstros, movimento, tick do mundo |
-| `shared/` | código usado pelo jogo, pelo editor e pelo servidor (formatos do FlyFF, mundo 3D, colisão) |
-| `client/` | o jogo no navegador |
-| `editor/` | o editor de mapas |
-| `admin/` | o painel admin |
-| `htdocs/` | o site (Next.js) |
-| `tools/` | ferramentas de linha de comando (criar conta, teste de carga, gerar mapas…) |
-| `database/flyffweb-limpo.dump` | o banco de dados vazio e pronto (estrutura completa + itens da loja do site) |
-| `data/` | configurações do servidor (taxas), edições do mapa salvas pelo editor, missões, eventos, mensagens do painel |
-| `docs/` | documentação técnica (arquitetura, protocolo) |
-| `.Iniciar Servidor.bat` | **liga tudo com dois cliques** |
-| `Dockerfile`, `docker-compose.yml`, `DOCKER.md` | rodar em containers (opcional) |
+| `servers/` | the Node.js game server: login, characters, world, party, guild, GM commands… |
+| `game-server/` | **the Rust engine**: combat, monster AI, movement, world tick |
+| `shared/` | code shared by the game, the editor and the server (FlyFF file formats, 3D world, collision) |
+| `client/` | the game in the browser |
+| `editor/` | the map editor |
+| `admin/` | the admin panel |
+| `htdocs/` | the website (Next.js) |
+| `tools/` | command-line tools (create accounts, load test, build maps…) |
+| `database/flyffweb-limpo.dump` | the clean, empty database (full structure + the website shop items) |
+| `data/` | server settings (rates), map edits saved by the editor, quests, events, panel messages |
+| `docs/` | technical documentation (architecture, protocol) |
+| `.Iniciar Servidor.bat` | **starts everything with a double-click** ("Iniciar Servidor" = "Start Server") |
+| `Dockerfile`, `docker-compose.yml`, `DOCKER.md` | run in containers (optional) |
 
-### NÃO está aqui — você precisa colocar (ou o projeto gera sozinho)
+### NOT included — you must add them (or the project generates them)
 
-| Pasta | O que é | Precisa? | De onde vem |
+| Folder | What it is | Required? | Where it comes from |
 |---|---|---|---|
-| **`Original/Resource/`** | A pasta **Resource** do **Titanium MMO**: tabelas de itens e monstros (`propItem.txt`, `propMover.txt`, `defineItem.h`…), os mapas (`World/WdMadrigal`…) e os modelos 3D | **SIM — sem ela nada abre** | Titanium MMO |
-| **`Original/Client/`** | O **cliente instalado** do **Titanium MMO** (`Neuz.exe`, `Data/`, `World/`…): modelos, texturas, ícones, sons | **SIM** | Titanium MMO |
-| `data/res-extra/Data/` | Ícones, cursores e temas de interface complementares (`Cursors/`, `Icon/`, `Theme/`) | Recomendado: sem ela alguns ícones, cursores ou janelas podem aparecer em branco | pacote que acompanha o tópico do fórum |
-| **`data/res-extra/L2/`** e **`data/res-extra/World/`** | O **mapa L2 Giran**: os modelos 3D (`L2/`) e o mapa `WdL2Giran` com as texturas (`World/`) | Opcional (sem eles só o mapa Madrigal existe) | pacote do mapa L2 Giran, no tópico do fórum |
-| `htdocs/.env.local` | Senhas e chaves do site | **SIM — você cria no passo 6** | você mesmo |
-| `data/l2/`, `tools/cruma/` | Material bruto do Cruma (exportador do L2), usado só para **recriar** o mapa Giran | Não precisa para rodar | — |
-| `node_modules/`, `dist/`, `htdocs/.next/`, `game-server/target/`, `data/mappack/` | Gerados automaticamente (instalação, compilação do jogo, do site e do Rust, pacote do mapa) | Não faça nada | gerados sozinhos |
-| `backups/` | Cópias de banco com contas de jogadores | Não | — |
+| **`Original/Resource/`** | The **Resource** folder of **Titanium MMO**: item and monster tables (`propItem.txt`, `propMover.txt`, `defineItem.h`…), the maps (`World/WdMadrigal`…) and the 3D models | **YES — nothing opens without it** | Titanium MMO |
+| **`Original/Client/`** | The **installed client** of **Titanium MMO** (`Neuz.exe`, `Data/`, `World/`…): models, textures, icons, sounds | **YES** | Titanium MMO |
+| `data/res-extra/Data/` | Complementary interface icons, cursors and themes (`Cursors/`, `Icon/`, `Theme/`) | Recommended: without it some icons, cursors or windows may appear blank | data pack that comes with the forum thread |
+| **`data/res-extra/L2/`** and **`data/res-extra/World/`** | The **L2 Giran map**: the 3D models (`L2/`) and the `WdL2Giran` map with its textures (`World/`) | Optional (without them only the Madrigal map exists) | L2 Giran map pack, in the forum thread |
+| `htdocs/.env.local` | Passwords and keys for the website | **YES — you create it in step 6** | you |
+| `data/l2/`, `tools/cruma/` | Raw Cruma (L2 exporter) material, only used to **rebuild** the Giran map | Not needed to run | — |
+| `node_modules/`, `dist/`, `htdocs/.next/`, `game-server/target/`, `data/mappack/` | Generated automatically (installation, compiling the game, the website and the Rust engine, the map pack) | Do nothing | generated for you |
+| `backups/` | Database copies containing player accounts | No | — |
 
 ---
 
-## 3. Instalar os programas
+## 3. Install the programs
 
-Instale **nesta ordem**. Em todos, pode ir clicando em "Next/Avançar" e deixar as opções padrão, **exceto onde estiver avisado**.
+Install them **in this order**. In all of them you can keep clicking "Next" and leave the default options, **except where noted**.
 
-### 3.1 Git (com Git LFS)
-Baixe em <https://git-scm.com/download/win> e instale. (O Git LFS já vem junto.)
+### 3.1 Git (with Git LFS)
+Download from <https://git-scm.com/download/win> and install. (Git LFS comes bundled.)
 
 ### 3.2 Node.js 24 (LTS)
-Baixe em <https://nodejs.org> a versão **24 LTS** e instale. É ele que roda o jogo, o painel e o site.
+Download version **24 LTS** from <https://nodejs.org> and install. It runs the game, the panel and the website.
 
 ### 3.3 PostgreSQL 18
-Baixe em <https://www.postgresql.org/download/windows/> e instale a versão **18**.
-- O instalador pede uma **senha para o usuário `postgres`**: **anote essa senha** (você usa no passo 5).
-- Deixe a porta `5432`.
+Download from <https://www.postgresql.org/download/windows/> and install version **18**.
+- The installer asks for a **password for the `postgres` user**: **write it down** (you need it in step 5).
+- Keep port `5432`.
 
-### 3.4 Rust (o motor do servidor)
-1. Baixe o **rustup-init.exe** em <https://rustup.rs> e execute.
-2. Se ele avisar que falta o **"Microsoft C++ Build Tools"** (ou "Visual Studio Build Tools"), aceite instalar: marque **"Desenvolvimento para desktop com C++"** e conclua. É um download grande; é normal.
-3. Quando a janela do rustup mostrar as opções, digite `1` e Enter (instalação padrão).
-4. **Feche e abra o PowerShell de novo**.
+### 3.4 Rust (the server engine)
+1. Download **rustup-init.exe** from <https://rustup.rs> and run it.
+2. If it warns that the **"Microsoft C++ Build Tools"** (or "Visual Studio Build Tools") are missing, accept installing them: tick **"Desktop development with C++"** and finish. It is a big download; that is normal.
+3. When the rustup window shows its options, type `1` and press Enter (default installation).
+4. **Close and reopen PowerShell**.
 
-> O Rust é o que faz o servidor aguentar muita gente. **Sem Rust o jogo ainda abre**, usando o motor antigo em Node (mais lento) — o servidor avisa `cargo não encontrado … seguindo com o motor Node`.
+> Rust is what lets the server handle many players. **Without Rust the game still opens**, using the older Node engine (slower) — the server prints `cargo não encontrado … seguindo com o motor Node` ("cargo not found … continuing with the Node engine").
 
-### 3.5 Conferir se deu certo
-Abra o PowerShell e rode:
+### 3.5 Check that everything works
+Open PowerShell and run:
 
 ```bash
 git --version
@@ -120,260 +120,260 @@ node --version
 cargo --version
 ```
 
-Cada um deve mostrar um número de versão (o Node deve começar com `v24`). Se algum disser "não é reconhecido", feche e abra o PowerShell de novo; se continuar, reinstale esse programa.
+Each one must print a version number (Node must start with `v24`). If one says "is not recognized", close and reopen PowerShell; if it persists, reinstall that program.
 
 ---
 
-## 4. Baixar o projeto e colocar os arquivos do jogo
+## 4. Download the project and add the game files
 
-### 4.1 Baixar o projeto
+### 4.1 Download the project
 ```bash
 git clone https://github.com/marciobremer/FlyffWeb.git C:\Projeto_Atools
 cd C:\Projeto_Atools
 ```
-(Pode ser outra pasta; só evite caminhos com acentos ou espaços.)
+(You can use another folder; just avoid paths with accents or spaces.)
 
-### 4.2 Colocar o Titanium MMO na pasta `Original` (obrigatório)
-Crie a pasta `C:\Projeto_Atools\Original` e copie para dentro dela **duas pastas** do Titanium MMO:
+### 4.2 Put Titanium MMO in the `Original` folder (required)
+Create the folder `C:\Projeto_Atools\Original` and copy **two folders** from Titanium MMO into it:
 
 ```
 C:\Projeto_Atools\
 └── Original\
-    ├── Resource\     ← a pasta "Resource" do Titanium MMO
-    └── Client\       ← o cliente instalado do Titanium MMO
+    ├── Resource\     ← the "Resource" folder of Titanium MMO
+    └── Client\       ← the installed client of Titanium MMO
 ```
 
-Para conferir que está certo, estes arquivos e pastas **precisam existir**:
+To check it is right, these files and folders **must exist**:
 
-| Caminho | O que deve ter |
+| Path | What it should contain |
 |---|---|
-| `Original\Resource\propItem.txt` e `Spec_Item.txt` | tabela de itens |
-| `Original\Resource\propMover.txt` | tabela de monstros |
-| `Original\Resource\propSkill.txt` e `propSkillAdd.csv` | skills |
-| `Original\Resource\defineItem.h`, `mdlObj.inc`, `mdlDyna.inc`, `character.inc` | definições e modelos |
-| `Original\Resource\World\WdMadrigal\WdMadrigal.wld` | o mapa Madrigal (e 900 arquivos `.lnd` ao lado dele) |
-| `Original\Resource\Data\Model\` | modelos 3D |
-| `Original\Client\Neuz.exe` e `Original\Client\Data\Model\` | o cliente instalado |
+| `Original\Resource\propItem.txt` and `Spec_Item.txt` | item table |
+| `Original\Resource\propMover.txt` | monster table |
+| `Original\Resource\propSkill.txt` and `propSkillAdd.csv` | skills |
+| `Original\Resource\defineItem.h`, `mdlObj.inc`, `mdlDyna.inc`, `character.inc` | definitions and models |
+| `Original\Resource\World\WdMadrigal\WdMadrigal.wld` | the Madrigal map (with 900 `.lnd` files next to it) |
+| `Original\Resource\Data\Model\` | 3D models |
+| `Original\Client\Neuz.exe` and `Original\Client\Data\Model\` | the installed client |
 
-> Os nomes das pastas importam. `Original` com `Resource` e `Client` dentro — nem mais, nem menos níveis.
-> (Se preferir guardar o jogo em outro lugar, dá para apontar com as variáveis `FLYFF_RESOURCE` e `FLYFF_CLIENT`; veja a seção 12.)
+> Folder names matter: `Original` with `Resource` and `Client` directly inside — no extra levels.
+> (If you prefer to keep the game files elsewhere, you can point to them with the `FLYFF_RESOURCE` and `FLYFF_CLIENT` variables; see section 12.)
 
-### 4.3 Complemento de interface (recomendado)
-Copie a pasta **`Data`** do pacote que acompanha o tópico do fórum para dentro de **`data\res-extra\`**, ficando `C:\Projeto_Atools\data\res-extra\Data\` com as subpastas `Cursors`, `Icon` e `Theme`.
+### 4.3 Interface add-ons (recommended)
+Copy the **`Data`** folder from the pack that comes with the forum thread into **`data\res-extra\`**, so that you end up with `C:\Projeto_Atools\data\res-extra\Data\` containing the `Cursors`, `Icon` and `Theme` subfolders.
 
-### 4.4 Mapa L2 Giran (opcional)
-O mapa extra de Giran (do Lineage 2) fica em **duas pastas** dentro de `data\res-extra\`:
+### 4.4 L2 Giran map (optional)
+The extra Giran map (from Lineage 2) lives in **two folders** inside `data\res-extra\`:
 
 ```
 C:\Projeto_Atools\data\res-extra\
-├── L2\        ← modelos 3D do mapa (arquivos .glb)
+├── L2\        ← 3D models of the map (.glb files)
 └── World\
-    ├── WdL2Giran\   ← o mapa em si (WdL2Giran.wld e os .lnd)
-    └── Texture\     ← texturas do mapa
+    ├── WdL2Giran\   ← the map itself (WdL2Giran.wld and the .lnd files)
+    └── Texture\     ← map textures
 ```
 
-Se essas pastas existirem, o servidor registra o mapa sozinho; dentro do jogo, quem é GM vai até lá com o comando `//mapa l2`.
-Se não existirem, **nada quebra** — só não há o mapa Giran.
+If these folders exist, the server registers the map by itself; in the game, a GM goes there with the `//mapa l2` chat command.
+If they do not exist, **nothing breaks** — there is just no Giran map.
 
 ---
 
-## 5. Criar o banco de dados
+## 5. Create the database
 
-O jogo guarda contas, personagens e itens no PostgreSQL. Você cria **um usuário e um banco vazios** (uma vez só).
+The game stores accounts, characters and items in PostgreSQL. You create **an empty user and an empty database** (only once).
 
-### 5.1 Entrar no PostgreSQL
-No PowerShell:
+### 5.1 Open PostgreSQL
+In PowerShell:
 
 ```bash
 & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres
 ```
-Digite a senha do `postgres` (a do passo 3.3). Vai aparecer um prompt `postgres=#`.
+Type the `postgres` password (from step 3.3). A `postgres=#` prompt appears.
 
-### 5.2 Criar usuário e banco
-Cole as duas linhas abaixo, **trocando `SUA-SENHA-AQUI` por uma senha à sua escolha** (anote; não use aspas dentro dela):
+### 5.2 Create the user and the database
+Paste the two lines below, **replacing `YOUR-PASSWORD-HERE` with a password of your choice** (write it down; do not use quotes inside it):
 
 ```sql
-CREATE ROLE flyffweb_app LOGIN PASSWORD 'SUA-SENHA-AQUI';
+CREATE ROLE flyffweb_app LOGIN PASSWORD 'YOUR-PASSWORD-HERE';
 CREATE DATABASE flyffweb OWNER flyffweb_app ENCODING 'UTF8';
 ```
-Depois digite `\q` e Enter para sair.
+Then type `\q` and press Enter to leave.
 
-### 5.3 Guardar a senha para o servidor (fora do código)
-O servidor lê a senha do arquivo de senhas do PostgreSQL. Crie o arquivo **`%APPDATA%\postgresql\pgpass.conf`**
-(`%APPDATA%` é `C:\Users\SEU_USUARIO\AppData\Roaming`; crie a pasta `postgresql` se não existir) com **uma linha**:
+### 5.3 Store the password for the server (outside the code)
+The server reads the password from the PostgreSQL password file. Create the file **`%APPDATA%\postgresql\pgpass.conf`**
+(`%APPDATA%` is `C:\Users\YOUR_USER\AppData\Roaming`; create the `postgresql` folder if it does not exist) with **one line**:
 
 ```
-localhost:5432:flyffweb:flyffweb_app:SUA-SENHA-AQUI
+localhost:5432:flyffweb:flyffweb_app:YOUR-PASSWORD-HERE
 ```
 
-### 5.4 (Opcional) Carregar o banco limpo com os itens da loja do site
+### 5.4 (Optional) Load the clean database with the website shop items
 ```bash
 & "C:\Program Files\PostgreSQL\18\bin\pg_restore.exe" -h localhost -U flyffweb_app -d flyffweb --no-owner database\flyffweb-limpo.dump
 ```
-Se você pular este passo, o servidor cria toda a estrutura sozinho na primeira vez; só a lista de itens da loja do site começa vazia.
+If you skip this step, the server creates the whole structure by itself the first time; only the website's shop item list starts empty.
 
-> Quando o servidor liga, ele aplica sozinho as atualizações do banco (migrações). Você nunca mexe nas tabelas à mão.
+> When the server starts it applies database updates (migrations) by itself. You never edit the tables by hand.
 
 ---
 
-## 6. Configurar o site
+## 6. Configure the website
 
-1. Copie o arquivo `htdocs\.env.example` para `htdocs\.env.local`:
+1. Copy `htdocs\.env.example` to `htdocs\.env.local`:
    ```bash
    copy htdocs\.env.example htdocs\.env.local
    ```
-2. Gere dois valores aleatórios (rode **duas vezes** e guarde os resultados):
+2. Generate two random values (run this **twice** and keep both results):
    ```bash
    node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
    ```
-3. Abra `htdocs\.env.local` no Bloco de Notas e preencha `SESSION_SECRET=` com o primeiro valor e `NEXTAUTH_SECRET=` com o segundo.
-4. Se for publicar na internet, troque os endereços `http://localhost:8080` pelo seu endereço (e use `COOKIE_SECURE=true` com HTTPS).
+3. Open `htdocs\.env.local` in Notepad and fill `SESSION_SECRET=` with the first value and `NEXTAUTH_SECRET=` with the second.
+4. If you are going to publish on the internet, replace the `http://localhost:8080` addresses with your own (and use `COOKIE_SECURE=true` with HTTPS).
 
 ---
 
-## 7. Ligar tudo
+## 7. Start everything
 
-Dê **dois cliques** em **`.Iniciar Servidor.bat`** (na pasta do projeto).
+**Double-click `.Iniciar Servidor.bat`** (in the project folder).
 
-Na **primeira vez** ele faz sozinho tudo isto (pode levar **10–20 minutos**; não feche a janela):
+The **first time** it does all of this by itself (it can take **10–20 minutes**; do not close the window):
 
-1. instala as bibliotecas do jogo e do site (`npm install`);
-2. atualiza o banco de dados;
-3. compila o jogo no navegador e o **site**;
-4. compila o **motor em Rust** (`cargo build --release`) — a parte mais demorada;
-5. gera o pacote do mapa para o Rust (`data\mappack\`);
-6. liga o painel admin, o servidor, o Rust e o site.
+1. installs the game and website libraries (`npm install`);
+2. updates the database;
+3. compiles the browser game and the **website**;
+4. compiles the **Rust engine** (`cargo build --release`) — the slowest part;
+5. generates the map pack for Rust (`data\mappack\`);
+6. starts the admin panel, the server, Rust and the website.
 
-Quando terminar, **o navegador abre o painel admin** e, numa aba nova, **o jogo**. Nas próximas vezes leva só alguns segundos.
+When it finishes, **the browser opens the admin panel** and, in a new tab, **the game**. Next times it takes only a few seconds.
 
-Você sabe que o motor Rust está no ar quando a janela preta mostra linhas começando com `[rust]`, por exemplo:
-`[rust] mapa WdMadrigal: 7368 mobs em 960 respawns` e `rust-link: conectado`.
+You know the Rust engine is running when the black window shows lines starting with `[rust]`, for example:
+`[rust] mapa WdMadrigal: 7368 mobs em 960 respawns` and `rust-link: conectado` ("connected").
 
-| Endereço | O que é |
+| Address | What it is |
 |---|---|
-| <http://localhost:8080/> | o site |
-| <http://localhost:8080/game/> | **o jogo** |
-| <http://localhost:8080/editor/> | o editor de mapas |
-| <http://127.0.0.1:8090/> | o painel admin (só abre neste computador) |
+| <http://localhost:8080/> | the website |
+| <http://localhost:8080/game/> | **the game** |
+| <http://localhost:8080/editor/> | the map editor |
+| <http://127.0.0.1:8090/> | the admin panel (only opens on this computer) |
 
-**Para desligar:** feche a janela preta (ou aperte `Ctrl+C` nela). Isso desliga o painel, o servidor e o Rust.
+**To stop:** close the black window (or press `Ctrl+C` in it). That stops the panel, the server and Rust.
 
 ---
 
-## 8. Criar a sua conta de administrador e jogar
+## 8. Create your admin account and play
 
-O banco começa vazio. Crie a sua conta pelo **site** (<http://localhost:8080/>, botão de cadastro) **ou** pelo terminal:
+The database starts empty. Create your account on the **website** (<http://localhost:8080/>, sign-up button) **or** in the terminal:
 
 ```bash
-npm run account -- create SEU_USUARIO
+npm run account -- create YOUR_USERNAME
 ```
-(ele pede a senha). Depois torne-a **dona do servidor**:
+(it asks for the password). Then make it the **server owner**:
 
 ```bash
-npm run account -- set-authority SEU_USUARIO Z
+npm run account -- set-authority YOUR_USERNAME Z
 ```
 
-> **Z** = dono (nick preto) · **G** = GM (nick roxo) · **F** = jogador comum.
+> **Z** = owner (black name) · **G** = GM (purple name) · **F** = regular player.
 
-Abra <http://localhost:8080/game/>, entre com a conta, crie um personagem e jogue.
-Com a conta **Z/G**, digite `//gm` no chat para abrir o painel de GM dentro do jogo e `//help` para a lista de comandos.
-
----
-
-## 9. Jogar com outras pessoas (rede/internet)
-
-- **Na mesma rede (casa/LAN):** os outros abrem `http://IP-DO-SEU-PC:8080/game/` (o IP aparece na janela preta como "rede local"). O Windows pode perguntar sobre o Firewall: **permita** (rede privada).
-- **Libere duas portas no firewall e no roteador:** **8080** (site e jogo) e **8081** (conexão direta com o motor Rust). Se a 8081 estiver bloqueada o jogo **funciona do mesmo jeito**, só passa pela 8080.
-- A **8090 (painel) é só local**, nunca abra para fora.
-- Para a internet de verdade, o ideal é um domínio com HTTPS na frente (proxy como o Caddy ou o Nginx); o Rust, sozinho, não faz HTTPS.
+Open <http://localhost:8080/game/>, log in, create a character and play.
+With a **Z/G** account, type `//gm` in the chat to open the in-game GM panel and `//help` for the command list.
 
 ---
 
-## 10. Deu problema?
+## 9. Playing with other people (network / internet)
 
-| Sintoma | O que fazer |
+- **On the same network (home/LAN):** others open `http://YOUR-PC-IP:8080/game/` (the IP is shown in the black window as "rede local" = "local network"). Windows may ask about the Firewall: **allow it** (private network).
+- **Open two ports in the firewall and on your router:** **8080** (website and game) and **8081** (direct connection to the Rust engine). If 8081 is blocked the game **still works**, it just goes through 8080.
+- **8090 (the panel) is local only** — never open it to the outside.
+- For the real internet, the best setup is a domain with HTTPS in front (a proxy such as Caddy or Nginx); Rust on its own does not do HTTPS.
+
+---
+
+## 10. Troubleshooting
+
+| Symptom | What to do |
 |---|---|
-| `Node.js nao encontrado` | instale o Node (passo 3.2) e **feche/abra** o terminal; rode o `.bat` de novo |
-| O `.bat` para em "Atualizando o banco de dados" com erro | o banco não existe ou a senha está errada. Refaça os passos 5.2 e 5.3 (a senha do `pgpass.conf` tem que ser a mesma do `CREATE ROLE`). O painel admin (aba **Database**) mostra o estado e ajuda a reinstalar |
-| `[rust] cargo não encontrado … seguindo com o motor Node` | o Rust não está instalado ou o terminal foi aberto antes dele. Faça o passo 3.4 e rode o `.bat` de novo. O jogo funciona assim, só com menos desempenho |
-| `[rust] a compilação do game-server falhou` | quase sempre falta o **C++ Build Tools** (passo 3.4). Instale e rode de novo. Para ver o erro: `cd game-server` e `cargo build --release` |
-| Tela do jogo preta ou sem modelos | confira o passo 4.2: `Original\Resource` e `Original\Client` com os arquivos da tabela |
-| Faltam ícones, cursores ou janelas em branco | coloque o pacote do passo 4.3 em `data\res-extra\Data\` |
-| "A porta 8080 já está em uso" | outro programa (ou outra cópia do servidor) usa a porta. Feche-o, ou troque a porta antes de ligar: `set GAME_PORT=8085` no terminal (e use a nova porta nos endereços) |
-| O site demora ou dá erro na primeira vez | normal: ele compila (alguns minutos). Espere o jogo aparecer |
-| Quero voltar ao motor antigo (sem Rust) | abra o terminal, rode `set GAME_ENGINE=node` e depois o `.bat` |
-| "O jogo diz que falta o `dist/`" | rode `npm run build` uma vez |
+| `Node.js nao encontrado` (Node.js not found) | install Node (step 3.2), **close and reopen** the terminal, and run the `.bat` again |
+| The `.bat` stops at "Atualizando o banco de dados" (updating the database) with an error | the database does not exist or the password is wrong. Redo steps 5.2 and 5.3 (the `pgpass.conf` password must be the same as in `CREATE ROLE`). The admin panel (**Database** tab) shows the state and can help reinstall |
+| `[rust] cargo não encontrado … seguindo com o motor Node` | Rust is not installed, or the terminal was opened before installing it. Do step 3.4 and run the `.bat` again. The game works this way, just with lower performance |
+| `[rust] a compilação do game-server falhou` (compilation failed) | almost always the **C++ Build Tools** are missing (step 3.4). Install them and run again. To see the error: `cd game-server` then `cargo build --release` |
+| Black game screen or no models | check step 4.2: `Original\Resource` and `Original\Client` with the files from the table |
+| Missing icons, cursors or blank windows | put the pack from step 4.3 into `data\res-extra\Data\` |
+| "Port 8080 is already in use" | another program (or another copy of the server) is using it. Close it, or change the port before starting: `set GAME_PORT=8085` in the terminal (and use the new port in the addresses) |
+| The website is slow or errors on the first run | normal: it compiles (a few minutes). Wait until the game opens |
+| I want to go back to the old engine (no Rust) | open the terminal, run `set GAME_ENGINE=node`, then run the `.bat` |
+| "The game says `dist/` is missing" | run `npm run build` once |
 
 ---
 
-## 11. Docker (opcional)
+## 11. Docker (optional)
 
-Dá para subir banco + servidor + painel + site em containers, sem instalar Node nem PostgreSQL. Precisa só de **Git** e **Docker Desktop**.
+You can bring up database + server + panel + website in containers, without installing Node or PostgreSQL. You only need **Git** and **Docker Desktop**.
 
-1. Baixe o projeto e coloque `Original\` (e, se tiver, `data\res-extra\Data\`) como no passo 4.
-2. Copie `.env.example` para `.env` e troque `PGPASSWORD`.
-3. Copie `htdocs\.env.example` para `htdocs\.env.local` e preencha como no passo 6.
-4. Rode `docker compose up -d --build`.
-5. Torne a sua conta dona: `docker compose exec app npm run account -- set-authority SEU_USUARIO Z`.
+1. Download the project and put `Original\` (and, if you have it, `data\res-extra\Data\`) in place as in step 4.
+2. Copy `.env.example` to `.env` and change `PGPASSWORD`.
+3. Copy `htdocs\.env.example` to `htdocs\.env.local` and fill it in as in step 6.
+4. Run `docker compose up -d --build`.
+5. Make your account the owner: `docker compose exec app npm run account -- set-authority YOUR_USERNAME Z`.
 
-> **Atenção:** a imagem Docker **não inclui o Rust**. No Docker o servidor usa o **motor Node** (funciona, mas com menos desempenho). Para ter o Rust, use a instalação no Windows (passos 3–7).
+> **Note:** the Docker image **does not include Rust**. With Docker the server uses the **Node engine** (it works, but with lower performance). To get Rust, use the Windows installation (steps 3–7).
 
-Mais detalhes (logs, backup do banco do container): [DOCKER.md](DOCKER.md).
+More details (logs, container database backup): [DOCKER.md](DOCKER.md).
 
 ---
 
-## 12. Comandos do dia a dia, backup e pastas
+## 12. Everyday commands, backup and folder map
 
-Rode no PowerShell, dentro da pasta do projeto.
+Run these in PowerShell, inside the project folder.
 
-| Comando | O que faz |
+| Command | What it does |
 |---|---|
-| `.Iniciar Servidor.bat` | liga tudo (banco + painel + Rust + jogo + site) |
-| `npm run build` | recompila o jogo e o editor para `dist/` |
-| `npm start` | só o servidor do jogo (porta 8080; precisa do `dist/`) |
-| `npm run admin` | só o painel admin (`-- --start-game` liga o jogo junto) |
-| `npm run dev` | modo de desenvolvimento (porta 5173; é um mundo separado do 8080) |
-| `npm run db:migrate` | aplica as atualizações do banco |
-| `npm run account -- <comando>` | `create`, `set-password`, `list`, `add-character`, `set-authority`, `give-item`, `give-penya` |
-| `npm run l2world -- <tile> <Nome>` | recria o mapa L2 a partir das exportações do Cruma (só quem tem `data/l2`) |
-| `npm test` / `npm run typecheck` | testes e verificação do código |
+| `.Iniciar Servidor.bat` | starts everything (database + panel + Rust + game + website) |
+| `npm run build` | rebuilds the game and the editor into `dist/` |
+| `npm start` | only the game server (port 8080; needs `dist/`) |
+| `npm run admin` | only the admin panel (`-- --start-game` starts the game too) |
+| `npm run dev` | development mode (port 5173; it is a separate world from 8080) |
+| `npm run db:migrate` | applies database updates |
+| `npm run account -- <command>` | `create`, `set-password`, `list`, `add-character`, `set-authority`, `give-item`, `give-penya` |
+| `npm run l2world -- <tile> <Name>` | rebuilds the L2 map from Cruma exports (only if you have `data/l2`) |
+| `npm test` / `npm run typecheck` | tests and code check |
 
-**Variáveis de ambiente úteis** (defina antes de ligar, com `set NOME=valor`):
+**Useful environment variables** (set them before starting, with `set NAME=value`):
 
-| Variável | Para quê | Padrão |
+| Variable | Purpose | Default |
 |---|---|---|
-| `GAME_ENGINE` | `rust` ou `node` (o `.bat` já define `rust`) | `rust` |
-| `RUST_WS_PORT` | porta da conexão direta com o Rust (`0` desliga) | `8081` |
-| `GAME_PORT` / `ADMIN_PORT` | portas do jogo e do painel | `8080` / `8090` |
-| `FLYFF_RESOURCE` / `FLYFF_CLIENT` | onde estão `Resource` e `Client` do Titanium MMO | `Original\Resource` / `Original\Client` |
-| `PGHOST` `PGPORT` `PGDATABASE` `PGUSER` `PGPASSWORD` | conexão com o banco | `localhost` `5432` `flyffweb` `flyffweb_app` (senha: `pgpass.conf`) |
+| `GAME_ENGINE` | `rust` or `node` (the `.bat` already sets `rust`) | `rust` |
+| `RUST_WS_PORT` | port for the direct connection to Rust (`0` turns it off) | `8081` |
+| `GAME_PORT` / `ADMIN_PORT` | game and panel ports | `8080` / `8090` |
+| `FLYFF_RESOURCE` / `FLYFF_CLIENT` | where Titanium MMO's `Resource` and `Client` are | `Original\Resource` / `Original\Client` |
+| `PGHOST` `PGPORT` `PGDATABASE` `PGUSER` `PGPASSWORD` | database connection | `localhost` `5432` `flyffweb` `flyffweb_app` (password: `pgpass.conf`) |
 
-**Backup do banco** (um dump com contas de jogadores **não deve ir para um repositório público**):
+**Database backup** (a dump containing player accounts **must not go into a public repository**):
 
 ```bash
 & "C:\Program Files\PostgreSQL\18\bin\pg_dump.exe" -h localhost -U flyffweb_app -d flyffweb -Fc -f backup.dump
 ```
-O painel admin também faz e restaura backups (aba **Database**).
+The admin panel can also create and restore backups (**Database** tab).
 
-**Mapa das pastas:**
+**Folder map:**
 
 ```
 servers/
-  common/      caminhos e portas, banco (db/ + migrações), catálogo de itens, utilidades HTTP
-  auth/        contas e login (senha com scrypt, sessões)
-  character/   personagens e inventário
-  world/       mundo em tempo real: WebSocket, ponte com o Rust, combate, drops, lojas, skills, party, guild, GM
-  api.ts       porta de entrada HTTP     main.ts  sobe tudo num processo só
-game-server/   o motor em Rust (combate, IA, movimento, tick)
-client/        o jogo no navegador         → /game/
-editor/        o editor de mapas           → /editor/
-shared/        formatos do FlyFF (.lnd, .dyo, .o3d…), 3D, colisão
-admin/         o painel de administração   → http://127.0.0.1:8090
-htdocs/        o site (Next.js)            → /
-tools/         ferramentas de linha de comando
-database/      o banco vazio (dump)
-data/          taxas, edições do mapa, missões, eventos; res-extra/ = complementos (não versionados)
-Original/      os arquivos do Titanium MMO — NÃO versionado (você coloca)
+  common/      paths and ports, database (db/ + migrations), item catalog, HTTP helpers
+  auth/        accounts and login (scrypt passwords, sessions)
+  character/   characters and inventory
+  world/       real-time world: WebSocket, the Rust bridge, combat, drops, shops, skills, party, guild, GM
+  api.ts       HTTP entry point          main.ts  starts everything in one process
+game-server/   the Rust engine (combat, AI, movement, tick)
+client/        the game in the browser       → /game/
+editor/        the map editor                → /editor/
+shared/        FlyFF formats (.lnd, .dyo, .o3d…), 3D, collision
+admin/         the administration panel      → http://127.0.0.1:8090
+htdocs/        the website (Next.js)         → /
+tools/         command-line tools
+database/      the empty database (dump)
+data/          rates, map edits, quests, events; res-extra/ = add-ons (not versioned)
+Original/      the Titanium MMO files — NOT versioned (you add them)
 ```
 
-Mais detalhes técnicos: [docs/ARQUITETURA.md](docs/ARQUITETURA.md). O histórico do que foi feito e o que falta: [NEXT_STEPS.md](NEXT_STEPS.md).
+More technical details: [docs/ARQUITETURA.md](docs/ARQUITETURA.md) (in Portuguese). Project history and next steps: [NEXT_STEPS.md](NEXT_STEPS.md) (in Portuguese).
