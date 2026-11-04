@@ -74,6 +74,17 @@ export class GmPanel extends GameWindow {
   private invisBtn = btn('Invisible Mode', () => this.send('//invis'));
   /** imortal: os mobs batem e o dano aparece, mas o HP não cai (//god; ligado ao entrar) */
   private godBtn = btn('Imortal', () => this.send('//god'));
+  /** voo livre: E sobe, Q desce, W A S D guiam (//fly) */
+  private flyBtn = btn('Voar', () => this.send('//fly'));
+  /** velocidade de corrida em % da normal (//speed): 100 = normal */
+  private speedIn = num(10, 1000, 100);
+  private speedBtn = btn('Velocidade', () => this.send(`//speed ${this.speedIn.value || 100}`));
+  private speedReset = btn('Normal', () => { this.speedIn.value = '100'; this.send('//speed 100'); });
+  setFly(on: boolean) {
+    this.flyBtn.textContent = on ? 'Voar: ligado' : 'Voar';
+    this.flyBtn.classList.toggle('on', on);
+    this.flyBtn.setAttribute('aria-pressed', String(on));
+  }
 
   /** estado do modo invisível (o servidor avisa ao ligar/desligar) */
   setInvis(on: boolean) {
@@ -183,6 +194,7 @@ export class GmPanel extends GameWindow {
   private playerPage() {
     const x = el('input', { type: 'number', className: 'gm-in num', placeholder: 'x' });
     const z = el('input', { type: 'number', className: 'gm-in num', placeholder: 'z' });
+    const map = el('input', { type: 'text', className: 'gm-in', placeholder: 'mapa (ex.: l2)', value: 'l2' });
     const level = num(1, 150, 1);
     const job = select(JOBS);
     const penya = num(1, 2_000_000_000, 1000);
@@ -195,6 +207,9 @@ export class GmPanel extends GameWindow {
         this.send(`//tp ${Number(x.value)} ${Number(z.value)}`);
       })),
       el('div', { className: 'gm-row' }, btn('Voltar para Flaris', () => this.send('//tp 6976 3327'))),
+      el('h4', { textContent: 'Mapas' }),
+      el('div', { className: 'gm-row' }, map, btn('Ir', () => this.send(`//mapa ${map.value.trim() || 'l2'}`)), btn('Listar', () => this.send('//mapa'))),
+      el('div', { className: 'gm-row' }, el('span', { className: 'gm-hint', textContent: 'nome (ou parte): l2 = o mapa do L2 · azria, coral…' })),
       el('h4', { textContent: 'Personagem (alvo)' }),
       el('div', { className: 'gm-row' }, field('Nível', level), btn('Aplicar', () => this.send(this.withTarget('set-level', level.value)))),
       el('div', { className: 'gm-row' }, field('Classe', job), btn('Aplicar', () => this.send(this.withTarget('set-job', job.value)))),
@@ -206,6 +221,8 @@ export class GmPanel extends GameWindow {
       el('h4', { textContent: 'GM' }),
       el('div', { className: 'gm-row' }, this.invisBtn, el('span', { className: 'gm-hint', textContent: 'invisível para os jogadores; GMs e admins veem' })),
       el('div', { className: 'gm-row' }, this.godBtn, el('span', { className: 'gm-hint', textContent: 'leva os golpes, mas o HP não cai (liga ao entrar)' })),
+      el('div', { className: 'gm-row' }, this.flyBtn, el('span', { className: 'gm-hint', textContent: 'E sobe, Q desce, W A S D guiam' })),
+      el('div', { className: 'gm-row' }, this.speedIn, this.speedBtn, this.speedReset, el('span', { className: 'gm-hint', textContent: '% da normal (100 a 1000)' })),
       el('h4', { textContent: 'Vida' }),
       el('div', { className: 'gm-row' },
         btn('Matar', () => this.send(this.withTarget('kill', ''))),

@@ -54,8 +54,10 @@ export function fillColors(land: Landscape, mode: ColorMode, out: Float32Array) 
 /** Carrega `World/Texture/<arquivo>.dds` (nomes vindos de Terrain.inc) com cache. */
 export class TerrainTextures {
   private cache = new Map<number, Promise<Texture | null>>();
-  constructor(private names: Map<number, string>, private files: Set<string>) {}
-  reset(names: Map<number, string>, files: Set<string>) { this.names = names; this.files = files; this.cache.clear(); }
+  constructor(private names: Map<number, string>, private files: Set<string>, private scales = new Map<number, number>()) {}
+  reset(names: Map<number, string>, files: Set<string>, scales = new Map<number, number>()) { this.names = names; this.files = files; this.scales = scales; this.cache.clear(); }
+  /** multiplicador da repetição da textura da camada (mapas do L2 trazem o próprio, em `<mundo>.uv.json`; o resto é 1) */
+  scale(id: number) { return this.scales.get(id) ?? 1; }
   has(id: number) { const n = this.names.get(id); return !!n && this.files.has(n.toLowerCase()); }
   get(id: number): Promise<Texture | null> {
     let p = this.cache.get(id);
@@ -89,7 +91,7 @@ const VERT = /* glsl */ `
   }`;
 const FRAG = /* glsl */ `
   #include <packing>
-  uniform sampler2D map; uniform sampler2D lightMap; uniform vec3 lightDir; uniform vec3 uAmbient; uniform vec3 uDiffuse; uniform float uLit; uniform float blend;
+  uniform sampler2D map; uniform sampler2D lightMap; uniform vec3 lightDir; uniform vec3 uAmbient; uniform vec3 uDiffuse; uniform float uLit; uniform float blend; uniform float uvScale;
   uniform sampler2D shadowMap; uniform float shadowOn; uniform float shadowTexel; uniform float shadowBias; uniform float shadowSoft;
   varying vec2 vUv; varying vec2 vUv2; varying vec3 vN; varying vec4 vShadow;
   #include <fog_pars_fragment>
@@ -116,7 +118,7 @@ const FRAG = /* glsl */ `
   }
   void main() {
     vec4 lm = texture2D(lightMap, vUv2);
-    vec3 tex = texture2D(map, vUv).rgb;
+    vec3 tex = texture2D(map, vUv * uvScale).rgb;
     // estágio 1 do D3D: modulação 2x com a cor da lightmap (127 = neutro)
     vec3 col = tex * lm.rgb * 2.0;
     // iluminação D3D de função fixa: ambiente + difusa·N·L (limitada a 1); uLit=0 → sem luz (como o ATools)
@@ -143,9 +145,9 @@ export const terrainShadow = {
   shadowSoft: { value: 1.5 },
 };
 
-function layerMaterial(map: Texture, lightMap: Texture, blend: boolean, order: number): ShaderMaterial {
+function layerMaterial(map: Texture, lightMap: Texture, blend: boolean, order: number, uvScale = 1): ShaderMaterial {
   const m = new ShaderMaterial({
-    uniforms: { ...UniformsUtils.merge([UniformsLib.fog, { map: { value: map }, lightMap: { value: lightMap }, blend: { value: blend ? 1 : 0 } }]), ...terrainLight, ...terrainShadow },
+    uniforms: { ...UniformsUtils.merge([UniformsLib.fog, { map: { value: map }, lightMap: { value: lightMap }, blend: { value: blend ? 1 : 0 }, uvScale: { value: uvScale } }]), ...terrainLight, ...terrainShadow },
     vertexShader: VERT, fragmentShader: FRAG, fog: true,
     transparent: blend, depthWrite: !blend, depthFunc: LessEqualDepth,
     polygonOffset: blend, polygonOffsetFactor: -1 - order * 0.1, polygonOffsetUnits: -1 - order,
@@ -264,7 +266,7 @@ export function buildTerrain(land: Landscape, mpu: number, mode: ColorMode, tex:
       for (const name of ['position', 'uv', 'uv2', 'normal']) g.setAttribute(name, shared.getAttribute(name));
       g.setIndex(new BufferAttribute(patchIndices(list), 1));
       g.boundingSphere = shared.boundingSphere; g.boundingBox = shared.boundingBox;
-      const mat = layerMaterial(pending, lightMap, blend, li);
+      const mat = layerMaterial(pending, lightMap, blend, li, tex.scale(layer.textureId));
       mats.push(mat);
       const mesh = new Mesh(g, mat);
       // camadas em ordem entre si, mas antes de qualquer outro transparente (efeitos .sfx, brilho do enchant, folhas…): esses

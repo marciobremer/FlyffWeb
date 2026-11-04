@@ -266,3 +266,33 @@ Limites: PvP não existe em nenhum dos lados; a espera entre golpe do jogador e 
 - O painel (aba Skills) grava `data/skill-mode.json` → `{ "mode": "auto" | "manual" }` via `servers/common/skillmode.ts` (`skillMode()` relê o arquivo a cada 2 s; sem arquivo = `manual`).
 - **manual**: comportamento atual (pontos a cada nível, o jogador distribui).
 - **auto**: sem pontos de skill; ao atingir `reqLevel` cada skill da classe (`SkillCatalog.forJob`) abre sozinha em `max`, respeitando pré-requisitos. A implementação no jogo (`servers/world/realtime.ts`, `skills.ts`, Rust) é do master Game.
+
+## Props 3D extras (.glb) — contrato de `world-edits`
+
+`data/world-edits/<Mundo>.json` ganhou `props?: { file, pos:[x,y,z], rotY, scale }[]` (validado em `shared/worldedits.ts`, `cleanEdits`).
+- `file`: caminho relativo a `/res` de um `.glb` em `data/res-extra` (ex.: `L2/grupo.glb`, exportado do Cruma por `tools/cruma/`).
+- `pos`: coordenadas FlyFF (a cena inverte o z); `rotY`: giro em Y da cena, em graus; `scale`: uniforme sobre o tamanho do arquivo (L2 vem em unidades Unreal, ~0.01).
+- O cliente (`WorldView.props`, `shared/props.ts`) desenha por cima do mundo; o editor (`editor/props.ts`, painel "Props 3D") coloca/move/escala/salva.
+- **Colisão (cliente)**: cada prop entra no `CollisionWorld` (`shared/collision.ts`, chaves `x:p<n>`) com os triângulos do próprio `.glb` (caixa se passar de 40 mil), como os objetos do mapa: paredes bloqueiam, degraus/topos viram chão. `collide: false` no prop = atravessável (caixa "Colisão" no editor).
+- **Servidor**: sem presença nem colisão de props — hoje o servidor também não valida colisão com os objetos do mapa (só atributos do terreno), então props seguem a mesma regra. Se um dia o servidor validar objetos, ele precisa ler `props` do `world-edits` e os `.glb`.
+
+## Mapas do projeto (ex.: L2) e `//mapa`
+- Mapa próprio = pasta `data/res-extra/World/<Nome>/` com `<Nome>.wld` (mesmo formato dos da Resource) e `l2world.json` = `{ id, define, start:[x,y,z] }`. O `ServerWorld` procura a pasta do mundo em `Resource/World/<Nome>` e, se não existir, nesta; `servers/world/start.ts` (`projectWorlds`) lê os `l2world.json` e registra cada mapa como mundo extra (sem mobs/NPCs até haver `.rgn`/`.dyo`). `id` único, de 100 em diante.
+- Terreno e objetos desse mapa são props `.glb` em `data/world-edits/<Nome>.json` (`props`, ver acima), sem `.lnd`: o servidor trata tile sem arquivo como atributo 0 (anda em qualquer lugar; **cair além da borda não tem chão**).
+- `npm run l2world -- <tile> [Nome]` (tools/l2world.ts) cria tudo isso a partir de um tile exportado pelo Cruma (tools/cruma).
+- GM: `//mapa` lista os mapas e `//mapa <nome ou parte>` leva quem digitou para o ponto de chegada (`changeWorld` em `realtime.ts`); no painel do GM, aba Jogador → Mapas. Contexto novo em `GmContext`: `worldList()` e `travel(world)`.
+- `noterrain 1` no `.wld` (`WldInfo.noTerrain`): mapa sem terreno do FlyFF. O `Player` (`PlayerWorld.voidGround`) usa só o chão dos objetos/props, não anda onde não há chão e não "flutua" sobre a altura atual. Prop com `hidden: true` não é desenhado, só colide (usado para a malha de chão `walk.glb`). O limite da malha de colisão de um prop subiu para 400 mil triângulos.
+- Colisão do mapa L2: além de `walk.glb` (grade de alturas), `geo.glb` vem do geodata do L2 (`tools/l2geo.ts`, formato L2OFF `<x>_<y>_conv.dat`): células de 16 uu em setores 8×8, camadas por célula, NSWE por célula. O geodata tem ~33 uu de offset de altura sobre o terreno (descontado pela mediana). Só vira malha o que difere do terreno (outro andar, >40 uu) e as paredes de bordas bloqueadas com degrau > 48 uu.
+
+## Terreno nativo dos mapas do L2 e lista de mapas do editor
+- `tools/l2terrain.ts` escreve `.lnd` v3 (a mesma que o `parseLnd` lê) para os mapas de `data/res-extra/World/<Nome>/`; `shared/data.ts` lê `res-extra/terrain-extra.inc` além do Terrain.inc (texturas `L2_<chave>.dds`, ids ≥ 40000). Altura < 1000 (≥ 1000 = atributo), água em 1 byte por patch.
+- API `GET /gapi/worlds` → `{ main, extra }` (pastas com `<nome>.wld` em `Resource/World` e em `data/res-extra/World`); o editor usa para o menu de mapas (grupo "Mapas extras (L2)").
+
+## Quests, eventos e clima (Game Server)
+- **Contrato de dados** (arquivos editáveis à mão, relidos pelo servidor sem reiniciar): `data/quests.json` (formato no cabeçalho de `servers/world/quests.ts`) e `data/events.json` (cabeçalho de `servers/world/events.ts`). Quests ligam o NPC (`characterKey`, o mesmo do editor de NPCs), itens a entregar (`need`), abates (`kill`), drops só com a quest ativa (`drops`, com `world` e `near: {point, radius}` — ponto marcado no editor) e recompensa (`exp`, `penya`, `items`, `teleport: {world, point}`, `event`).
+- **Banco**: migração `022_quests.sql` → `characters.quests jsonb` (`{ "<id>": { s: 1 aceita | 2 concluída, k: abates por MI_*, n: vezes } }`). Gravado na hora a cada mudança.
+- **Protocolo WS** — cliente → servidor: `{ t: 'quest', op: 'open'|'accept'|'turnIn'|'abandon', id, key }`, `{ t: 'quests' }` (pede o diário). Servidor → cliente: `npcMenu` ganhou `quests: [{ id, name, st: 'offer'|'active'|'ready' }]`; `questDlg` (diálogo: texto, objetivos, recompensa, `st`); `quests` (diário: em andamento com progresso); `weather { kind: 'rain'|'clear' }` (ao entrar e quando muda no mapa do jogador).
+- A entrega (`servers/world/questflow.ts`) confere o alcance do NPC, tira os itens e confere o espaço da bolsa numa só operação (`Inventory.edit`), só então paga. O abate/drop das quests entra em `dropLoot` (os 3 caminhos de morte de mob passam por ele).
+- Eventos: gatilhos `time` (relógio do servidor, HH:MM e dias), `gameHour` (relógio de dia e noite), `every` (minutos), `weather`; ações `announce`, `wait`, `summon`, `rates` (bônus temporário em `servers/common/rates.ts` `setRateBoost`, só neste processo), `weather`, `give`, `event`. Clima: chuva por mapa (`weather.worlds` no `events.json`), sorteada a cada `checkMinutes`; o cliente desenha a chuva (`client/weather.ts`).
+- GM: `//quest [reset [id]]`, `//evento [run <id>]`, `//clima [chuva|limpo] [min]`.
+- **Quests em party:** campo `party: { min, leaderOnly }` na quest (`servers/world/quests.ts`). `questflow.ts` recusa aceitar/entregar sem party do tamanho mínimo e, com `leaderOnly`, de quem não é o líder; `questDlg` leva `req` (requisitos) e `blocked` (motivo). Contrato do painel: `GET/PUT /admin/api/quests`, `POST /admin/api/quests/delete`, `GET /admin/api/npcs?world=<mapa>|*&q=` (admin/quests-api.ts).

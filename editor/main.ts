@@ -1,3 +1,5 @@
+import { EditorCamera } from './flycam';
+import { refreshSnap, snapState } from './gizmo';
 import {
   BoxGeometry, BufferGeometry, CylinderGeometry, EdgesGeometry, Float32BufferAttribute, Group, InstancedMesh, LineBasicMaterial, LineLoop,
   LineSegments, Matrix4, Mesh, MeshLambertMaterial, Object3D, Quaternion, Raycaster, Vector2, Vector3,
@@ -7,11 +9,19 @@ import type { WorldData } from '../shared/data';
 import type { ColorMode } from '../shared/terrain';
 import { OT, MAP_SIZE, type WorldObject } from '../shared/formats/types';
 import type { Landscape } from '../shared/formats/lnd';
-import type { RectXZ } from '../shared/formats/rgn';
+import { decodeText, type RectXZ } from '../shared/formats/rgn';
+import { parseAegonTeleports } from '../shared/formats/teleport';
 import { download, exportWorld } from './export';
 import { WorldEditor } from './editor';
 import { NpcEditor } from './npcs';
-import type { EnvironmentEdits, FilterSettings, ScreenFilter, ShadowSettings, WorldEdits } from '../shared/worldedits';
+import { PropEditor } from './props';
+import { PointTool } from './points';
+import { Thumbs } from './thumbs';
+import { Library, type LibItem } from './library';
+import { Placer } from './placer';
+import { CollisionView } from './collisionview';
+import { TerrainSculpt, type Brush } from './terrain';
+import { ARRIVAL_POINT, type EnvironmentEdits, type FilterSettings, type MapPoint, type ScreenFilter, type ShadowSettings, type WorldEdits, diffObjects } from '../shared/worldedits';
 
 /** Editor de mapa: painel de camadas/ambiente, marcadores de .dyo/.rgn, inspeção de objetos, modo edição, locais e exportação. */
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -82,7 +92,12 @@ const editor = new WorldEditor({
 });
 editor.setMode('translate');
 const npcs = new NpcEditor(view, scene, camera, view.canvas, controls);
-view.inputBlocked = () => editor.enabled || npcs.enabled;
+const props = new PropEditor(view, scene, camera, view.canvas, controls);
+const points = new PointTool(view);
+if (location.hostname === 'localhost') Object.assign(window, { __view: view, __props: props }); // para depurar no console do navegador
+view.inputBlocked = () => editor.enabled || npcs.enabled || props.enabled || terrain.enabled;
+/** câmera estilo Unreal (botão direito + WASD, roda, Alt+arrastar, F); a roda no voo troca o nível de velocidade */
+const flycam = new EditorCamera(view, () => (props.enabled ? props.focusPoint : npcs.enabled ? npcs.focusPoint : editor.focusPoint));
 function updateEditInfo() {
   const s = editor.stats;
   $('editInfo').textContent = `${editor.hasSelection ? 'Objeto selecionado. ' : 'Clique em um objeto estático. '}Alterações: ${s.modified} movidos · ${s.added} novos · ${s.deleted} apagados.`;
@@ -90,9 +105,11 @@ function updateEditInfo() {
 editor.setOnChange(updateEditInfo);
 
 function setEditMode(on: boolean) {
+  if (on && terrain.enabled) setTerrainMode(false);
+  if (on && points.enabled) setPointMode(false);
   if (on && npcs.enabled) setNpcMode(false);
+  if (on && props.enabled) setPropMode(false);
   editor.setEnabled(on);
-  $('editToggle').textContent = on ? '✔ Sair do modo edição' : '✏ Entrar no modo edição';
   $('editToggle').classList.toggle('on', on);
   $('editPanel').hidden = !on;
   if (on) { $<HTMLInputElement>('playerMode').checked = false; view.playerControl = false; } // a câmera livre é usada para editar
@@ -111,9 +128,11 @@ npcs.onChange = updateNpcInfo;
 npcs.onListChanged = () => { if (view.data) buildOverlays(view.data); updateNpcInfo(); };
 
 function setNpcMode(on: boolean) {
+  if (on && terrain.enabled) setTerrainMode(false);
+  if (on && points.enabled) setPointMode(false);
   if (on && editor.enabled) setEditMode(false);
+  if (on && props.enabled) setPropMode(false);
   npcs.setEnabled(on);
-  $('npcToggle').textContent = on ? '✔ Sair da edição de NPCs' : '👤 Editar NPCs';
   $('npcToggle').classList.toggle('on', on);
   $('npcPanel').hidden = !on;
   if (on) {
@@ -123,21 +142,210 @@ function setNpcMode(on: boolean) {
   updateNpcInfo();
 }
 
-/** lista de personagens (character.inc) para adicionar */
-function renderNpcList() {
-  const d = view.data, sel = $<HTMLSelectElement>('npcList');
-  if (!d) return;
-  const q = $<HTMLInputElement>('npcFilter').value.trim().toLowerCase();
-  sel.textContent = '';
-  let n = 0;
-  for (const [k, c] of d.characters) {
-    const label = `${c.name ?? k} — ${k}`;
-    if (q && !label.toLowerCase().includes(q)) continue;
-    if (++n > 300) break;
-    const o = document.createElement('option');
-    o.value = k; o.textContent = label;
-    sel.appendChild(o);
+// ---------- props 3D (.glb de data/res-extra) ----------
+function updatePropInfo() {
+  const sel = props.selected;
+  const h = sel ? props.heightOf(sel) : null;
+  $('propInfo').textContent = `${props.count} prop(s)${props.dirty ? ' — NÃO SALVO' : ' — salvo'}. ` + (sel
+    ? `Selecionado: ${sel.userData.prop.file} — x ${sel.userData.prop.pos[0].toFixed(1)}, y ${sel.userData.prop.pos[1].toFixed(1)}, z ${sel.userData.prop.pos[2].toFixed(1)}${h !== null ? ` · altura ${h.toFixed(2)}` : ''}`
+    : 'Clique em um prop para selecionar.');
+  ($('propSave') as HTMLButtonElement).disabled = !props.dirty;
+  const setVal = (id: string, v: string) => { const el = $<HTMLInputElement>(id); if (document.activeElement !== el) el.value = v; };
+  if (sel) {
+    setVal('propScale', String(Math.round(sel.userData.prop.scale * 1e6) / 1e6));
+    setVal('propRot', String(Math.round(sel.userData.prop.rotY * 10) / 10));
+    setVal('propHeight', h !== null ? h.toFixed(2) : '');
+    $<HTMLInputElement>('propCollide').checked = sel.userData.prop.collide !== false;
   }
+}
+props.onChange = updatePropInfo;
+view.props.onLoaded = (n) => { if (n === props.selected) updatePropInfo(); };
+
+function setPropMode(on: boolean) {
+  if (on && terrain.enabled) setTerrainMode(false);
+  if (on && points.enabled) setPointMode(false);
+  if (on && editor.enabled) setEditMode(false);
+  if (on && npcs.enabled) setNpcMode(false);
+  props.setEnabled(on);
+  $('propToggle').classList.toggle('on', on);
+  $('propPanel').hidden = !on;
+  if (on) { $<HTMLInputElement>('playerMode').checked = false; view.playerControl = false; }
+  updatePropInfo();
+}
+
+// ---------- lista de elementos (árvore da esquerda) e o item "na mão" ----------
+const thumbs = new Thumbs(view.props);
+const library = new Library($('lib'), $<HTMLInputElement>('libSearch'), thumbs);
+let propFiles = false;
+const byLabel = (a: LibItem, b: LibItem) => a.label.localeCompare(b.label, 'pt', { sensitivity: 'base' }) || a.key.localeCompare(b.key);
+
+/** .glb disponíveis: data/res-extra (raiz) e data/res-extra/L2 */
+async function loadPropList() {
+  const files: string[] = [];
+  for (const dir of ['', 'L2']) {
+    try {
+      const r = await fetch('/api/list?dir=' + encodeURIComponent(dir));
+      if (r.ok) for (const n of (await r.json()) as string[]) if (/\.glb$/i.test(n)) files.push(dir ? `${dir}/${n}` : n);
+    } catch { /* sem a pasta */ }
+  }
+  propFiles = true;
+  library.set('prop', files.sort().map((f) => ({ kind: 'prop' as const, key: f, label: (f.split('/').pop() ?? f).replace(/\.glb$/i, '') })));
+  if (!files.length) setStatus('Nenhum .glb em data/res-extra (nem em data/res-extra/L2).');
+}
+
+/** objetos (mdlObj.inc) e NPCs (character.inc) do mundo aberto */
+function loadWorldElements() {
+  const d = view.data;
+  if (!d) return;
+  library.set('object', [...d.objModels.values()].map((e) => ({ kind: 'object' as const, key: String(e.id), label: e.name.replace(/\.o3d$/i, '') })).sort(byLabel));
+  library.set('npc', [...d.characters].map(([k, c]) => ({ kind: 'npc' as const, key: k, label: c.name ?? k })).sort(byLabel));
+}
+
+const placer = new Placer(view, {
+  enter(kind) {
+    if (kind === 'prop' && !props.enabled) setPropMode(true);
+    else if (kind === 'npc' && !npcs.enabled) setNpcMode(true);
+    else if (kind === 'object' && !editor.enabled) setEditMode(true);
+    props.deselect(); npcs.deselect(); editor.deselect(); // o gizmo não pode agarrar o clique que coloca
+  },
+  place(it, x, y, z) {
+    if (it.kind === 'prop') { props.add(it.key, x, z, y); props.deselect(); return true; }
+    if (it.kind === 'npc') {
+      if (!npcs.addCharacter(it.key, x, z, y)) { setStatus('Não consegui criar esse NPC (sem modelo).'); return false; }
+      npcs.deselect();
+      return true;
+    }
+    const d = view.data;
+    const s = d ? MAP_SIZE * d.wld.mpu : 0;
+    const tile = s ? tiles.get(`${Math.floor(x / s)},${Math.floor(z / s)}`) : undefined;
+    if (!tile) { setStatus('Esse ponto está fora dos tiles carregados.'); return false; }
+    editor.addObject(tile as never, Number(it.key), [x, y, z]);
+    return true;
+  },
+  makeNpc: (key) => npcs.makeNpc(key, 0, 0, 0),
+  propScale: () => props.defaultScale,
+  onChange: (it) => { library.setActive(it); syncToolbar(); },
+  say: (m) => setStatus(m),
+});
+library.onPick = (it) => placer.start(it);
+/** botão "colisões" da barra: wireframe das malhas que bloqueiam o personagem */
+const collisions = new CollisionView(view);
+/** ferramenta Terreno: pincel de altura */
+const terrain = new TerrainSculpt(view);
+
+function updateTerrainInfo() {
+  $('terrainInfo').textContent = terrain.touched ? `${terrain.touched} vértices em ${terrain.tiles} tile(s)${terrain.dirty ? ' — NÃO SALVO' : ''}.` : 'Nada alterado ainda.';
+}
+terrain.onChange = updateTerrainInfo;
+if (location.hostname === 'localhost') Object.assign(window, { __terrain: terrain, __collisions: collisions, __saveAll: () => saveAll() }); // depuração
+
+function setTerrainMode(on: boolean) {
+  if (on && points.enabled) setPointMode(false);
+  if (on && editor.enabled) setEditMode(false);
+  if (on && npcs.enabled) setNpcMode(false);
+  if (on && props.enabled) setPropMode(false);
+  if (on) { placer.stop(); $<HTMLInputElement>('playerMode').checked = false; view.playerControl = false; }
+  terrain.setEnabled(on);
+  $('terrainToggle').classList.toggle('on', on);
+  $('terrainPanel').hidden = !on;
+  updateTerrainInfo();
+}
+if (location.hostname === 'localhost') Object.assign(window, { __placer: placer, __npcs: npcs, __editor3: editor }); // depuração
+
+// ---------- barra de ferramentas (comanda os botões que já existem no painel Detalhes) ----------
+type Mode = 'obj' | 'npc' | 'prop' | 'pt' | 'terrain' | null;
+const curMode = (): Mode => (editor.enabled ? 'obj' : npcs.enabled ? 'npc' : props.enabled ? 'prop' : terrain.enabled ? 'terrain' : points.enabled ? 'pt' : null);
+const ACTION_BTN: Record<string, Partial<Record<string, string>>> = {
+  obj: { ground: 'editGround', dup: 'editDup', del: 'editDel', undo: 'editUndo' },
+  npc: { ground: 'npcGround', dup: 'npcDup', del: 'npcDel', undo: 'npcUndo' },
+  prop: { ground: 'propGround', dup: 'propDup', del: 'propDel', undo: 'propUndo' },
+  pt: {},
+  terrain: {},
+};
+
+/** Salvar da barra: grava NPCs e props numa só gravação (duas seguidas se sobrescreveriam). Objetos do mapa não têm como ir para o jogo ainda. */
+/** objetos do mapa: refaz a entrada de cada tile aberto (ou com alterações guardadas) comparando com o original; os demais tiles mantêm o que já estava salvo */
+function buildObjectEdits(saved: WorldEdits['objects']): WorldEdits['objects'] {
+  const d = view.data;
+  if (!d) return saved;
+  const out: NonNullable<WorldEdits['objects']> = { ...(saved ?? {}) };
+  for (const k of new Set([...view.tiles.keys(), ...d.objectDraft.keys()])) {
+    const objs = view.tiles.get(k)?.land.objects ?? d.objectDraft.get(k), base = d.objectBase.get(k);
+    if (!objs || !base) continue;
+    const e = diffObjects(objs, base);
+    if (e) out[k] = e; else delete out[k];
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+async function saveAll() {
+  const d = view.data;
+  if (!d) return;
+  const tr = terrain.buildEdits(d.edits.terrain);
+  const next: WorldEdits = { ...d.edits, world: d.name, npcs: npcs.buildNpcEdits(), props: props.buildEdits() };
+  if (tr) next.terrain = tr; else delete next.terrain;
+  const ob = buildObjectEdits(d.edits.objects);
+  if (ob) next.objects = ob; else delete next.objects;
+  if (JSON.stringify(next).length > 900_000) { const m = 'Salvar: o arquivo ficaria grande demais (limite de 1 MB do servidor). Descarte parte das alterações de terreno.'; setStatus(m); alert(m); return; }
+  const ok = await putEdits(next);
+  if (!ok) return;
+  props.markSaved(); updateNpcInfo(); updatePropInfo();
+  // o servidor em uso pode ser anterior ao campo `terrain` e descartá-lo em silêncio: confere que voltou o que mandamos
+  const missing = Object.keys(tr ?? {}).some((k) => !view.data?.edits.terrain?.[k]) || Object.keys(ob ?? {}).some((k) => !view.data?.edits.objects?.[k]);
+  if (missing) { setStatus('ATENÇÃO: o servidor não gravou o terreno/objetos (versão antiga em execução). Reinicie o servidor pelo painel e salve de novo; as alterações continuam aqui.'); alert('O servidor não gravou o terreno/objetos. Reinicie o servidor pelo painel e salve de novo (as alterações continuam no editor).'); return; }
+  terrain.markSaved();
+  editor.markSaved();
+  d.objectDraft.clear();
+  setStatus('Objetos, NPCs, props e terreno salvos em data/world-edits. O jogo já mostra o mapa assim.');
+}
+const TOOL_ATTR: Record<string, string> = { obj: 'tool', npc: 'npctool', prop: 'proptool' };
+let toolbarSig = '';
+function syncToolbar() {
+  const held = placer.item;
+  // o modo do item na mão foi desligado: solta o item (stop() chama syncToolbar de novo)
+  if (held && curMode() !== ({ object: 'obj', npc: 'npc', prop: 'prop' } as const)[held.kind]) { placer.stop(); return; }
+  const m = curMode();
+  const tool = m && TOOL_ATTR[m] ? document.querySelector<HTMLElement>(`button.${TOOL_ATTR[m]}.active`)?.dataset[TOOL_ATTR[m]] ?? '' : '';
+  const sig = `${m}|${tool}|${placer.item ? placer.item.kind + placer.item.key : ''}|${collisions.enabled}|${terrain.brush}|${view.data ? view.data.name : ''}`;
+  if (sig === toolbarSig) return;
+  toolbarSig = sig;
+  for (const [id, mm] of [['editToggle', 'obj'], ['npcToggle', 'npc'], ['propToggle', 'prop'], ['terrainToggle', 'terrain'], ['ptToggle', 'pt']] as const) $(id).setAttribute('aria-pressed', String(m === mm));
+  document.querySelectorAll<HTMLButtonElement>('#toolbar [data-act]').forEach((b) => {
+    const act = b.dataset.act!;
+    const has = !!ACTION_BTN[m ?? '']?.[act] || (m === 'terrain' && act === 'undo');
+    const gizmo = act === 'translate' || act === 'rotate' || act === 'scale';
+    if (act === 'collisions') { b.disabled = false; b.setAttribute('aria-pressed', String(collisions.enabled)); return; }
+    b.disabled = gizmo ? !(m === 'obj' || ((m === 'npc' || m === 'prop') && act !== 'scale')) : act === 'add' || act === 'select' ? false : act === 'save' ? !view.data : !has;
+    b.setAttribute('aria-pressed', String(act === 'add' ? !!placer.item : act === 'select' ? !placer.item && !!m : gizmo && tool === act));
+  });
+  $('detailsEmpty').hidden = !!m;
+  $('terrainTools').hidden = m !== 'terrain';
+  document.querySelectorAll<HTMLElement>('#terrainTools .brush').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.brush === terrain.brush)));
+  $('toolHint').textContent = placer.item ? `Na mão: ${placer.item.label} · clique no mapa para colocar · Esc solta` : '';
+}
+function showTab(name: string) {
+  for (const t of ['elements', 'details', 'world']) {
+    $(`tab-${t}`).setAttribute('aria-selected', String(t === name));
+    $(`pane-${t}`).hidden = t !== name;
+  }
+}
+function bindToolbar() {
+  document.querySelectorAll<HTMLButtonElement>('#dock [role=tab]').forEach((t) => t.addEventListener('click', () => showTab(t.id.replace('tab-', ''))));
+  document.querySelectorAll<HTMLButtonElement>('#toolbar [data-act]').forEach((b) => b.addEventListener('click', () => {
+    const act = b.dataset.act!, m = curMode();
+    if (act === 'add') { showTab('elements'); $('libSearch').focus(); return; }
+    if (act === 'select') { placer.stop(); return; }
+    if (act === 'translate' || act === 'rotate' || act === 'scale') {
+      const attr = m ? TOOL_ATTR[m] : null;
+      if (attr) document.querySelector<HTMLElement>(`button[data-${attr}="${act}"]`)?.click();
+      return;
+    }
+    if (act === 'collisions') { collisions.set(!collisions.enabled); toolbarSig = ''; syncToolbar(); return; }
+    if (act === 'undo' && m === 'terrain') { terrain.undo(); return; }
+    if (act === 'save') { void saveAll(); return; }
+    const target = m ? ACTION_BTN[m]?.[act] : null;
+    if (target) $(target).click();
+  }));
 }
 
 async function putEdits(next: WorldEdits): Promise<boolean> {
@@ -199,7 +407,25 @@ function buildPlaces(d: WorldData) {
     seen.add(name);
     places.push({ group: 'Regiões', name, x: (r.rect.xMin + r.rect.xMax) / 2 || r.pos[0], y: r.pos[1], z: (r.rect.zMin + r.rect.zMax) / 2 || r.pos[2] });
   }
+  // 4) portais de dungeon deste mapa (.rgn: região que leva a outro mundo). O ponto onde se SAI do outro mundo para cá é `saida:<mapa de origem>` (ferramenta Pontos)
+  for (const r of d.regions) {
+    if (r.teleportWorld <= 0) continue;
+    places.push({ group: 'Portais (levam a outro mapa)', name: `Portal → mundo ${r.teleportWorld}`, x: (r.rect.xMin + r.rect.xMax) / 2, y: r.pos[1] || null, z: (r.rect.zMin + r.rect.zMax) / 2, detail: `chega em ${r.teleportPos.map((v) => Math.round(v)).join(', ')}` });
+  }
   renderPlaces();
+  void addTeleporterPlaces(d);
+}
+
+/** destinos da janela Teleporter (tecla V) deste mapa, do AegonTeleporter.inc; para trocar o lugar, salve um ponto com o MESMO nome do destino */
+async function addTeleporterPlaces(d: WorldData) {
+  try {
+    const r = await fetch('/res/AegonTeleporter.inc');
+    if (!r.ok) return;
+    const want = [`WI_WORLD_${d.name.replace(/^Wd/, '')}`, `WI_DUNGEON_${d.name.replace(/^Du/, '')}`].map((s) => s.toUpperCase());
+    const list = parseAegonTeleports(decodeText(await r.arrayBuffer(), 'windows-1252')).filter((t) => want.includes(t.world.toUpperCase()));
+    for (const t of list) places.push({ group: 'Teleporter (tecla V)', name: t.name, x: t.pos[0], y: t.pos[1], z: t.pos[2], detail: 'salve um ponto com este nome para mudar' });
+    if (list.length) renderPlaces();
+  } catch { /* sem o arquivo */ }
 }
 
 function renderPlaces() {
@@ -356,6 +582,16 @@ function pick(ev: PointerEvent) {
     } else editor.deselect();
     return;
   }
+  if (points.enabled) {
+    if (!points.pick(ev)) $('ptInfo').textContent = 'Nada sob o cursor: clique no chão ou num objeto.';
+    return;
+  }
+  if (props.enabled) {
+    if (props.dragging || props.hoveringGizmo) return;
+    const n = props.pick(ev);
+    if (n) props.select(n); else props.deselect();
+    return;
+  }
   if (npcs.enabled) {
     if (npcs.dragging || npcs.hoveringGizmo) return;
     const o = npcs.pick(ev);
@@ -407,6 +643,17 @@ function bindUi() {
   $('playerMode').addEventListener('change', syncSettings);
   $('placeFilter').addEventListener('input', renderPlaces);
   $('editToggle').addEventListener('click', () => setEditMode(!editor.enabled));
+  $('terrainToggle').addEventListener('click', () => setTerrainMode(!terrain.enabled));
+  document.querySelectorAll<HTMLButtonElement>('button.brush').forEach((b) => b.addEventListener('click', () => {
+    terrain.brush = b.dataset.brush as Brush;
+    syncToolbar();
+  }));
+  terrain.onRadius = (r) => { $<HTMLInputElement>('brushRadius').value = String(r); $('brushRadiusVal').textContent = String(r); };
+  for (const [id, key] of [['brushRadius', 'radius'], ['brushStrength', 'strength']] as const) {
+    $(id).addEventListener('input', () => { terrain[key] = Number($<HTMLInputElement>(id).value); $(`${id}Val`).textContent = String(terrain[key]); });
+  }
+  $('terrainRevert').addEventListener('click', () => { terrain.revert(); setStatus('Alterações do terreno descartadas.'); });
+  $<HTMLInputElement>('snapToggle').addEventListener('change', (e) => { snapState.on = (e.target as HTMLInputElement).checked; refreshSnap(); });
   document.querySelectorAll<HTMLButtonElement>('button.tool').forEach((b) => b.addEventListener('click', () => {
     editor.setMode(b.dataset.tool as 'translate' | 'rotate' | 'scale');
     document.querySelectorAll('button.tool').forEach((x) => x.classList.toggle('active', x === b));
@@ -415,6 +662,42 @@ function bindUi() {
   $('editDup').addEventListener('click', () => editor.duplicateSelected());
   $('editDel').addEventListener('click', () => editor.deleteSelected());
   $('editUndo').addEventListener('click', () => editor.undo());
+  $('ptToggle').addEventListener('click', () => setPointMode(!points.enabled));
+  for (const id of ['ptX', 'ptY', 'ptZ']) $(id).addEventListener('input', () => { if (['ptX', 'ptY', 'ptZ'].every((k) => $<HTMLInputElement>(k).value !== '' && Number.isFinite(ptNum(k)))) points.set([ptNum('ptX'), ptNum('ptY'), ptNum('ptZ')]); });
+  const copy = async (text: string, what: string) => { try { await navigator.clipboard.writeText(text); $('ptInfo').textContent = `${what} copiado: ${text}`; } catch { $('ptInfo').textContent = `Copie à mão: ${text}`; } };
+  $('ptCopy').addEventListener('click', () => { const p = points.current; if (p) void copy(`${r2(p[0])} ${r2(p[1])} ${r2(p[2])}`, 'x y z'); });
+  $('ptCopyTp').addEventListener('click', () => { const p = points.current; if (p) void copy(`//tp ${r2(p[0])} ${r2(p[2])} ${r2(p[1])}`, 'Comando'); });
+  $('ptSave').addEventListener('click', () => void savePoint($<HTMLInputElement>('ptName').value));
+  $('ptArrival').addEventListener('click', () => void savePoint(ARRIVAL_POINT));
+  const chosenPoint = () => savedPoints().find((q) => q.name === $<HTMLSelectElement>('ptList').value);
+  $('ptList').addEventListener('change', () => { const q = chosenPoint(); if (q) $<HTMLInputElement>('ptName').value = q.name; });
+  $('ptGo').addEventListener('click', () => { const q = chosenPoint(); if (q) view.lookAt(q.pos[0], q.pos[2], 30, q.pos[1], 0.9, 0.5); });
+  $('ptLoad').addEventListener('click', () => { const q = chosenPoint(); if (q) points.set([...q.pos]); });
+  $('ptDel').addEventListener('click', async () => {
+    const q = chosenPoint(), d = view.data;
+    if (!q || !d || !confirm(`Apagar o ponto "${q.name}"?`)) return;
+    if (await putEdits({ ...d.edits, world: d.name, points: savedPoints().filter((x) => x !== q) })) renderPoints();
+  });
+  $('propToggle').addEventListener('click', () => setPropMode(!props.enabled));
+  document.querySelectorAll<HTMLButtonElement>('button.proptool').forEach((b) => b.addEventListener('click', () => {
+    props.setMode(b.dataset.proptool as 'translate' | 'rotate');
+    document.querySelectorAll('button.proptool').forEach((x) => x.classList.toggle('active', x === b));
+  }));
+  $('propGround').addEventListener('click', () => props.snapToGround());
+  $('propDup').addEventListener('click', () => props.duplicateSelected());
+  $('propDel').addEventListener('click', () => props.deleteSelected());
+  $('propUndo').addEventListener('click', () => props.undo());
+  $('propHeight').addEventListener('change', () => props.setHeight(Number($<HTMLInputElement>('propHeight').value)));
+  $('propScale').addEventListener('change', () => props.setScale(Number($<HTMLInputElement>('propScale').value)));
+  $('propCollide').addEventListener('change', () => props.setCollide($<HTMLInputElement>('propCollide').checked));
+  $('propRot').addEventListener('change', () => props.setRotY(Number($<HTMLInputElement>('propRot').value)));
+  $('propSave').addEventListener('click', async () => {
+    const d = view.data;
+    if (!d) return;
+    const ok = await putEdits({ ...d.edits, world: d.name, props: props.buildEdits() });
+    if (ok) { props.markSaved(); setStatus('Props salvos em data/world-edits. O jogo desenha por cima do mapa.'); }
+  });
+  $('propRevert').addEventListener('click', () => { props.revertToSaved(); setStatus('Props descartados (voltou ao salvo).'); });
   $('npcToggle').addEventListener('click', () => setNpcMode(!npcs.enabled));
   document.querySelectorAll<HTMLButtonElement>('button.npctool').forEach((b) => b.addEventListener('click', () => {
     npcs.setMode(b.dataset.npctool as 'translate' | 'rotate');
@@ -424,13 +707,6 @@ function bindUi() {
   $('npcDup').addEventListener('click', () => npcs.duplicateSelected());
   $('npcDel').addEventListener('click', () => npcs.deleteSelected());
   $('npcUndo').addEventListener('click', () => npcs.undo());
-  $('npcFilter').addEventListener('input', renderNpcList);
-  $('npcAdd').addEventListener('click', () => {
-    const key = $<HTMLSelectElement>('npcList').value;
-    if (!key) { setStatus('Escolha um personagem na lista.'); return; }
-    // na mira da câmera (centro da tela, no chão)
-    if (!npcs.addCharacter(key, controls.target.x, -controls.target.z)) setStatus('Não consegui criar esse NPC (sem modelo).');
-  });
   $('npcSave').addEventListener('click', async () => {
     const d = view.data;
     if (!d) return;
@@ -469,7 +745,8 @@ function bindUi() {
     const s = MAP_SIZE * d.wld.mpu;
     view.lookAt(Number($<HTMLInputElement>('gotoX').value) * s + s / 2, Number($<HTMLInputElement>('gotoY').value) * s + s / 2);
   });
-  $('reload').addEventListener('click', () => void openWorld($<HTMLInputElement>('worldName').value.trim()));
+  $('reload').addEventListener('click', () => void openWorld($<HTMLSelectElement>('worldName').value.trim()));
+  $('worldName').addEventListener('change', () => void openWorld($<HTMLSelectElement>('worldName').value.trim()));
   $('exportLoaded').addEventListener('click', () => void doExport(false));
   $('exportAll').addEventListener('click', () => void doExport(true));
 }
@@ -504,13 +781,85 @@ async function doExport(all: boolean) {
   } finally { btns.forEach((b) => (b.disabled = false)); }
 }
 
+
+// ---------- pontos de teleporte (ferramenta "Pontos") ----------
+const ptNum = (id: string) => Number($<HTMLInputElement>(id).value);
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const savedPoints = (): MapPoint[] => view.data?.edits.points ?? [];
+
+function renderPoints() {
+  const sel = $<HTMLSelectElement>('ptList');
+  const keep = sel.value;
+  sel.textContent = '';
+  for (const p of savedPoints()) {
+    const o = document.createElement('option');
+    o.value = p.name;
+    o.textContent = `${p.name.toLowerCase() === ARRIVAL_POINT ? '⭐ ' : ''}${p.name} — ${p.pos.map(r2).join(', ')}`;
+    sel.appendChild(o);
+  }
+  if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
+  points.showSaved(savedPoints());
+}
+
+function updatePointInfo() {
+  const p = points.current;
+  const setVal = (id: string, v: string) => { const el = $<HTMLInputElement>(id); if (document.activeElement !== el) el.value = v; };
+  setVal('ptX', p ? String(r2(p[0])) : ''); setVal('ptY', p ? String(r2(p[1])) : ''); setVal('ptZ', p ? String(r2(p[2])) : '');
+  for (const id of ['ptCopy', 'ptCopyTp', 'ptSave', 'ptArrival']) ($(id) as HTMLButtonElement).disabled = !p;
+  $('ptInfo').textContent = p ? `Ponto: x ${r2(p[0])}  y ${r2(p[1])}  z ${r2(p[2])}   ·   no jogo: //tp ${r2(p[0])} ${r2(p[2])} ${r2(p[1])}` : 'Nenhum ponto marcado: clique no mapa.';
+}
+points.onChange = updatePointInfo;
+
+function setPointMode(on: boolean) {
+  if (on && terrain.enabled) setTerrainMode(false);
+  if (on && editor.enabled) setEditMode(false);
+  if (on && npcs.enabled) setNpcMode(false);
+  if (on && props.enabled) setPropMode(false);
+  points.setEnabled(on);
+  $('ptToggle').classList.toggle('on', on);
+  $('ptPanel').hidden = !on;
+  if (on) { $<HTMLInputElement>('playerMode').checked = false; view.playerControl = false; renderPoints(); }
+  updatePointInfo();
+}
+
+async function savePoint(name: string) {
+  const d = view.data, p = points.current;
+  if (!d || !p) return;
+  const n = name.trim();
+  if (!n) { $('ptInfo').textContent = 'Dê um nome ao ponto.'; return; }
+  const next = [...savedPoints().filter((q) => q.name.toLowerCase() !== n.toLowerCase()), { name: n, pos: [r2(p[0]), r2(p[1]), r2(p[2])] as [number, number, number] }];
+  if (await putEdits({ ...d.edits, world: d.name, points: next })) { renderPoints(); $('ptInfo').textContent = `Ponto "${n}" salvo em data/world-edits. No jogo: //ponto ${n}`; }
+}
+
 // ---------- abrir mundo ----------
 view.onWorldLoaded = (d) => {
   if (d.edits.environment) { envToPanel(d.edits.environment); syncSettings(); }
   filterToPanel(view.postfx.settings);
   shadowToPanel(view.shadowQuality);
-  buildOverlays(d); buildPlaces(d); npcs.reset(); renderNpcList(); envInfo(); updateNpcInfo();
+  terrain.reset(); points.set(null); renderPoints(); buildOverlays(d); buildPlaces(d); npcs.reset(); props.reset(); updatePropInfo(); if (!propFiles) void loadPropList(); loadWorldElements(); envInfo(); updateNpcInfo();
 };
+/** lista de mapas do menu: os do jogo (Resource) e, num grupo à parte, os extras do projeto (data/res-extra/World, ex.: os do L2) */
+async function loadWorldList() {
+  const sel = $<HTMLSelectElement>('worldName');
+  try {
+    const r = await fetch('/gapi/worlds');
+    if (!r.ok) return;
+    const { main, extra } = (await r.json()) as { main: string[]; extra: string[] };
+    const keep = sel.value;
+    sel.textContent = '';
+    const group = (label: string, names: string[]) => {
+      if (!names.length) return;
+      const g = document.createElement('optgroup');
+      g.label = label;
+      for (const n of names) { const o = document.createElement('option'); o.value = o.textContent = n; g.appendChild(o); }
+      sel.appendChild(g);
+    };
+    group('Mapas do jogo', main);
+    group('Mapas extras (L2)', extra);
+    sel.value = [...main, ...extra].includes(keep) ? keep : (main[0] ?? keep);
+  } catch { /* sem a API: fica só o mapa atual */ }
+}
+
 async function openWorld(name: string) {
   selBox.visible = false;
   try {
@@ -520,10 +869,11 @@ async function openWorld(name: string) {
     const s = MAP_SIZE * d.wld.mpu;
     $<HTMLInputElement>('gotoX').value = String(Math.floor(cx / s));
     $<HTMLInputElement>('gotoY').value = String(Math.floor(cz / s));
-    view.lookAt(cx, cz, 300);
+    // ao abrir um mapa a câmera começa mais baixa (altura ~210 em vez de ~240) e olhando mais para baixo (~51° em vez de ~39°)
+    view.lookAt(cx, cz, 220, 100, 0.95, 0.55);
     // espera o tile central para ajustar a altura da câmera
     await view.loadTile(Math.floor(cx / s), Math.floor(cz / s));
-    view.lookAt(cx, cz, 300);
+    view.lookAt(cx, cz, 220, 100, 0.95, 0.55);
   } catch (e) {
     setStatus('Erro: ' + (e as Error).message);
   }
@@ -532,8 +882,20 @@ async function openWorld(name: string) {
 // atalhos do modo edição
 addEventListener('keydown', (e) => {
   const tag0 = (e.target as HTMLElement).tagName;
+  if (flycam.looking) return; // botão direito segurado: W A S D Q E são da câmera
+  if (terrain.enabled && (e.ctrlKey || e.metaKey) && e.code === 'KeyZ' && tag0 !== 'INPUT') { e.preventDefault(); terrain.undo(); return; }
+  const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+  if (props.enabled && tag0 !== 'INPUT' && tag0 !== 'SELECT') {
+    const t = plain ? ({ Digit1: 'translate', KeyW: 'translate', Digit2: 'rotate', KeyE: 'rotate' } as const)[e.code as 'Digit1'] : undefined;
+    if (t) { props.setMode(t); document.querySelectorAll('button.proptool').forEach((x) => x.classList.toggle('active', (x as HTMLElement).dataset.proptool === t)); }
+    else if (e.code === 'Delete' || e.code === 'Backspace') props.deleteSelected();
+    else if (e.code === 'KeyG') props.snapToGround();
+    else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyD') { e.preventDefault(); props.duplicateSelected(); }
+    else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { e.preventDefault(); props.undo(); }
+    return;
+  }
   if (npcs.enabled && tag0 !== 'INPUT' && tag0 !== 'SELECT') {
-    const t = ({ Digit1: 'translate', Digit2: 'rotate' } as const)[e.code as 'Digit1'];
+    const t = plain ? ({ Digit1: 'translate', KeyW: 'translate', Digit2: 'rotate', KeyE: 'rotate' } as const)[e.code as 'Digit1'] : undefined;
     if (t) { npcs.setMode(t); document.querySelectorAll('button.npctool').forEach((x) => x.classList.toggle('active', (x as HTMLElement).dataset.npctool === t)); }
     else if (e.code === 'Delete' || e.code === 'Backspace') npcs.deleteSelected();
     else if (e.code === 'KeyG') npcs.snapToGround();
@@ -544,7 +906,7 @@ addEventListener('keydown', (e) => {
   if (!editor.enabled) return;
   const tag = (e.target as HTMLElement).tagName;
   if (tag === 'INPUT' || tag === 'SELECT') return;
-  const tool = ({ Digit1: 'translate', Digit2: 'rotate', Digit3: 'scale' } as const)[e.code as 'Digit1'];
+  const tool = plain ? ({ Digit1: 'translate', KeyW: 'translate', Digit2: 'rotate', KeyE: 'rotate', Digit3: 'scale', KeyR: 'scale' } as const)[e.code as 'Digit1'] : undefined;
   if (tool) { editor.setMode(tool); document.querySelectorAll('button.tool').forEach((x) => x.classList.toggle('active', (x as HTMLElement).dataset.tool === tool)); }
   else if (e.code === 'Delete' || e.code === 'Backspace') editor.deleteSelected();
   else if (e.code === 'KeyG') editor.snapToGround();
@@ -552,12 +914,18 @@ addEventListener('keydown', (e) => {
   else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { e.preventDefault(); editor.undo(); }
 });
 
-view.onFrame = () => {
+view.onFrame = (dt) => {
+  syncToolbar();
+  collisions.update();
+  terrain.update(dt);
   const [tx, ty] = view.currentTile();
-  $('hud').textContent = `tile ${tx},${ty} · alvo x ${controls.target.x.toFixed(0)} z ${(-controls.target.z).toFixed(0)} · ${view.fps.toFixed(0)} fps`;
+  $('hud').textContent = `tile ${tx},${ty} · alvo x ${controls.target.x.toFixed(0)} z ${(-controls.target.z).toFixed(0)} · câmera ${flycam.level}/8 (${flycam.speed} u/s) · ${view.fps.toFixed(0)} fps`;
 };
 
 bindUi();
+bindToolbar();
+syncToolbar();
 view.start();
-void openWorld($<HTMLInputElement>('worldName').value);
+void openWorld($<HTMLSelectElement>('worldName').value);
+void loadWorldList();
 (window as unknown as Record<string, unknown>).__editor = { editor, view, spawnPlayer, openWorld };

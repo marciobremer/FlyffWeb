@@ -1,4 +1,4 @@
-import { applyNpcEdits, cleanEdits, emptyEdits, type WorldEdits } from './worldedits';
+import { applyNpcEdits, applyObjectEdits, applyTerrain, cleanEdits, diffObjects, emptyEdits, poseOf, type ObjectPose, type WorldEdits } from './worldedits';
 import { parseWld, tileFileName, type WldInfo } from './formats/wld';
 import { parseLnd, type Landscape } from './formats/lnd';
 import { parseDyo } from './formats/dyo';
@@ -31,6 +31,8 @@ export class WorldData {
   modelFiles = new Set<string>(); // Resource/Model, minúsculas
   textureFiles = new Set<string>(); // Resource/Data/Model/Texture, minúsculas
   terrainFiles = new Set<string>(); // Resource/World/Texture, minúsculas
+  /** repetição da textura por camada (id → multiplicador), de `<mundo>.uv.json`: mapas do L2 */
+  terrainUv = new Map<number, number>();
   weatherFiles = new Set<string>(); // Resource/Data/Weather, minúsculas
   sfxFiles = new Set<string>(); // Resource/Data/SFX, minúsculas
   sfxTextureFiles = new Set<string>(); // Resource/Data/SFX/Texture, minúsculas
@@ -89,6 +91,11 @@ export class WorldData {
     if (dynaInc) for (const e of parseModelTable(decodeText(dynaInc), OT.OBJ, defines)) d.dynaModels.set(`${e.type}:${e.id}`, e);
     const terInc = await fetchBuf('/res/Terrain.inc');
     if (terInc) { const tt = decodeText(terInc); d.terrainTextures = parseTerrain(tt); d.waterLists = parseWaterLists(tt); }
+    const uvJson = await fetchBuf(W + '.uv.json');
+    if (uvJson) { try { for (const [id, v] of Object.entries(JSON.parse(new TextDecoder().decode(uvJson)) as Record<string, number>)) if (Number.isFinite(v) && v > 0) d.terrainUv.set(Number(id), v); } catch { /* arquivo inválido: sem escala */ } }
+    // texturas de terreno dos mapas do projeto (L2): data/res-extra/terrain-extra.inc, ids acima dos do Terrain.inc
+    const terExtra = await fetchBuf('/res/terrain-extra.inc');
+    if (terExtra) for (const [id, file] of parseTerrain(decodeText(terExtra))) d.terrainTextures.set(id, file);
 
     // nomes de outra versão pelo símbolo (servers/common/names.ts — inglês por cima do francês do servidor novo)
     const nb = await fetchBuf('/res/names-en.json');
@@ -154,8 +161,28 @@ export class WorldData {
   async loadTile(x: number, y: number): Promise<Landscape | null> {
     if (!this.hasTile(x, y)) return null;
     const buf = await fetchBuf(`/res/World/${this.name}/${tileFileName(this.name, x, y)}`);
-    return buf ? parseLnd(buf, x, y, this.wld.mpu) : null;
+    if (!buf) return null;
+    const land = parseLnd(buf, x, y, this.wld.mpu);
+    // alturas mexidas no editor: as salvas (world-edits) e, por cima, as ainda não salvas (rascunho do editor, para o tile que sai e volta)
+    applyTerrain(land.heights, this.edits.terrain?.[`${x},${y}`]);
+    for (const [i, h] of this.terrainDraft.get(`${x},${y}`) ?? []) land.heights[i] = h;
+    // objetos: guarda a pose original de cada um (índice do .lnd) e aplica as edições salvas, ou o rascunho ainda não salvo do editor
+    const k = `${x},${y}`;
+    this.objectBase.set(k, land.objects.map(poseOf));
+    land.objects = this.objectDraft.get(k) ?? applyObjectEdits(land.objects, this.edits.objects?.[k]);
+    return land;
   }
+  /** pose original (do .lnd) dos objetos de cada tile já aberto, pelo índice do arquivo; o editor compara com ela ao salvar */
+  objectBase = new Map<string, ObjectPose[]>();
+  /** objetos de tiles que saíram da tela com alterações ainda não salvas (o tile que volta usa esta lista) */
+  objectDraft = new Map<string, WorldObject[]>();
+  /** o tile sai: se os objetos diferem do original, guarda a lista; senão não guarda nada */
+  stashObjects(k: string, objects: WorldObject[]) {
+    const base = this.objectBase.get(k);
+    if (base && diffObjects(objects, base)) this.objectDraft.set(k, objects); else this.objectDraft.delete(k);
+  }
+  /** alturas de terreno ainda não salvas, por tile "x,y" (índice → altura); o editor escreve aqui para o tile que sai e volta */
+  terrainDraft = new Map<string, Map<number, number>>();
 
   /** Entrada de modelo para um objeto (objetos estáticos usam mdlObj.inc; o resto mdlDyna.inc). */
   modelFor(type: number, id: number): ModelEntry | undefined {

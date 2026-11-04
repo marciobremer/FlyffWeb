@@ -762,16 +762,18 @@ const lockImage = themeImage('ButtLock.tga');
 
 // ---------- barra de atalhos ----------
 
+/** espaços de atalho: 1–9 e 0 (com tecla) e 17 a mais no grupo da esquerda da barra */
+export const BAR_SLOTS = 27;
 /** MAX_SLOT_QUEUE do original */
 const QUEUE_SIZE = 5;
 
 /** atalho de item na barra (o servidor guarda a lista; ícone/nome vêm com ela) */
-export interface BarItem { k?: 'item' | 'skill'; id: number; icon: string; name: string }
+export interface BarItem { k?: 'item' | 'skill' | 'chat'; id: number; icon: string; name: string; /** macro de chat: o texto que o atalho manda */ text?: string }
 
 export class ActionBar {
   readonly el = document.createElement('div');
   private slots: HTMLButtonElement[] = [];
-  private items: (BarItem | null)[] = Array(10).fill(null);
+  private items: (BarItem | null)[] = Array(BAR_SLOTS).fill(null);
   private counts = new Map<number, number>();
   /** Action Slot: até 5 skills lançadas em sequência no alvo */
   private queue: (BarItem | null)[] = Array(QUEUE_SIZE).fill(null);
@@ -781,8 +783,10 @@ export class ActionBar {
   /** usar o item / lançar a skill do atalho */
   onUseItem: (id: number) => void = () => {};
   onUseSkill: (id: number) => void = () => {};
+  /** atalho de chat: manda o texto como se tivesse sido digitado */
+  onUseChat: (text: string) => void = () => {};
   /** a barra mudou (arrastar/soltar/remover): salvar no servidor */
-  onChange: (slots: ({ k: 'item' | 'skill'; id: number } | null)[]) => void = () => {};
+  onChange: (slots: ({ k: 'item' | 'skill' | 'chat'; id: number; text?: string } | null)[]) => void = () => {};
 
   constructor(parent: HTMLElement) {
     const el = this.el;
@@ -790,12 +794,13 @@ export class ActionBar {
     el.hidden = true;
     el.setAttribute('role', 'toolbar');
     el.setAttribute('aria-label', 'Atalhos (teclas 1 a 0); arraste itens da bolsa para cá');
-    void themeImage('WndNewTASKBAR.tga').then((u) => { if (u) el.style.backgroundImage = `url(${u})`; });
-    for (let k = 0; k < 10; k++) {
+    void themeImage('WndTaskBar1920Wide_Extra.tga').then((u) => { if (u) { el.style.backgroundImage = `url(${u})`; el.style.setProperty('--tb', `url(${u})`); } });
+    for (let k = 0; k < BAR_SLOTS; k++) {
       const s = document.createElement('button');
       s.type = 'button';
       s.className = 'ab-slot';
-      s.style.left = `${37 + k * 36}px`;
+      // 1–9 no grupo da direita, o 0 no último espaço do grupo da esquerda e os outros 17 (sem tecla) nos espaços de trás dele
+      s.style.left = `${(k < 9 ? 719 + k * 32 : k === 9 ? 666 : 122 + (k - 10) * 32) - 14}px`;
       s.addEventListener('click', () => this.use(k));
       // botão direito tira o atalho
       s.addEventListener('contextmenu', (e) => { e.preventDefault(); if (this.items[k]) { this.items[k] = null; this.paint(k); this.changed(); } });
@@ -829,7 +834,7 @@ export class ActionBar {
         if (!raw) return;
         try {
           const it = JSON.parse(raw) as BarItem;
-          if (Number.isInteger(it.id)) { this.items[k] = it; this.paint(k); this.changed(); }
+          if (Number.isInteger(it.id) && (it.k !== 'chat' || it.text)) { this.items[k] = it; this.paint(k); this.changed(); }
         } catch { /* arrasto inválido */ }
       });
       this.slots.push(s);
@@ -849,7 +854,7 @@ export class ActionBar {
       const s = document.createElement('button');
       s.type = 'button';
       s.className = 'ab-slot ab-q';
-      s.style.left = `${6 + k * 24}px`;
+      s.style.left = `${[1072, 1098, 1124, 1150, 1174][k] - 1050 - 11}px`;
       s.draggable = true;
       s.addEventListener('contextmenu', (e) => { e.preventDefault(); this.setQueueAt(k, null); });
       s.addEventListener('dragstart', (e) => {
@@ -883,22 +888,29 @@ export class ActionBar {
     parent.appendChild(el);
   }
 
-  private changed() { this.onChange(this.items.map((it) => (it ? { k: it.k ?? 'item', id: it.id } : null))); }
+  private changed() { this.onChange(this.items.map((it) => (it ? { k: it.k ?? 'item', id: it.id, ...(it.k === 'chat' ? { text: it.text } : {}) } : null))); }
 
   private paint(k: number) {
     const s = this.slots[k], it = this.items[k];
-    const key = k === 9 ? '0' : String(k + 1);
+    const key = k < 9 ? String(k + 1) : k === 9 ? '0' : '';
     s.replaceChildren();
     const kbd = document.createElement('kbd');
     kbd.textContent = key;
-    if (it?.k === 'skill') {
+    if (it?.k === 'chat') {
+      const img = document.createElement('div');
+      img.className = 'ab-chat';
+      s.appendChild(img);
+      s.classList.remove('empty-stack');
+      s.title = `${it.text} — ${key ? 'tecla ' + key : 'sem tecla'} (repete a mensagem); botão direito ou arrastar para fora tira`;
+      s.setAttribute('aria-label', `Atalho ${key}: mensagem ${it.text}`);
+    } else if (it?.k === 'skill') {
       const img = document.createElement('img');
       img.alt = '';
       img.draggable = false;
       void skillIcon(it.icon).then((u) => { if (u && this.items[k] === it) img.src = u; });
       s.appendChild(img);
       s.classList.remove('empty-stack');
-      s.title = `${it.name} — tecla ${key} (lança no alvo selecionado); botão direito ou arrastar para fora tira`;
+      s.title = `${it.name} — ${key ? 'tecla ' + key : 'sem tecla'} (lança no alvo selecionado); botão direito ou arrastar para fora tira`;
       s.setAttribute('aria-label', `Atalho ${key}: skill ${it.name}`);
     } else if (it) {
       const img = document.createElement('img');
@@ -911,11 +923,11 @@ export class ActionBar {
       b.textContent = String(n);
       s.appendChild(b);
       s.classList.toggle('empty-stack', n === 0);
-      s.title = `${it.name} (${n}) — tecla ${key}; botão direito ou arrastar para fora tira`;
+      s.title = `${it.name} (${n}) — ${key ? 'tecla ' + key : 'sem tecla'}; botão direito ou arrastar para fora tira`;
       s.setAttribute('aria-label', `Atalho ${key}: ${it.name} (${n})`);
     } else {
       s.classList.remove('empty-stack');
-      s.title = `Atalho ${key}: arraste um item da bolsa para cá`;
+      s.title = `Atalho: arraste um item da bolsa para cá`;
       s.setAttribute('aria-label', `Atalho ${key} (vazio)`);
     }
     const cd = document.createElement('i');
@@ -925,14 +937,14 @@ export class ActionBar {
 
   /** atalhos vindos do servidor */
   setItems(slots: (BarItem | null)[]) {
-    for (let k = 0; k < 10; k++) this.items[k] = slots[k] ?? null;
-    for (let k = 0; k < 10; k++) this.paint(k);
+    for (let k = 0; k < BAR_SLOTS; k++) this.items[k] = slots[k] ?? null;
+    for (let k = 0; k < BAR_SLOTS; k++) this.paint(k);
   }
 
   /** quantidade de cada item na bolsa (atualiza os números dos atalhos) */
   setCounts(counts: Map<number, number>) {
     this.counts = counts;
-    for (let k = 0; k < 10; k++) if (this.items[k]) this.paint(k);
+    for (let k = 0; k < BAR_SLOTS; k++) if (this.items[k]) this.paint(k);
   }
 
   /** espera depois de usar o item `id`: escurece os atalhos dele e vai clareando */
@@ -955,7 +967,8 @@ export class ActionBar {
     void s.offsetWidth; // reinicia a animação
     s.classList.add('used');
     const it = this.items[k];
-    if (it?.k === 'skill') this.onUseSkill(it.id);
+    if (it?.k === 'chat') { if (it.text) this.onUseChat(it.text); }
+    else if (it?.k === 'skill') this.onUseSkill(it.id);
     else if (it) this.onUseItem(it.id);
   }
 
@@ -1001,13 +1014,15 @@ export class ChatWindow extends GameWindow {
   private log = document.createElement('ol');
   readonly input = document.createElement('input');
   onSend: (text: string) => boolean = () => false;
+  /** aba Shout selecionada: o que se digita sai como grito (/shout), como no cliente oficial */
+  private shoutTab = false;
   private static readonly MAX_LINES = 150;
 
   constructor(parent: HTMLElement) {
     super(parent, { id: 'chatWnd', title: 'Chat', store: 'flyff.wnd.chat', initial: { x: 6, y: -64, w: 380, h: 210 }, min: { w: 220, h: 120 }, closable: false });
     const b = this.body;
     b.classList.add('chat');
-    this.log.className = 'chat-log';
+    this.log.className = 'chat-log show-sys'; // o botão SYS.EM já começa ligado
     this.log.setAttribute('aria-live', 'polite');
     this.log.setAttribute('aria-label', 'Mensagens do chat');
     const form = document.createElement('form');
@@ -1019,16 +1034,56 @@ export class ChatWindow extends GameWindow {
     this.input.setAttribute('aria-label', 'Mensagem');
     this.input.autocomplete = 'off';
     this.input.spellcheck = false;
-    form.appendChild(this.input);
+    // ícone de macro: arraste para um atalho da barra e o texto digitado fica guardado lá (um clique repete a mensagem)
+    const macro = document.createElement('div');
+    macro.className = 'chat-macro';
+    macro.draggable = true;
+    macro.title = 'Escreva uma mensagem e arraste este ícone para um atalho da barra';
+    void themeImage('wndButtMacroChat.tga').then((u) => { if (u) { macro.style.backgroundImage = `url(${u})`; document.documentElement.style.setProperty('--macro', `url(${u})`); } });
+    macro.addEventListener('dragstart', (e) => {
+      const text = this.input.value.trim();
+      if (!text) { e.preventDefault(); this.system('Escreva a mensagem no chat e arraste o ícone para um atalho da barra.'); return; }
+      e.dataTransfer!.setData('application/x-flyff-item', JSON.stringify({ k: 'chat', id: 0, icon: '', name: text, text }));
+      e.dataTransfer!.effectAllowed = 'copy';
+    });
+    form.append(macro, this.input);
     form.addEventListener('submit', (e) => {
       e.preventDefault();
-      const text = this.input.value.trim();
-      if (text && !this.onSend(text)) this.system('Sem conexão com o servidor — mensagem não enviada.');
+      this.send(this.input.value.trim());
       this.input.value = '';
       this.input.blur();
     });
     this.input.addEventListener('keydown', (e) => { if (e.key === 'Escape') { this.input.value = ''; this.input.blur(); } e.stopPropagation(); });
-    b.append(this.log, form);
+    // abas como as do cliente oficial: "Chat" (conversa local e gritos), "Shout" (só gritos) e "SYS.EM" (liga/desliga os avisos do
+    // sistema, ligado ao entrar); as demais esperam esses canais
+    const tabs = document.createElement('div');
+    tabs.className = 'chat-tabs';
+    const tab = (label: string, on: boolean, mode: 'all' | 'shout' | 'sys' | null, cls = '') => {
+      const t = document.createElement('button');
+      t.type = 'button';
+      t.textContent = label;
+      t.className = `chat-tab ${cls}`.trim();
+      if (mode) {
+        t.classList.toggle('on', on);
+        t.addEventListener('click', () => {
+          if (mode === 'sys') { t.classList.toggle('on'); this.log.classList.toggle('show-sys', t.classList.contains('on')); } // liga/desliga
+          else { this.log.classList.toggle('only-shout', mode === 'shout'); this.shoutTab = mode === 'shout'; for (const o of tabs.querySelectorAll('.chat-tab[data-mode="all"], .chat-tab[data-mode="shout"]')) o.classList.toggle('on', o === t); }
+          this.log.scrollTop = this.log.scrollHeight;
+        });
+        t.dataset.mode = mode;
+      } else { t.disabled = true; t.title = 'em breve'; }
+      tabs.appendChild(t);
+    };
+    tab('Chat', true, 'all'); tab('Whisper', false, null); tab('Shout', false, 'shout'); tab('Group', false, null); tab('Guild', false, null);
+    const gap = document.createElement('span'); gap.className = 'chat-gap'; tabs.appendChild(gap);
+    tab('Lock', false, null, 'warm'); tab('Filter', false, null, 'warm'); tab('SYS.EM', true, 'sys', 'warm');
+    b.append(this.log, tabs, form);
+  }
+
+  /** manda uma mensagem (digitada ou de macro); na aba Shout, texto normal vira grito */
+  send(typed: string) {
+    const text = this.shoutTab && typed && !typed.startsWith('/') ? `/shout ${typed}` : typed;
+    if (text && !this.onSend(text)) this.system('Sem conexão com o servidor — mensagem não enviada.');
   }
 
   private push(li: HTMLLIElement) {
@@ -1042,6 +1097,7 @@ export class ChatWindow extends GameWindow {
   message(name: string, text: string, mine = false) {
     const li = document.createElement('li');
     if (mine) li.className = 'mine';
+    if (/^\[Grito\] /.test(text)) li.classList.add('shout');
     const who = document.createElement('b');
     who.textContent = `${name}: `;
     li.append(who, document.createTextNode(text));

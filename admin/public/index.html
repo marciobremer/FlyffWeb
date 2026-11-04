@@ -18,8 +18,10 @@
       <a href="#database" data-view="database">🗄️ <span>Database</span></a>
       <a href="#loadtest" data-view="loadtest">🧪 <span>Teste de carga</span></a>
       <h6>Conteúdo</h6>
-      <a class="off" title="Em breve">📍 <span>Zones</span></a>
+      <a href="#zones" data-view="zones">📍 <span>Zones</span></a>
       <a href="#items" data-view="items">📦 <span>Items</span></a>
+      <a href="#npcs" data-view="npcs">🧑 <span>NPC</span></a>
+      <a href="#quests" data-view="quests">📜 <span>Quests</span></a>
       <a class="off" title="Em breve">🏰 <span>Guild</span></a>
       <a class="off" title="Em breve">😈 <span>Mobs</span></a>
       <h6>Sistemas</h6>
@@ -157,6 +159,105 @@
           <button class="btn" id="itNext">Próxima →</button>
         </div>
       </div>
+    </section>
+
+    <!-- ================= ZONES ================= -->
+    <section id="view-zones" class="view" hidden>
+      <header class="top">
+        <div><h1>Zones</h1><p>Teleportes da janela V: ver, editar a posição e criar novos</p></div>
+      </header>
+      <p id="zonesMsg" class="msg" role="status"></p>
+      <div class="card" id="tpCard">
+        <h5>📍 Teleportes (janela V)</h5>
+        <p class="dim">Os destinos da janela Teleporter e o lugar onde o jogador aparece (x, y, z). Mude os números e salve: vale na hora, sem reiniciar. "Restaurar" volta à posição original do jogo. Dica: a ferramenta Pontos do editor e o <code>//pos</code> mostram a posição exata de um lugar.</p>
+        <form class="tp-add" id="tpAdd">
+          <strong>＋ Novo teleporte</strong>
+          <input id="tpName" placeholder="Nome (como aparece no V)" maxlength="40" required />
+          <select id="tpWorld" aria-label="Mapa"></select>
+          <select id="tpType" aria-label="Tipo"><option value="city">Cidade</option><option value="collect">Coleta</option><option value="dungeon">Dungeon</option></select>
+          <input id="tpX" type="number" step="0.01" placeholder="X" required class="tp-num" /><input id="tpY" type="number" step="0.01" placeholder="Y" required class="tp-num" /><input id="tpZ" type="number" step="0.01" placeholder="Z" required class="tp-num" />
+          <input id="tpDesc" placeholder="Descrição (opcional)" maxlength="300" />
+          <button class="btn teal" type="submit">Adicionar</button>
+        </form>
+        <div class="tp-bar"><input id="tpFilter" type="search" placeholder="Filtrar por nome ou mapa…" aria-label="Filtrar teleportes" /><span id="tpCount" class="dim small"></span></div>
+        <div class="tp-wrap"><table class="tp-table"><thead><tr><th>Destino</th><th>Mapa</th><th>X</th><th>Y</th><th>Z</th><th></th></tr></thead><tbody id="tpRows"></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- ================= NPC ================= -->
+    <section id="view-npcs" class="view" hidden>
+      <header class="top">
+        <div><h1>NPC</h1><p>Todos os NPCs com ID (characterKey) e nome — o ID é o que vai no campo "ID do NPC" de uma quest</p></div>
+      </header>
+      <p id="npcMsg" class="msg" role="status"></p>
+      <div class="card" id="npcCard">
+        <p class="dim">Escolha "Todos os mapas" para ver onde cada NPC está (mapa e posição, para ir até lá com <code>//tp x z</code>), um mapa só, ou "Todos os NPCs do jogo" para ver os que dá para colocar no mapa pela ferramenta de NPCs do editor. Clique em um ID para copiar.</p>
+        <div class="tp-bar"><select id="npcWorld" aria-label="Mapa"></select><input id="npcQ" type="search" placeholder="Filtrar por ID ou nome…" /><span id="npcCount" class="dim small"></span></div>
+        <div class="tp-wrap" style="max-height:640px"><table class="tp-table"><thead><tr><th>ID</th><th>Nome</th><th>Mapa</th><th>X</th><th>Y</th><th>Z</th><th></th></tr></thead><tbody id="npcRows"></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- ================= QUESTS ================= -->
+    <section id="view-quests" class="view" hidden>
+      <header class="top">
+        <div><h1>Quests</h1><p>Quests dos NPCs: o que pedem, quem pode fazer e a recompensa. Valem na hora, sem reiniciar o jogo</p></div>
+        <div class="actions"><button class="btn teal" id="qNew" type="button">＋ Nova quest</button></div>
+      </header>
+      <p id="qMsg" class="msg" role="status"></p>
+
+      <div class="card">
+        <table class="grid">
+          <thead><tr><th>Título</th><th>NPC</th><th>Pede</th><th>Party</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="qRows"><tr><td colspan="6" class="empty">Carregando…</td></tr></tbody>
+        </table>
+      </div>
+
+      <form class="card" id="qForm" autocomplete="off" hidden>
+        <h5 id="qFormTitle">Nova quest</h5>
+        <input type="hidden" id="qOrig" />
+        <div class="qf">
+          <label>Título <input id="qName" maxlength="60" required /></label>
+          <label>ID do NPC <input id="qNpc" list="npcKeys" maxlength="64" required placeholder="ex.: MaFl_Donaris (veja o menu NPC)" /></label>
+          <label>Nível mínimo <input id="qLevel" type="number" min="1" max="999" value="1" /></label>
+        </div>
+        <label class="qwide">Descrição (o que o NPC diz ao oferecer a quest) <textarea id="qOffer" rows="3" maxlength="1500"></textarea></label>
+        <div class="qf">
+          <label>Fala enquanto não terminou <input id="qProgress" maxlength="800" /></label>
+          <label>Fala ao concluir <input id="qDone" maxlength="800" /></label>
+        </div>
+
+        <h6 class="ann-slots-title">Itens que o NPC pede</h6>
+        <div id="qNeed"></div>
+        <button class="btn" type="button" id="qAddNeed">＋ Item</button>
+
+        <h6 class="ann-slots-title">Party</h6>
+        <div class="qf">
+          <label class="ann-check"><input type="checkbox" id="qParty" /> Só pode ser feita em party</label>
+          <label>Mínimo de jogadores <input id="qPartyMin" type="number" min="2" max="8" value="2" /></label>
+          <label class="ann-check"><input type="checkbox" id="qLeader" checked /> Só o líder fala com o NPC e entrega os itens</label>
+        </div>
+
+        <h6 class="ann-slots-title">Onde farmar o item <span class="dim small">— quais monstros largam o item enquanto a quest está em andamento (opcional)</span></h6>
+        <div id="qDrops"></div>
+        <button class="btn" type="button" id="qAddDrop">＋ Monstro que larga o item</button>
+
+        <h6 class="ann-slots-title">Recompensa</h6>
+        <div class="qf">
+          <label>EXP <input id="qExp" type="number" min="0" value="0" /></label>
+          <label>Penya <input id="qPenya" type="number" min="0" value="0" /></label>
+          <label>Teleportar para o mapa <select id="qTpWorld"></select></label>
+          <label>no ponto <input id="qTpPoint" maxlength="40" placeholder="ex.: chegada" /></label>
+          <label>Disparar evento <input id="qEvent" maxlength="40" placeholder="ex.: cw_chefe" /></label>
+        </div>
+        <div class="qf">
+          <label class="ann-check"><input type="checkbox" id="qEnabled" checked /> Quest ativa</label>
+          <label class="ann-check"><input type="checkbox" id="qRepeat" /> Pode refazer</label>
+        </div>
+        <div class="row"><button class="btn teal" type="submit">Salvar quest</button> <button class="btn" type="button" id="qCancel">Cancelar</button></div>
+        <datalist id="itemList"></datalist>
+        <datalist id="npcKeys"></datalist>
+      </form>
+
     </section>
 
     <!-- ================= DATABASE ================= -->

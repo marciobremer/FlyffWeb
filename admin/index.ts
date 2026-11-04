@@ -11,8 +11,39 @@ import { AdminError, banAccount, createAccount, dbStatus, listAccounts, setPassw
 import { dbHealth, installDatabase } from '../servers/common/db/install';
 import { itemIcon, itemsApi } from './items-api';
 import { skillIcon, skillsApi } from './skills-api';
+import { questsApi } from './quests-api';
 import { LoadTest } from './loadtest';
+import { loadEdits, saveEdits } from '../servers/common/worldedits';
+import { parseAegonTeleports, parseTeleports } from '../shared/formats/teleport';
+import { decodeText } from '../shared/formats/rgn';
+import { worldTable } from '../servers/world/dungeons';
+import { RES_DIR, EXTRA_DIR } from '../servers/common/config';
+import { customTeleports, saveCustomTeleports, type CustomTeleport } from '../servers/common/customteleports';
 import { ADMIN_APP, DbOpError, backupPath, createBackup, deleteBackup, listBackups, otherConnections, resetDatabase, restoreBackup, toolsReady } from '../servers/common/db/backup';
+
+/** mapas em que dá para pôr um teleporte: os do jogo (Wd e Du) e os do projeto (data/res-extra/World, ex.: WdL2Giran) */
+function mapNames(): string[] {
+  const names = new Set([...worldTable(RES_DIR).byDefine.values()].map((w) => w.name));
+  try { for (const n of fs.readdirSync(path.join(EXTRA_DIR, 'World'))) if (fs.existsSync(path.join(EXTRA_DIR, 'World', n, 'l2world.json'))) names.add(n); } catch { /* sem mapas do projeto */ }
+  return [...names].sort();
+}
+
+/** a lista da tela: os do jogo (com a posição editada, se houver) e depois os criados aqui (`own`) */
+function teleportsReply() {
+  const game = teleportDests().map((t) => { const q = loadEdits(t.world).points?.find((x) => x.name.toLowerCase() === t.name.toLowerCase()); return { ...t, own: false, type: '', desc: '', custom: !!q, pos: q ? [...q.pos] : t.pos }; });
+  const own = customTeleports().map((t) => ({ name: t.name, world: t.world, define: '', orig: t.pos, pos: t.pos, own: true, custom: false, type: t.type, desc: t.desc }));
+  return { list: [...game, ...own], maps: mapNames() };
+}
+
+/** destinos da janela Teleporter (tecla V): nome, mapa e a posição original do jogo */
+function teleportDests(): { name: string; world: string; define: string; orig: [number, number, number]; pos: [number, number, number] }[] {
+  const read = (f: string) => { const b = fs.readFileSync(path.join(RES_DIR, f)); return decodeText(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer, 'windows-1252'); };
+  const table = worldTable(RES_DIR);
+  let list: { name: string; world: string; pos: [number, number, number] }[] = [];
+  try { list = parseAegonTeleports(read('AegonTeleporter.inc')); } catch { /* sem o Aegon */ }
+  if (!list.length) { try { list = parseTeleports(read('ZckTeleporteur.inc')); } catch { /* sem o Zck */ } }
+  return list.flatMap((t) => { const w = table.byDefine.get(t.world); return w ? [{ name: t.name, world: w.name, define: t.world, orig: t.pos, pos: t.pos }] : []; });
+}
 
 // conexões do painel com o nome dele (o jogo e o site que ele inicia usam outro): "banco em uso" não conta o próprio painel
 process.env.PGAPPNAME = ADMIN_APP;
@@ -124,6 +155,41 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
     try { return send(res, 200, { rates: saveRates(await readJson(req)) }); } catch (e) { throw e instanceof AdminError ? e : new AdminError((e as Error).message); }
   }
 
+  // teleportes da janela V (AegonTeleporter.inc) e a posição de cada um: um ponto com o nome do destino no world-edits do mapa de destino
+  if (p === '/teleports' && (m === 'GET' || m === 'PUT')) {
+    if (m === 'PUT') {
+      const b = await readJson(req);
+      const world = String(b.world ?? ''), name = String(b.name ?? '').slice(0, 40);
+      if (!teleportDests().some((t) => t.world === world && t.name === name)) throw new AdminError('Destino desconhecido.');
+      const e = loadEdits(world), others = (e.points ?? []).filter((q) => q.name.toLowerCase() !== name.toLowerCase());
+      if (b.pos === null) saveEdits(world, { ...e, points: others });
+      else {
+        const pos = Array.isArray(b.pos) ? b.pos.map(Number) : [];
+        if (pos.length !== 3 || !pos.every(Number.isFinite) || pos[0] <= 0 || pos[2] <= 0) throw new AdminError('Posição inválida (x, y, z).');
+        saveEdits(world, { ...e, points: [...others, { name, pos: pos as [number, number, number] }] });
+      }
+    }
+    return send(res, 200, teleportsReply());
+  }
+  if (p === '/teleports/custom' && m === 'POST') {
+    const b = await readJson(req);
+    const list = [...customTeleports()];
+    const name = String(b.name ?? '').replace(/\s+/g, ' ').trim();
+    const at = list.findIndex((t) => t.name.toLowerCase() === name.toLowerCase());
+    if (b.op === 'del') { if (at >= 0) list.splice(at, 1); }
+    else {
+      const pos = Array.isArray(b.pos) ? b.pos.map(Number) : [];
+      if (!name) throw new AdminError('Dê um nome ao teleporte.');
+      if (!mapNames().includes(String(b.world))) throw new AdminError('Escolha um mapa da lista.');
+      if (pos.length !== 3 || !pos.every(Number.isFinite) || pos[0] <= 0 || pos[2] <= 0) throw new AdminError('Posição inválida (x, y, z).');
+      if (at < 0 && teleportDests().some((t) => t.name.toLowerCase() === name.toLowerCase())) throw new AdminError('Já existe um teleporte do jogo com esse nome.');
+      const t: CustomTeleport = { name, world: String(b.world), type: b.type === 'dungeon' || b.type === 'collect' ? b.type : 'city', pos: pos as [number, number, number], desc: String(b.desc ?? '') };
+      if (at >= 0) list[at] = t; else list.push(t);
+    }
+    saveCustomTeleports(list);
+    return send(res, 200, teleportsReply());
+  }
+
   // mensagens guardadas (slots) e mensagem em loop
   if (p === '/announce/state' && m === 'GET') return send(res, 200, annState());
   if (p === '/announce/slots' && m === 'PUT') {
@@ -171,6 +237,7 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
   if (await itemsApi(p, m, url, () => readJson(req), (status, body) => send(res, status, body))) return;
   // ---------------- Skills: modo auto/manual e lista por classe (admin/skills-api.ts) ----------------
   if (await skillsApi(p, m, url, () => readJson(req), (status, body) => send(res, status, body))) return;
+  if (await questsApi(p, m, url, () => readJson(req), (status, body) => send(res, status, body))) return;
 
   // ---------------- Database: backup, baixar, apagar, restaurar e zerar ----------------
   if (p === '/db' && m === 'GET') {

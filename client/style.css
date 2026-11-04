@@ -130,7 +130,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #14161a; col
 
 /* ---------- interface do jogo: botão menu, menu (WndTaskMenu.tga 192×496) e janela de status (WndStatus1.tga 192×112) ---------- */
 /* menu e botão ficam acima de qualquer janela (.gwnd sobe a partir de 20 a cada clique); só o tooltip de item (100000) passa por cima */
-#menuBtn { position: fixed; left: 4px; bottom: 4px; z-index: 99991; width: 100px; height: 16px; padding: 0; border: 0; cursor: pointer; background: #333 no-repeat 33.333% 0 / 400% 100%; color: transparent; font: 10px system-ui; image-rendering: pixelated; }
+#menuBtn { position: fixed; left: 0; bottom: 0; z-index: 99991; width: 100px; height: 16px; padding: 0; border: 0; cursor: pointer; background: #333 no-repeat 33.333% 0 / 400% 100%; color: transparent; font: 10px system-ui; image-rendering: pixelated; }
 #menuBtn:not([style*="background-image"]) { color: #fc6; }
 #menuBtn span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 #menuBtn:not([style*="background-image"]) span { position: static; width: auto; height: auto; clip: auto; }
@@ -138,7 +138,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #14161a; col
 #menuBtn:active { background-position: 66.667% 0; }
 /* WndTaskMenu.tga em 3 faixas (border-image): cabeçalho com o logo (70 px) e rodapé (24 px) inteiros, o meio liso estica
    para caber todos os itens; em tela baixa os itens encolhem (até 14 px) em vez de sair do menu */
-#taskMenu { position: fixed; left: 4px; bottom: 24px; z-index: 99990; width: 192px; box-sizing: border-box; border-style: solid; border-width: 70px 14px 24px; border-image-slice: 70 14 24 fill; border-image-repeat: stretch; border-color: #f3f3f0; background: #f3f3f0; font: 13px/1 Tahoma, Verdana, system-ui, sans-serif; color: #222; filter: drop-shadow(0 2px 6px rgb(0 0 0 / .4)); --mi: clamp(14px, calc((100vh - 150px) / 25), 19px); }
+#taskMenu { position: fixed; left: 0; bottom: 20px; z-index: 99990; width: 192px; box-sizing: border-box; border-style: solid; border-width: 70px 14px 24px; border-image-slice: 70 14 24 fill; border-image-repeat: stretch; border-color: #f3f3f0; background: #f3f3f0; font: 13px/1 Tahoma, Verdana, system-ui, sans-serif; color: #222; filter: drop-shadow(0 2px 6px rgb(0 0 0 / .4)); --mi: clamp(14px, calc((100vh - 150px) / 25), 19px); }
 #taskMenu[style*="border-image-source"] { background: none; }
 #taskMenu > ul { margin: -14px 0 -10px; padding: 2px 0; list-style: none; }
 #taskMenu li { position: relative; display: flex; align-items: center; gap: 5px; height: var(--mi); padding: 0 4px; cursor: pointer; white-space: nowrap; }
@@ -251,29 +251,54 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 .gm-btn.danger { background: linear-gradient(#e88b7f, #c0392b 55%, #a93226); border-color: #a93226; text-shadow: 0 1px 0 #6e1d16; }
 .inv-money output { flex: 1; height: 20px; padding: 0 8px; border: 1px solid #c9b3a6; border-radius: 10px; background: #fff; text-align: right; line-height: 18px; font-weight: 700; color: #6b3b1a; }
 
-/* barra de atalhos: WndNewTASKBAR.tga 544×92, slots 30×30 em x = 37 + 36·k, y = 36 */
-#actionBar { position: fixed; left: 50%; bottom: 0; z-index: 6; width: 544px; height: 92px; transform: translateX(-50%); background: no-repeat 0 0; pointer-events: none; }
-@media (max-width: 560px) { #actionBar { transform: translateX(-50%) scale(.66); transform-origin: 50% 100%; } }
-.ab-slot { position: absolute; top: 36px; width: 30px; height: 30px; padding: 0; border: 0; background: transparent; cursor: pointer; pointer-events: auto; }
+/* barra de atalhos como a do cliente oficial: WndTaskBar1920Wide_Extra.tga cortada em 1200×48 (as teclas 1–9 já vêm desenhadas na imagem);
+   slots 28×28 centrados nos pontos da imagem (y = 24): 1–9 em x = 719 + 32·k, o 0 em 666 e a Action Slot em 1072…1174 */
+#actionBar { position: fixed; left: calc(50% - 650px); bottom: 0; z-index: 6; width: 1200px; height: 48px; background: no-repeat 0 0; pointer-events: none; }
+/* a barra acaba nas skills: a ponta direita (logo Flyff, x 1820–1920 da imagem) é colada logo depois, sem a faixa vazia do meio */
+#actionBar::after { content: ''; position: absolute; left: 1200px; top: 0; width: 100px; height: 48px; background: var(--tb) no-repeat -1820px 0; }
+@media (max-width: 1310px) { #actionBar { left: calc(50% - 487px); transform: scale(.75); transform-origin: 0 100%; } }
+@media (max-width: 990px) { #actionBar { left: calc(50% - 325px); transform: scale(.5); } }
+.ab-slot { position: absolute; top: 10px; width: 28px; height: 28px; padding: 0; border: 0; background: transparent; cursor: pointer; pointer-events: auto; }
 .ab-slot:hover { box-shadow: 0 0 0 1px #ffd76a inset; }
-.ab-slot kbd { position: absolute; left: 2px; top: 0; font: 700 11px/1 Tahoma, sans-serif; color: #ffe9a8; text-shadow: 0 0 2px #000, 0 1px 1px #000; }
+.ab-slot kbd { display: none; position: absolute; left: 2px; top: 0; font: 700 11px/1 Tahoma, sans-serif; color: #ffe9a8; text-shadow: 0 0 2px #000, 0 1px 1px #000; }
 .ab-slot.used::after { content: ''; position: absolute; inset: 0; background: var(--use) no-repeat center / 100% 100%; animation: abUse .35s ease-out forwards; }
 @keyframes abUse { from { opacity: 1; transform: scale(.8); } to { opacity: 0; transform: scale(1.25); } }
 /* Action Slot: cobre os sulcos da direita do WndNewTASKBAR com 5 espaços de skill */
-.ab-queue { position: absolute; left: 413px; top: 29px; width: 128px; height: 44px; border-radius: 6px; background: linear-gradient(#4a4a4a, #2e2e2e); box-shadow: inset 0 0 0 1px #8a7432, inset 0 1px 3px rgb(0 0 0 / .6); pointer-events: auto; }
-.ab-queue > span { position: absolute; left: 0; right: 0; top: 2px; text-align: center; font: 700 8px/1 Tahoma, sans-serif; letter-spacing: 1px; color: #ffd76a; text-shadow: 0 1px 1px #000; pointer-events: none; }
-.ab-slot.ab-q { top: 15px; width: 22px; height: 22px; border-radius: 3px; background: #1d1d1d; box-shadow: inset 0 0 0 1px #6b5a26; }
+.ab-queue { position: absolute; left: 1050px; top: 0; width: 148px; height: 48px; pointer-events: none; }
+.ab-queue > span { display: none; position: absolute; left: 0; right: 0; top: 2px; text-align: center; font: 700 8px/1 Tahoma, sans-serif; letter-spacing: 1px; color: #ffd76a; text-shadow: 0 1px 1px #000; pointer-events: none; }
+.ab-slot.ab-q { top: 13px; width: 22px; height: 22px; border-radius: 3px; }
 .ab-slot.ab-q img { inset: 1px; width: 20px; height: 20px; }
 .ab-slot.ab-q.active { box-shadow: 0 0 0 2px #ffd76a, 0 0 6px 2px #ffb83a; }
 
-/* chat: mensagens (texto puro) + caixa de texto */
-.chat-log { flex: 1; min-height: 0; margin: 0; padding: 3px 5px; list-style: none; overflow-y: auto; background: rgb(255 255 255 / .82); border: 1px solid #d8c4b8; border-radius: 4px; user-select: text; overflow-wrap: anywhere; }
+/* chat no estilo do cliente oficial: painel azul-marinho translúcido, texto branco, abas embaixo e a caixa de texto no fim.
+   O título vira só uma faixa fina para arrastar a janela. */
+#chatWnd { filter: none; font: 12px/1.3 Tahoma, Verdana, system-ui, sans-serif; }
+#chatWnd .gwnd-title { height: 8px; padding: 0; border: 0; border-image: none; background: rgb(8 12 40 / .55); border-radius: 4px 4px 0 0; }
+#chatWnd .gwnd-title > span { display: none; }
+#chatWnd .gwnd-body { padding: 0; gap: 0; border: 2px solid #e0987e; border-top: 0; border-radius: 0 0 6px 6px; border-image: none; background: rgb(46 34 50 / .82); }
+.chat-log { flex: 1; min-height: 0; margin: 0; padding: 4px 6px; list-style: none; overflow-y: auto; color: #fff; text-shadow: 0 1px 1px #000; user-select: text; overflow-wrap: anywhere; }
 .chat-log li { padding: 1px 0; }
-.chat-log b { color: #3c4f86; }
-.chat-log li.mine b { color: #b04a1c; }
-.chat-log li.sys { color: #8a5a00; font-style: italic; }
-.chat-edit { flex: none; margin: 0; }
-.chat-edit .fedit { height: 24px; border: 1px solid #c9b3a6; border-radius: 4px; user-select: text; }
+.chat-log b { color: #9fc0ff; }
+.chat-log li.mine b { color: #ffb878; }
+.chat-log li.sys { color: #ffd76a; }
+.chat-log li.shout { color: #ffd23c; }
+.chat-log li.shout b { color: #ff9a3c; }
+.chat-log.only-shout { background: rgb(88 30 110 / .6); }
+.chat-log li.sys { display: none; }
+.chat-log.show-sys li.sys { display: list-item; }
+.chat-log.only-shout li:not(.shout):not(.sys), .chat-log.only-shout:not(.show-sys) li.sys { display: none; }
+.chat-log.only-shout li.shout { display: list-item; }
+.chat-tabs { flex: none; display: flex; gap: 3px; align-items: center; padding: 3px 4px; background: linear-gradient(#e9a98f, #d28b72); border-top: 1px solid #fff5; }
+.chat-tab { flex: none; height: 17px; padding: 0 8px; font: 700 10px/15px Tahoma, Verdana, sans-serif; color: #fff; text-shadow: 0 1px 1px #003; background: linear-gradient(#7fa0ee, #4a68c8); border: 1px solid #fff9; border-radius: 9px; cursor: pointer; }
+.chat-tab.warm { background: linear-gradient(#ffb27a, #e8743a); }
+.chat-tab.on { box-shadow: 0 0 0 1px #fff inset, 0 0 4px #fff8; }
+.chat-tab:disabled { opacity: .55; cursor: default; }
+.chat-gap { flex: 1; }
+.chat-edit { flex: none; display: flex; align-items: center; gap: 4px; margin: 0; padding: 3px 4px; background: linear-gradient(#d28b72, #c97f66); }
+.chat-macro { flex: none; width: 20px; height: 15px; background: no-repeat center / contain; cursor: grab; image-rendering: pixelated; }
+.chat-macro:not([style*="background-image"]) { background: #fff8; border-radius: 3px; }
+.ab-chat { width: 20px; height: 15px; margin: 6px 4px; background: var(--macro) no-repeat center / contain; image-rendering: pixelated; }
+.chat-edit .fedit { flex: 1; min-width: 0; width: auto; height: 20px; border: 1px solid #5a6ac0; border-radius: 3px; background: rgb(255 255 255 / .92); user-select: text; }
 
 /* painel de GM (game/gmpanel.ts) */
 .gwnd-body.gm { gap: 6px; overflow: hidden; }
@@ -476,6 +501,8 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 
 /* barra de buffs (client/buffbar.ts) */
 .buff-bar { position: fixed; left: 6px; top: 86px; z-index: 50; display: flex; flex-wrap: wrap; gap: 3px; max-width: 310px; pointer-events: auto; cursor: grab; touch-action: none; user-select: none; }
+.item-buff-bar { position: fixed; left: calc(50% + 140px); top: 26px; z-index: 50; display: flex; flex-wrap: wrap; gap: 3px; max-width: 580px; user-select: none; }
+.item-buff-bar .buff { width: 30px; height: 30px; }
 .buff-bar.dragging { cursor: grabbing; }
 .buff-bar:not(:empty) { padding: 2px; border-radius: 4px; outline: 1px dashed transparent; }
 .buff-bar:hover { outline-color: rgba(255, 255, 255, .5); }
@@ -806,3 +833,21 @@ html, body, body *:not(canvas), canvas.inv-model, canvas.char-model { cursor: ur
 .wk-range { display: flex; align-items: center; gap: 4px; }
 .wk-reset { margin: 14px auto 0; width: 100px; height: 20px; border: 1px solid #8a86b0; border-radius: 4px; background: linear-gradient(#fdfdff, #cfcce6); color: #3a3a7a; font: 700 12px Tahoma, sans-serif; cursor: pointer; }
 .wk-reset:hover { border-color: #e08a3a; background: linear-gradient(#fff6ea, #f6c89a); }
+
+/* contagem de saída (client/logout.ts) */
+.logout-text { margin: 0; padding: 10px 6px; text-align: center; font: 13px/1.3 Tahoma, Verdana, system-ui, sans-serif; color: #222; background: rgb(255 255 255 / .85); border: 1px solid #c9b3a6; border-radius: 4px; }
+
+/* quests: diálogo com o NPC e diário (tecla Q) */
+.gwnd-body.quest { flex-direction: column; gap: 6px; overflow: auto; color: #fff; font: 13px Tahoma, Verdana, sans-serif; }
+.quest h4 { margin: 6px 0 2px; font: 700 13px Tahoma, Verdana, sans-serif; color: #ffd98a; }
+.quest-text, .quest-reward { margin: 0; white-space: pre-wrap; line-height: 1.35; }
+.quest-sub { color: #aab; font-size: 11px; }
+.quest-goals { margin: 2px 0 6px; padding-left: 18px; }
+.quest-goals li.ok { color: #7dff8a; }
+.quest-actions { display: flex; gap: 6px; margin-top: auto; padding-top: 8px; }
+.quest button { padding: 4px 12px; border: 1px solid #c9a24a; border-radius: 4px; background: rgb(40 48 66 / .9); color: #fff; font: 13px Tahoma, Verdana, sans-serif; cursor: pointer; }
+.quest button:disabled { opacity: .45; cursor: default; }
+.quest button:hover:not(:disabled) { background: rgb(201 162 74 / .35); }
+.quest-abandon { align-self: flex-start; font-size: 11px !important; padding: 1px 8px !important; }
+
+.quest-blocked { margin: 4px 0; color: #ff9a9a; font-weight: 700; }

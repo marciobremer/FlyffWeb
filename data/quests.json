@@ -1,0 +1,70 @@
+{
+  "quests": [
+    {
+      "id": "a_arena_do_clockworks",
+      "enabled": true,
+      "name": "A Arena do Clockworks",
+      "npc": "MaDa_RedRobeGirl",
+      "minLevel": 1,
+      "text": {
+        "offer": "Quer enfrentar o Clockworks? Traga 10 Dorido Scale, que os monstros do pântano largam, e eu abro a arena para você.",
+        "progress": "Ainda não tenho o que preciso. Traga as 10 Dorido Scale.",
+        "done": "Muito bem! Segure firme: a arena vai abrir em instantes."
+      },
+      "need": [
+        {
+          "item": "II_SYS_SYS_QUE_DORIDOMASCALE",
+          "count": 10
+        }
+      ],
+      "drops": [
+        {
+          "item": "II_SYS_SYS_QUE_DORIDOMASCALE",
+          "mob": "MI_AIBATT1",
+          "chance": 40
+        },
+        {
+          "item": "II_WEA_MOB_DORIDOMA1_ATK1",
+          "mob": "*",
+          "chance": 100
+        }
+      ],
+      "reward": {
+        "exp": 0,
+        "penya": 0,
+        "teleport": {
+          "world": "DuClockwork",
+          "point": "chegada"
+        },
+        "event": "cw_chefe"
+      },
+      "repeatable": true,
+      "party": {
+        "min": 2,
+        "leaderOnly": true
+      }
+    },
+    {
+      "id": "exemplo_matar",
+      "enabled": false,
+      "name": "Exemplo: caçada",
+      "npc": "MaFl_Donaris",
+      "minLevel": 1,
+      "text": {
+        "offer": "Derrote 5 monstros e volte aqui.",
+        "progress": "Ainda faltam monstros.",
+        "done": "Bom trabalho!"
+      },
+      "kill": [
+        {
+          "mob": "*",
+          "count": 5
+        }
+      ],
+      "reward": {
+        "exp": 500,
+        "penya": 1000
+      }
+    }
+  ]
+}

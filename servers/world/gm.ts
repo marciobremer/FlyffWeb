@@ -46,6 +46,28 @@ export interface GmContext {
   revive?(id: number): string;
   /** leva um personagem online para `p` (x, y, z FlyFF; o cliente acerta a altura pelo chão) */
   teleport(id: number, p: [number, number, number]): boolean;
+  /** mapas em que dá para entrar com //mapa (o principal, os extras e os do projeto, como o do L2) */
+  worldList?(): { name: string; id: number }[];
+  /** leva quem digitou para outro mapa, no ponto de chegada dele; devolve a mensagem para mostrar */
+  travel?(world: string): string;
+  /** pontos marcados no editor para o mapa de quem digitou: sem nome lista; com nome leva até o ponto; devolve a mensagem */
+  point?(name?: string): string;
+  /** quests (data/quests.json): sem op lista e mostra o estado de quem digitou; `reset [id]` zera o andamento */
+  quest?(op: 'list' | 'reset', id?: string): Promise<string>;
+  /** nome do mapa de quem digitou (para o //pos) */
+  where?(): string;
+  /** atributo do terreno onde quem digitou está (normal, NoWalk, NoMove…) */
+  attr?(): string;
+  /** áreas onde a barreira invisível (NoWalk/NoMove) deixa passar: adiciona em volta de quem digitou, lista, apaga uma ou todas */
+  open?(op: 'add' | 'list' | 'del' | 'clear', arg?: string): string;
+  /** velocidade de corrida em % da normal (100 = normal) de quem digitou; sem número mostra a atual */
+  speed?(pct?: number): string;
+  /** portais de dungeon do mapa de quem digitou: lista, fecha (não teleporta mais) ou abre */
+  portal?(op: 'list' | 'close' | 'open', what?: string): string;
+  /** eventos (data/events.json): sem op lista; `run <id>` dispara agora */
+  event?(op: 'list' | 'run', id?: string): string;
+  /** clima do mapa de quem digitou: sem tipo mostra; chuva/limpo muda (chuva por `minutes`) */
+  weather?(kind: 'rain' | 'clear' | null, minutes: number): string;
 }
 
 /** elementos (SAI79): nome digitado → número */
@@ -55,12 +77,18 @@ export const ELEMENT_NAMES = ['', 'Fogo', 'Água', 'Elétrico', 'Vento', 'Terra'
 const HELP = [
   '//gm   abre o painel de GM',
   '//goto <personagem>   vai até o personagem · //summon <personagem>   traz o personagem até você',
-  '//tp <x> <z>   vai para a coordenada',
+  '//tp <x> <z> [y]   vai para a coordenada · //ponto [nome]   lista / vai para um ponto marcado no editor · //mapa [nome]   lista os mapas / vai para um (ex.: //mapa l2)',
   '//set-level [personagem] <nível>   muda o nível (1–' + MAX_LEVEL + ')',
   '//set-job [personagem] <classe>   muda a classe (ex.: knight, blade, ringmaster, elementor… ou o número JOB_*)',
   '//give-item [personagem] <II_…|id> [quantidade] [+enchant] [elemento+nível] [furosN]   ex.: //give-item II_WEA_SWO_WOODEN +5 fogo+3',
   '   enchant: joias até +20, o resto até +10 · furos1–4: espaços de piercing (só suit) · rar0–N ou o nome (epic, legendary…): raridade da arma',
   '//drop <II_…|id> [quantidade]   larga o item no chão em volta de você (um por vez, máx. 20), sem dono',
+  '//portal [fechar|abrir <mapa>]   lista os portais do mapa / fecha um (a rampa deixa de teleportar) ou abre de novo',
+  '//liberar [raio]   libera a passagem (barreira invisível: terreno NoMove/NoWalk e colisão de objeto) num quadrado em volta de você (padrão 8 m) · //liberar lista · //liberar apagar <n> · //liberar limpar',
+  '//speed [10–1000]   sua velocidade de corrida em % da normal (100 = normal; //speed 300 = 3× mais rápido; //speed 100 volta)',
+  '//pos   mostra a sua posição exata (x, y, z) e o comando //tp para voltar aqui',
+  '//evento [run <id>]   lista os eventos (data/events.json) / dispara um agora · //clima [chuva|limpo] [minutos]   mostra / muda o clima do mapa',
+  '//quest   lista as quests e o seu andamento · //quest reset [id]   zera o andamento (de uma ou de todas)',
   '//reset-stats [personagem]   devolve os pontos de atributo (STR/STA/DEX/INT voltam a 15)',
   '//give-penya [personagem] <quantia>',
   '//mob <MI_…|id> [quantidade] [x z]   invoca monstros perto de você ou no ponto x z (não renascem; boss já vem agressivo)',
@@ -173,10 +201,73 @@ export async function runGmCommand(ctx: GmContext, text: string): Promise<void> 
     return;
   }
 
+  if (name === 'mapa' || name === 'map') {
+    const q = args.join(' ').trim();
+    if (!q) { ctx.reply(`Mapas: ${(ctx.worldList?.() ?? []).map((w) => `${w.name} (${w.id})`).join(', ') || 'nenhum'}. Uso: //mapa <nome ou parte do nome>`); return; }
+    const r = ctx.travel?.(q);
+    if (r) ctx.reply(r);
+    log(`mapa ${q}`);
+    return;
+  }
+
+  if (name === 'portal' || name === 'portais') {
+    const a = (args[0] ?? '').toLowerCase();
+    const op = ['fechar', 'close'].includes(a) ? 'close' : ['abrir', 'open'].includes(a) ? 'open' : 'list';
+    ctx.reply(ctx.portal?.(op, args.slice(1).join(' ').trim()) ?? 'Sem portais neste servidor.');
+    log(`portal ${args.join(' ')}`);
+    return;
+  }
+  if (name === 'liberar' || name === 'passagem') {
+    const a = (args[0] ?? '').toLowerCase();
+    const op = ['lista', 'list'].includes(a) ? 'list' : ['apagar', 'del'].includes(a) ? 'del' : ['limpar', 'clear'].includes(a) ? 'clear' : 'add';
+    ctx.reply(ctx.open?.(op, op === 'add' ? args[0] : args[1]) ?? 'Sem áreas neste servidor.');
+    log(`liberar ${args.join(' ')}`);
+    return;
+  }
+  if (name === 'speed' || name === 'velocidade') {
+    const raw = args[0];
+    const pct = raw === undefined ? undefined : ['normal', 'reset'].includes(raw.toLowerCase()) ? 100 : Number(raw);
+    if (pct !== undefined && (!Number.isFinite(pct) || pct < 10 || pct > 1000)) { ctx.reply('Use um valor de 10 a 1000 (100 = velocidade normal). Ex.: //speed 300'); return; }
+    ctx.reply(ctx.speed?.(pct === undefined ? undefined : Math.round(pct)) ?? 'Sem velocidade neste servidor.');
+    log(`speed ${args.join(' ')}`);
+    return;
+  }
+  if (name === 'pos' || name === 'position') {
+    const [x, y, z] = (ctx.self.p ?? [0, 0, 0]).map((v) => Math.round(v * 100) / 100);
+    const at = ctx.attr?.();
+    ctx.reply(`Posição${ctx.where ? ` em ${ctx.where()}` : ''}: x ${x}  y ${y}  z ${z}   ·   //tp ${x} ${z} ${y}${at ? `   ·   terreno: ${at}` : ''}`);
+    log('pos');
+    return;
+  }
+  if (name === 'evento' || name === 'event') {
+    const run = (args[0] ?? '').toLowerCase() === 'run';
+    ctx.reply(ctx.event?.(run ? 'run' : 'list', run ? args[1] : undefined) ?? 'Sem eventos neste servidor.');
+    log(`evento ${args.join(' ')}`);
+    return;
+  }
+  if (name === 'clima' || name === 'weather') {
+    const k = (args[0] ?? '').toLowerCase();
+    const kind = ['chuva', 'rain'].includes(k) ? 'rain' : ['limpo', 'clear', 'sol'].includes(k) ? 'clear' : null;
+    ctx.reply(ctx.weather?.(kind, Math.max(1, Math.min(240, Number(args[1]) || 10))) ?? 'Sem clima neste servidor.');
+    log(`clima ${args.join(' ')}`);
+    return;
+  }
+  if (name === 'quest' || name === 'quests') {
+    const reset = (args[0] ?? '').toLowerCase() === 'reset';
+    ctx.reply(await (ctx.quest?.(reset ? 'reset' : 'list', reset ? args[1] : undefined) ?? Promise.resolve('Sem quests neste servidor.')));
+    log(`quest ${args.join(' ')}`);
+    return;
+  }
+  if (name === 'ponto' || name === 'point') {
+    ctx.reply(ctx.point?.(args.join(' ').trim() || undefined) ?? 'Sem pontos neste servidor.');
+    log(`ponto ${args.join(' ')}`);
+    return;
+  }
+
   if (name === 'tp') {
-    const x = Number(args[0]), z = Number(args[1]);
-    if (!Number.isFinite(x) || !Number.isFinite(z)) { ctx.reply('Uso: //tp <x> <z>'); return; }
-    if (!ctx.teleport(ctx.self.id, [x, ctx.self.p?.[1] ?? 100, z])) { ctx.reply('Coordenada fora do mapa.'); return; }
+    const x = Number(args[0]), z = Number(args[1]), y = args[2] === undefined ? (ctx.self.p?.[1] ?? 100) : Number(args[2]);
+    if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(y)) { ctx.reply('Uso: //tp <x> <z> [y]'); return; }
+    if (!ctx.teleport(ctx.self.id, [x, y, z])) { ctx.reply('Coordenada fora do mapa.'); return; }
     log(`tp ${x} ${z}`);
     ctx.reply(`Teleportado para ${Math.round(x)}, ${Math.round(z)}.`);
     return;

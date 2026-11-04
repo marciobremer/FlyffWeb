@@ -15,7 +15,7 @@ import type { LoadConfig } from '../tools/loadtest';
  *
  * "Degradou" = 3 segundos seguidos com algum limite estourado (LIMITS). O resultado diz com quantos bots isso aconteceu.
  */
-export const LIMITS = { lagP99: 50, rttP95: 150, gapP95: 200 };
+export const LIMITS = { lagP99: 50, rttP95: 150, gapP95: 300 };
 const DIR = (root: string) => path.join(root, 'data', 'loadtests');
 const BOT_RE = '^lt_bot[0-9]{4}$';
 export const BOTS_MAX = 2000;

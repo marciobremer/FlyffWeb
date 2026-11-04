@@ -4,6 +4,7 @@ import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js
 import type { WorldView } from '../shared/world';
 import { OT, type WorldObject } from '../shared/formats/types';
 import { objectMatrix } from '../shared/math';
+import { tuneGizmo } from './gizmo';
 import { applyNpcEdits, cleanEdits, emptyEdits, type WithSrc, type WorldEdits } from '../shared/worldedits';
 
 /**
@@ -33,6 +34,7 @@ export class NpcEditor {
 
   constructor(private view: WorldView, scene: Scene, camera: PerspectiveCamera | Camera, dom: HTMLElement, private orbit: OrbitControls) {
     this.tc = new TransformControls(camera, dom);
+    tuneGizmo(this.tc, camera);
     this.tc.setSpace('world');
     scene.add(this.proxy, this.tc.getHelper());
     this.tc.getHelper().visible = false;
@@ -44,6 +46,8 @@ export class NpcEditor {
   }
 
   get dragging() { return this.tc.dragging; }
+  /** posição do NPC selecionado, para a tecla F da câmera */
+  get focusPoint(): Vector3 | null { return this.selected ? this.proxy.position.clone() : null; }
   get hoveringGizmo() { return this.tc.axis !== null; }
   private get data() { return this.view.data!; }
 
@@ -156,15 +160,27 @@ export class NpcEditor {
     this.addNpc({ ...o, pos: [o.pos[0] + 2, o.pos[1], o.pos[2] + 2], rot: [...o.rot], scale: [...o.scale], src: -1 });
   }
 
-  /** NPC novo: personagem do character.inc na posição indicada (no chão) */
-  addCharacter(key: string, x: number, z: number) {
+  /** NPC do character.inc na posição indicada (no chão), ainda fora da lista do mapa; null se não há modelo para ele */
+  makeNpc(key: string, x: number, z: number, atY?: number): WithSrc | null {
     const d = this.data;
     const def = d.characters.get(key.toLowerCase());
-    if (!def) return false;
-    const entry = [...d.dynaModels.values()].find((e) => e.type === OT.MOVER && e.name === (def.sex ?? 'male'));
-    if (!entry) return false;
-    const y = this.view.sampleHeight(x, z) ?? 100;
-    this.addNpc({ type: OT.MOVER, modelId: entry.id, pos: [x, y, z], rot: [0, 0, 0], scale: [1, 1, 1], motion: 0, ai: 0, ai2: 0, characterKey: key, name: def.name, src: -1 });
+    if (!def) return null;
+    // humanos (character.inc com SetFigure) usam MI_MALE/MI_FEMALE vestidos pelo SetEquip; os outros NPCs (Losha, Mysterious Robed Girl…) têm modelo próprio:
+    // o do mesmo NPC que já está no mapa (idêntico ao do jogo) ou, na falta, o mover MI_<chave>
+    const same = [...d.moversOriginal, ...d.movers].find((o) => o.type === OT.MOVER && o.characterKey?.toLowerCase() === key.toLowerCase());
+    let entry = def.sex || !same ? undefined : d.dynaModels.get(`${OT.MOVER}:${same.modelId}`);
+    if (!entry && !def.sex) { const id = d.defines.get('MI_' + key.toUpperCase()); if (id !== undefined) entry = d.dynaModels.get(`${OT.MOVER}:${id}`); }
+    if (!entry) entry = [...d.dynaModels.values()].find((e) => e.type === OT.MOVER && e.name === (def.sex ?? 'male'));
+    if (!entry) return null;
+    const y = atY ?? this.view.sampleHeight(x, z) ?? 100;
+    return { type: OT.MOVER, modelId: entry.id, pos: [x, y, z], rot: [0, 0, 0], scale: same && !def.sex ? [...same.scale] : [1, 1, 1], motion: same && !def.sex ? same.motion : 0, ai: 0, ai2: 0, characterKey: key, name: def.name, src: -1 };
+  }
+
+  /** NPC novo: personagem do character.inc na posição indicada (no chão) */
+  addCharacter(key: string, x: number, z: number, atY?: number) {
+    const o = this.makeNpc(key, x, z, atY);
+    if (!o) return false;
+    this.addNpc(o);
     return true;
   }
 

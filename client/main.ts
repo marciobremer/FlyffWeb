@@ -1,3 +1,4 @@
+import { LogoutCountdown } from './logout';
 import { WorldView } from '../shared/world';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { keyedImage, themeImage, themeTiles } from '../shared/tga';
@@ -26,6 +27,8 @@ import { BuffBar } from './buffbar';
 import { PartyBuffs } from './partybuffs';
 import { TradeWindow } from './trade';
 import { TeleportWindow } from './teleport';
+import { QuestDialogWindow, QuestLogWindow } from './quests';
+import { Rain } from './weather';
 import { MotionWindow } from './motionwnd';
 import { lookSymbol } from '../shared/look';
 import { FriendsWindow, friendRequestPrompt } from './friends';
@@ -48,11 +51,14 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const WORLD = 'WdMadrigal';
 /** mundo aberto agora (WdMadrigal; WdKebaras = Azria) e o mundo de cada world_id do banco */
 let curWorld = WORLD;
-const WORLD_BY_ID: Record<number, string> = { 1: 'WdMadrigal', 2: 'WdKebaras' };
+const WORLD_BY_ID: Record<number, string> = { 1: 'WdMadrigal', 2: 'WdKebaras', 3: 'WdCisland', 4: 'WdRartesia', 5: 'WdDarkRartesia' };
 /** tela de carregamento de cada mapa (Theme/Default/MapLoading_*.png, como no cliente) e o nome mostrado */
 const WORLD_LOADING: Record<string, { img: string; name: string }> = {
   WdMadrigal: { img: 'MapLoading_Madrigal.png', name: 'Madrigal' },
   WdKebaras: { img: 'MapLoading_Azria.png', name: 'Azria' },
+  WdCisland: { img: 'MapLoading_Cisland.png', name: 'Coral Island' },
+  WdRartesia: { img: 'MapLoading_Rartesia.png', name: 'Traseia' },
+  WdDarkRartesia: { img: 'MapLoading_DarkRartesia.png', name: 'Dark Traseia' },
 };
 /** tela de transição entre mapas: imagem do mapa e barra andando enquanto o mundo novo carrega */
 const mapLoading = (() => {
@@ -110,11 +116,18 @@ view.serverMobs = true;
 /** morto não anda nem seleciona */
 view.inputBlocked = () => !!view.player?.dead;
 /** menu + janela de status (só aparecem dentro do jogo); Desconectar volta ao login */
-const hud = new GameHud(document.body, () => void backToLogin(), () => inventory.toggle(), () => charWnd.toggle(), () => skillWnd.toggle());
+const hud = new GameHud(document.body, () => logout.start(), () => inventory.toggle(), () => charWnd.toggle(), () => skillWnd.toggle());
+/** contagem de 4 s antes de sair do jogo (Desconectar do menu) */
+const logout = new LogoutCountdown(document.body, () => void backToLogin());
 /** inventário (tecla I), barra de atalhos (1…0) e chat (Enter) — ver game/ui.ts */
 const inventory = new InventoryWindow(document.body);
 /** Teleporter (tecla V, como o APP_ZCK_TELEPORTEUR do cliente) */
 const teleportWnd = new TeleportWindow(document.body);
+const questDlg = new QuestDialogWindow(document.body), questLog = new QuestLogWindow(document.body);
+questDlg.onAccept = (d) => { net.quest('accept', d.id, d.key); };
+questDlg.onTurnIn = (d) => { net.quest('turnIn', d.id, d.key); };
+questLog.onAbandon = (id) => { net.quest('abandon', id); };
+hud.onQuests = () => questLog.toggle();
 teleportWnd.onTeleport = (k) => { if (!net.zckTeleport(k)) chat.system('Sem conexão com o servidor.'); };
 teleportWnd.onLoad = () => net.teleports();
 /** janela de movimentos (tecla O): movimento no personagem (os outros veem pelo servidor) e emoticon acima da cabeça */
@@ -133,6 +146,7 @@ motionWnd.onEmoticon = (i) => { if (!net.emoticon(i)) chat.system('Sem conexão 
 const actionBar = new ActionBar(document.body);
 actionBar.onUseItem = (id) => { if (!rideToggle(id)) net.useItem(id); };
 actionBar.onChange = (slots) => { net.saveBar(slots); };
+actionBar.onUseChat = (text) => chat.send(text);
 const chat = new ChatWindow(document.body);
 /** janela de personagem (tecla H): atributos e pontos */
 const charWnd = new CharacterWindow(document.body);
@@ -303,6 +317,8 @@ net.onNpcMenu = (m) => {
   const opts: NpcMenuOption[] = [];
   if (m.shop) opts.push({ label: 'Comércio', run: () => net.shopOpen(m.key) });
   if (m.buff) opts.push({ label: 'Receber Buffs!', run: () => net.npcBuff(m.key) });
+  // quests do NPC: ❗ oferece, … em andamento, ✔ pronta para entregar
+  for (const q of m.quests) opts.push({ label: `${q.st === 'offer' ? '❗' : q.st === 'ready' ? '✔' : '…'} ${q.name}`, run: () => net.quest('open', q.id, m.key) });
   // ferreiro (Bobochan, Peach…): as opções do character.inc abrem a janela no modo certo
   for (const o of smithOptions(m.smith)) opts.push({ label: o.label, run: () => smithWnd.open(m.key, o.mode) });
   if (!opts.length) return;
@@ -394,7 +410,7 @@ const playerHead = (id: number): [number, number, number] | null => {
   return p ? [p[0], p[1] + 2.2, p[2]] : null;
 };
 /** efeitos da skill (propSkill dwSfxObj/3/5): ao lançar no lançador, no alvo ao acertar e no lançador ao acertar */
-function skillFx(a: number, target: [number, number, number] | null, fx: SkillFx) {
+function skillFx(a: number, target: [number, number, number] | null, fx: SkillFx, hitDelay = 0) {
   const posOf = () => (a === net.myId ? view.player?.pos ?? null : remotes.pos(a));
   const me = posOf();
   if (!me) return;
@@ -403,27 +419,31 @@ function skillFx(a: number, target: [number, number, number] | null, fx: SkillFx
   // movimento de lançar dos outros jogadores (o seu já tocou ao apertar a skill)
   if (fx.mo && a !== net.myId) remotes.cast(a, fx.mo);
   audio.play(fx.sn, me); // som de lançar (dwSndAttack1)
-  view.playSfx(fx.c, [me[0], me[1], me[2]], yaw);
+  const follow = (): [number, number, number] | null => { const q = posOf(); return q ? [q[0], q[1], q[2]] : null; };
+  view.playSfxFollowOnce(fx.c, follow, yaw); // efeitos no lançador acompanham quem lança
   const impact = () => {
     audio.play(fx.sh, target); // som do impacto (dwSndAttack2)
     if (target) view.playSfx(fx.h, [target[0], target[1] + 1, target[2]], yaw);
-    view.playSfx(fx.s, [me[0], me[1], me[2]], yaw);
+    view.playSfxFollowOnce(fx.s, follow, yaw);
   };
   // magia: o projétil voa até o alvo e o impacto toca na chegada
   if (target && fx.p !== undefined && fx.p >= 0) {
     const dist = Math.hypot(dx, dz);
     view.playSfxMoving(fx.p, [me[0], me[1] + 1.2, me[2]], [target[0], target[1] + 1, target[2]], yaw, Math.max(0.15, Math.min(0.9, dist / 40)), impact);
-  } else impact();
+  } else if (hitDelay > 0) setTimeout(impact, hitDelay); // debuff: o efeito no alvo só depois do movimento de lançar
+  else impact();
   // buff: o efeito fica no personagem enquanto durar
   if (fx.b !== undefined && fx.b >= 0 && fx.dur) view.playSfxFollow(fx.b, () => { const p = posOf(); return p ? [p[0], p[1], p[2]] : null; }, fx.dur);
 }
-net.onSkillFx = (a, fx, tg) => skillFx(a, tg === undefined ? null : view.moverMgr.externalInfo(tg)?.pos ?? null, fx);
+/** duração aproximada do movimento de lançar (o efeito no alvo e o ícone do debuff esperam por ele) */
+const CAST_MS = 900;
+net.onSkillFx = (a, fx, tg) => skillFx(a, tg === undefined ? null : view.moverMgr.externalInfo(tg)?.pos ?? null, fx, tg === undefined ? 0 : CAST_MS);
 // debuffs nos mobs (Sneaker…): o ícone com a contagem aparece na janela do alvo
 const mobDebuffs = new Map<number, { sk: number; name: string; icon: string; end: number }[]>();
 net.onMobDebuff = (id, sk, name, icon, ms) => {
-  const l = (mobDebuffs.get(id) ?? []).filter((d) => d.sk !== sk);
-  l.push({ sk, name, icon, end: performance.now() + ms });
-  mobDebuffs.set(id, l);
+  const end = performance.now() + CAST_MS + ms;
+  // o ícone aparece quando o efeito chega no alvo
+  setTimeout(() => { const cur = (mobDebuffs.get(id) ?? []).filter((d) => d.sk !== sk); cur.push({ sk, name, icon, end }); mobDebuffs.set(id, cur); }, CAST_MS);
 };
 setInterval(() => {
   const t = view.target, id = t ? view.moverMgr.externalIdOf(t) : null;
@@ -509,6 +529,7 @@ net.onStats = (s) => {
   if (s.mv) moveSpeed = s.mv;
   if (view.player) view.player.runSpeed = moveSpeed;
   combat.range = s.range ?? 2;
+  if (view.player) view.player.level = s.level;
   myMp = s.mp; myFp = s.fp;
   const expPct = s.expMax > 0 ? (s.exp / s.expMax) * 100 : 0;
   hud.setStatus({ name: ch.name, level: s.level, hp: s.hp, maxHp: s.maxHp, mp: s.mp, maxMp: s.maxMp, fp: s.fp, maxFp: s.maxFp, expPct });
@@ -613,7 +634,8 @@ net.onPm = (withId, withName, from, name, text) => friendsWnd.message(withId, wi
 net.onChat = (id, name, text) => {
   if (id) {
     chat.message(name, text, id === net.myId);
-    if (id === net.myId) view.player?.inst?.say(text); else remotes.say(id, text);
+    const shout = text.startsWith('[Grito] '), say = shout ? text.slice(8) : text; // grito: balão de outro tipo
+    if (id === net.myId) view.player?.inst?.say(say, 60, shout ? 8000 : 6000, shout); else remotes.say(id, say, shout);
   }
   else { chat.system(text); if (gmPanel.visible) gmPanel.status(text, /não|erro|uso:|inválid|fora do/i.test(text)); }
 };
@@ -795,7 +817,7 @@ net.onLevel = (level) => {
 function levelUpFx(id: number) {
   const p = id === net.myId ? view.player?.pos ?? null : remotes.pos(id);
   if (!p) return;
-  view.playSfx(42, [p[0], p[1], p[2]]);
+  view.playSfxFollowOnce(42, () => { const q = id === net.myId ? view.player?.pos ?? null : remotes.pos(id); return q ? [q[0], q[1], q[2]] : null; }, 0, 3); // o pilar de luz acompanha o personagem; as faixas que o arquivo põe a 5 u de altura ficam na linha do chão
   if (id !== net.myId) remotes.cast(id, 'MTI_LEVELUP');
   else if (view.player?.animState === 'stand') view.player.cast('MTI_LEVELUP');
 }
@@ -806,11 +828,16 @@ let combatMt = 0, lookNow: string[] = [];
 let myInvis = false;
 net.onInvis = (on) => { myInvis = on; view.player?.inst?.setGhost(on); gmPanel.setInvis(on); };
 net.onGod = (on) => gmPanel.setGod(on);
+net.onGmFly = (on) => { if (view.player) view.player.gmFly = on; gmPanel.setFly(on); };
 
 // ---------- dia e noite (shared/gameclock.ts: dia 6h–19h em 21,6 min e noite em 7,2 min reais, igual para todos) ----------
 /** diferença entre o relógio do servidor e o deste computador; hora fixada pelo GM (//time) */
 let clockOffset = 0, clockFixed: number | null = null;
 net.onTeleports = (list) => teleportWnd.set(list);
+const rain = new Rain(view);
+net.onWeather = (on) => { if (on !== rain.raining) chat.system(on ? 'Começou a chover.' : 'A chuva parou.'); rain.set(on); };
+net.onQuestDialog = (d) => questDlg.open(d);
+net.onQuests = (list) => questLog.set(list);
 net.onPet = (a, m) => pets.set(a, m);
 net.onPetGo = (a, x, z, ms) => pets.go(a, x, z, ms);
 net.onPetFilter = (f, n) => petFilterWnd.set(f, n);
@@ -853,8 +880,9 @@ addEventListener('keydown', (e) => {
   else if (e.code === 'KeyJ' && !e.repeat) jobWnd.toggle(); // reabre a escolha de classe, se ainda há
   else if (e.code === 'KeyC' && !e.repeat) runActionSlot();
   else if (e.code === 'KeyV' && !e.repeat) teleportWnd.toggle();
+  else if (e.code === 'KeyQ' && !e.repeat) { if (!view.player?.gmFly) questLog.toggle(); } // voando (//fly), o Q desce
   else if (e.code === 'KeyO' && !e.repeat) motionWnd.toggle();
-  else if (e.code === 'KeyE' && !e.repeat) friendsWnd.toggle();
+  else if (e.code === 'KeyE' && !e.repeat) { if (!view.player?.gmFly) friendsWnd.toggle(); } // voando (//fly), o E sobe
   else if (e.code === 'KeyY' && !e.repeat) wikiWnd.toggle();
   else if (e.code === 'KeyP' && !e.repeat) partyWnd.toggle();
   else if (e.code === 'KeyG' && !e.repeat) guildWnd.toggle();
@@ -1298,6 +1326,7 @@ $('charDelete').addEventListener('submit', async (ev) => {
 /** Encerra a sessão no servidor e volta à tela de login (botão Voltar da seleção e "Desconectar" do menu do jogo). */
 async function backToLogin() {
   // sai do mundo primeiro (o servidor salva a posição ao fechar o WebSocket), depois encerra a sessão
+  logout.cancel();
   inGame = false;
   net.close();
   try { await api('/gapi/logout', { method: 'POST' }); } catch { /* sessão já expirada */ }
@@ -1310,7 +1339,7 @@ async function backToLogin() {
   view.player?.remove();
   view.labelRenderer.domElement.hidden = false;
   hud.hide();
-  inventory.hide(); inventory.clear(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); miniMap.hide(); worldMap.hide(); smithWnd.hide(); shopWnd.hide(); skillWnd.hide(); teleportWnd.hide(); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
+  inventory.hide(); inventory.clear(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); miniMap.hide(); worldMap.hide(); smithWnd.hide(); shopWnd.hide(); skillWnd.hide(); teleportWnd.hide(); questDlg.hide(); questLog.hide(); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
   $('help').hidden = true;
   $('charScreen').hidden = true;
   $('loginScreen').hidden = false;

@@ -5,6 +5,8 @@ export interface WldInfo {
   fog: { start: number; end: number; density: number };
   lightDir: [number, number, number];
   bgm: number; pkmode: number; revival: { id: number; place: string };
+  /** `noterrain 1` (mapas do projeto, ex.: L2): não há terreno do FlyFF — o chão é o dos objetos/props; sem chão não se anda */
+  noTerrain: boolean;
   sky: string[]; cloud: string[]; sun: string; moon: string; seacloud: string;
 }
 
@@ -13,7 +15,7 @@ export function parseWld(text: string): WldInfo {
   const w: WldInfo = {
     width: 0, height: 0, mpu: 4, indoor: false, fly: true, ambient: 0x808080, diffuse: 0, bgColor: 0xffe0e0ff,
     camera: { pos: [0, 200, 0], yaw: 0, pitch: 0 }, fog: { start: 70, end: 400, density: 0 }, lightDir: [0, 0, 0],
-    bgm: 0, pkmode: 0, revival: { id: 0, place: '' }, sky: [], cloud: [], sun: 'default', moon: 'default', seacloud: 'default',
+    bgm: 0, pkmode: 0, noTerrain: false, revival: { id: 0, place: '' }, sky: [], cloud: [], sun: 'default', moon: 'default', seacloud: 'default',
   };
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.replace(/\/\/.*$/, '').trim();
@@ -32,6 +34,7 @@ export function parseWld(text: string): WldInfo {
       case 'mpu': w.mpu = n(0); break;
       case 'bgm': w.bgm = n(0); break;
       case 'pkmode': w.pkmode = n(0); break;
+      case 'noterrain': w.noTerrain = n(0) !== 0; break;
       case 'revival': w.revival = { id: n(0), place: a[1] ?? '' }; break;
       case 'lightdir': w.lightDir = [n(0), n(1), n(2)]; break;
       case 'fogsetting': w.fog = { start: n(0), end: n(1), density: n(2) }; break;

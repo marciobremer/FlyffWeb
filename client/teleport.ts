@@ -83,7 +83,8 @@ export class TeleportWindow extends GameWindow {
 
   show() {
     super.show();
-    if (!this.requested) { this.requested = true; this.onLoad(); }
+    this.requested = true;
+    this.onLoad(); // pede de novo a cada abertura: teleportes novos do admin aparecem sem reentrar
     this.render();
   }
 

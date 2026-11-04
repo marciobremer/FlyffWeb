@@ -21,6 +21,8 @@ export interface PlayerWorld {
   attrAt(x: number, z: number): number;
   /** chão de objeto (malha de colisão) mais alto em (x, z) que não passe de yTop */
   objectGround?(x: number, z: number, yTop: number): number | null;
+  /** mapa sem terreno do FlyFF (só objetos/props): fora do chão dos objetos não se anda, e o chão não é a altura atual */
+  voidGround?(): boolean;
   /** parede entre (x0,z0) e (x1,z1) (+ raio) nas alturas `heights` acima de y */
   blocked?(x0: number, z0: number, x1: number, z1: number, y: number, radius: number, heights: number[]): boolean;
   /** efeito do conjunto +3…+10 (WorldView.attachSetSfx) */
@@ -249,7 +251,8 @@ export class Player {
   teleport(x: number, z: number, y: number) {
     if (!this.inst) return;
     const terrain = this.world.heightAt(x, z) ?? y;
-    this.pos = [x, this.groundAt(x, z, Math.max(terrain, y) + 20), z];
+    // a busca do chão começa logo acima do y pedido (o de um ponto do editor/teleporte é o da superfície): com folga grande o personagem pousava no telhado de prédios
+    this.pos = [x, this.groundAt(x, z, Math.max(terrain, y) + 4), z];
     this.target = null; this.vy = 0; this.grounded = true;
     if (this.state !== 'stand') { this.state = 'stand'; this.inst.play(...motionOf('stand', this.combat)); }
     this.apply();
@@ -457,8 +460,11 @@ export class Player {
 
   /** Terreno ou chão de objeto mais alto até `yTop` (o terreno vale mesmo acima de yTop: não se atravessa o chão). */
   private groundAt(x: number, z: number, yTop: number) {
-    const t = this.world.heightAt(x, z) ?? this.pos[1];
+    const h = this.world.heightAt(x, z);
     const o = this.world.objectGround?.(x, z, yTop) ?? null;
+    // sem terreno (mapa só de props): o chão é o do objeto; sem objeto ainda (carregando), fica onde está em vez de flutuar sobre um chão imaginário
+    if (h === null && this.world.voidGround?.()) return o ?? this.pos[1];
+    const t = h ?? this.pos[1];
     return o !== null && o > t ? o : t;
   }
 
@@ -477,6 +483,7 @@ export class Player {
     const dl = Math.hypot(dx, dz) || 1, px = -dz / dl * RADIUS * 0.8, pz = dx / dl * RADIUS * 0.8;
     for (const o of [0, 1, -1]) if (this.world.blocked?.(x + px * o, z + pz * o, nx + px * o, nz + pz * o, y, RADIUS, WALL_RAYS)) return false;
     // atributos do terreno (NoWalk/NoMove/Die) só valem pisando no terreno, não sobre pontes/pisos de objetos
+    if (this.world.heightAt(nx, nz) === null && this.world.voidGround?.()) return (this.world.objectGround?.(nx, nz, y + STEP) ?? null) !== null; // mapa de props: sem chão, não anda
     const t = this.world.heightAt(nx, nz) ?? y;
     const o = this.world.objectGround?.(nx, nz, y + STEP) ?? null;
     if (o !== null && o > t + 0.05) return true;

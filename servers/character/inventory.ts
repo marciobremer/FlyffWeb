@@ -438,6 +438,11 @@ export class Inventory {
     });
   }
 
+  /** quantos do item `itemId` há na bolsa (soma das pilhas) */
+  async count(characterId: number, itemId: number): Promise<number> {
+    return (await this.state(characterId)).items.reduce((s, i) => (i.c === BAG && i.id === itemId ? s + i.n : s), 0);
+  }
+
   /** item de tempo (ticket): começa a contar — vale até `until` (ms); null se não houver item no espaço */
   setExpiry(characterId: number, slot: number, until: number): Promise<InvState | null> {
     return this.mutate(characterId, (x) => {

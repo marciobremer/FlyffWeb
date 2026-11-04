@@ -60,3 +60,15 @@ data/mappack/
 data/rust-link.secret
 data/rust.pid
 data/bench/
+
+# Cruma: JDK, decompilado e jar (terceiros, so local)
+tools/cruma/jdk/
+tools/cruma/bin/
+tools/cruma/src-decompiled/
+tools/cruma/out/
+tools/cruma/cls/
+tools/cruma/agent/out/
+tools/cruma/agent/test/out/
+tools/cruma/agent/*.jar
+tools/cruma/agent/manifest.txt
+tools/cruma/decomp.log

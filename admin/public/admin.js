@@ -19,6 +19,9 @@ function show(view) {
   for (const a of document.querySelectorAll('#side a[data-view]')) a.classList.toggle('on', a.dataset.view === view);
   if (view === 'account') loadAccounts();
   else if (view === 'world') loadRates();
+  else if (view === 'zones') loadTeleports();
+  else if (view === 'quests') { loadQuests(); npcLoad(); }
+  else if (view === 'npcs') npcLoad();
   else if (view === 'database') loadDb();
   else if (view === 'items') loadItems();
   else if (view === 'skills') loadSkills();
@@ -240,6 +243,59 @@ $('ratesForm').onsubmit = async (ev) => {
     say($('worldMsg'), `Taxas salvas: EXP ${r.rates.exp}x · Penya ${r.rates.penya}x · Drop ${r.rates.drop}x. O jogo aplica em até 2 segundos.`);
   } catch (e) { say($('worldMsg'), e.message, true); }
 };
+
+// ---------------- zones: teleportes da janela V ----------------
+let tpList = [], tpMaps = [];
+async function loadTeleports() {
+  try { const r = await api('/teleports'); tpList = r.list; tpMaps = r.maps || []; tpMapsFill(); tpRender(); } catch (e) { say($('zonesMsg'), e.message, true); }
+}
+function tpMapsFill() {
+  const sel = $('tpWorld'), keep = sel.value;
+  sel.replaceChildren(...tpMaps.map((n) => { const o = document.createElement('option'); o.value = o.textContent = n; return o; }));
+  if (tpMaps.includes(keep)) sel.value = keep;
+}
+$('tpAdd').onsubmit = async (ev) => {
+  ev.preventDefault();
+  try {
+    const r = await api('/teleports/custom', { method: 'POST', body: JSON.stringify({ op: 'add', name: $('tpName').value, world: $('tpWorld').value, type: $('tpType').value, desc: $('tpDesc').value, pos: [$('tpX').value, $('tpY').value, $('tpZ').value] }) });
+    tpList = r.list; tpRender();
+    say($('zonesMsg'), `Teleporte "${$('tpName').value}" salvo: aparece na janela V do jogo (quem já está com ela aberta fecha e abre de novo).`);
+    $('tpAdd').reset();
+  } catch (e) { say($('zonesMsg'), e.message, true); }
+};
+function tpRender() {
+  const q = $('tpFilter').value.trim().toLowerCase();
+  const rows = $('tpRows');
+  rows.replaceChildren();
+  const shown = tpList.filter((t) => !q || `${t.name} ${t.world}`.toLowerCase().includes(q));
+  for (const t of shown) {
+    const tr = document.createElement('tr');
+    const cell = (el) => { const td = document.createElement('td'); td.append(el); tr.append(td); return td; };
+    cell(document.createTextNode(t.name + (t.custom ? ' ✎' : '') + (t.own ? ' ★' : '')));
+    cell(document.createTextNode(t.world));
+    const inputs = t.pos.map((v) => { const i = document.createElement('input'); i.type = 'number'; i.step = '0.01'; i.value = v; i.className = 'tp-num'; cell(i); return i; });
+    const save = document.createElement('button'); save.className = 'btn teal'; save.type = 'button'; save.textContent = 'Salvar';
+    const reset = document.createElement('button'); reset.className = 'btn'; reset.type = 'button'; reset.textContent = 'Restaurar'; reset.hidden = !t.custom;
+    const put = async (pos) => {
+      if (t.own) {
+        try { const r = await api('/teleports/custom', { method: 'POST', body: JSON.stringify({ op: 'add', name: t.name, world: t.world, type: t.type, desc: t.desc, pos }) }); say($('zonesMsg'), `${t.name}: salvo em ${pos.join(', ')}.`); tpList = r.list; tpRender(); } catch (e) { say($('zonesMsg'), e.message, true); }
+        return;
+      }
+      try { const r = await api('/teleports', { method: 'PUT', body: JSON.stringify({ world: t.world, name: t.name, pos }) }); say($('zonesMsg'), pos ? `${t.name}: salvo em ${pos.join(', ')}.` : `${t.name}: voltou à posição original.`); tpList = r.list; tpRender(); } catch (e) { say($('zonesMsg'), e.message, true); }
+    };
+    save.onclick = () => put(inputs.map((i) => Number(i.value)));
+    reset.onclick = () => put(null);
+    const act = cell(save); act.append(reset);
+    if (t.own) {
+      const del = document.createElement('button'); del.className = 'btn'; del.type = 'button'; del.textContent = 'Apagar';
+      del.onclick = async () => { if (!confirm(`Apagar o teleporte "${t.name}"?`)) return; try { tpList = (await api('/teleports/custom', { method: 'POST', body: JSON.stringify({ op: 'del', name: t.name }) })).list; tpRender(); } catch (e) { say($('zonesMsg'), e.message, true); } };
+      act.append(del);
+    }
+    rows.append(tr);
+  }
+  $('tpCount').textContent = `${shown.length} de ${tpList.length}`;
+}
+$('tpFilter').oninput = tpRender;
 
 // ---------------- world: anúncio para todos ----------------
 $('annText').oninput = () => {
@@ -792,3 +848,117 @@ $('skGrid').addEventListener('mouseover', (ev) => {
 });
 $('skGrid').addEventListener('mousemove', (ev) => { if (!skTip.hidden) skMove(ev); });
 $('skGrid').addEventListener('mouseout', (ev) => { if (!ev.relatedTarget || !ev.relatedTarget.closest || !ev.relatedTarget.closest('.skcell')) skTip.hidden = true; });
+
+// ---------------- quests ----------------
+let qList = [], qMaps = [];
+async function loadQuests() {
+  try { qList = (await api('/quests')).quests; qRender(); } catch (e) { say($('qMsg'), e.message, true); }
+}
+function qRender() {
+  const rows = $('qRows');
+  rows.replaceChildren();
+  if (!qList.length) { rows.innerHTML = '<tr><td colspan="6" class="empty">Nenhuma quest ainda. Clique em "＋ Nova quest".</td></tr>'; return; }
+  for (const q of qList) {
+    const tr = document.createElement('tr');
+    const cell = (t) => { const td = document.createElement('td'); td.textContent = t; tr.append(td); return td; };
+    cell(q.name); cell(q.npc);
+    cell((q.need || []).map((g, i) => g.count + '× ' + (q.needNames?.[i] || g.item)).join(', ') || '—');
+    cell(q.party ? 'Party ' + q.party.min + '+' + (q.party.leaderOnly === false ? '' : ' (líder)') : '—');
+    cell(q.enabled === false ? 'desligada' : 'ativa');
+    const act = document.createElement('td');
+    const edit = document.createElement('button'); edit.className = 'btn'; edit.type = 'button'; edit.textContent = 'Editar'; edit.onclick = () => qEdit(q);
+    const del = document.createElement('button'); del.className = 'btn'; del.type = 'button'; del.textContent = 'Apagar';
+    del.onclick = async () => { if (!confirm('Apagar a quest "' + q.name + '"?')) return; try { qList = (await api('/quests/delete', { method: 'POST', body: JSON.stringify({ id: q.id }) })).quests; qRender(); say($('qMsg'), 'Quest apagada.'); } catch (e) { say($('qMsg'), e.message, true); } };
+    act.append(edit, ' ', del); tr.append(act);
+    rows.append(tr);
+  }
+}
+
+// linhas de item pedido e de farm
+let itemTimer = 0;
+function itemInput(value) {
+  const i = document.createElement('input'); i.setAttribute('list', 'itemList'); i.placeholder = 'item: nome ou II_…'; i.value = value || ''; i.className = 'q-item'; i.autocomplete = 'off';
+  i.oninput = () => { clearTimeout(itemTimer); itemTimer = setTimeout(async () => {
+    const q = i.value.trim(); if (q.length < 2) return;
+    try { const r = await api('/items?size=10&q=' + encodeURIComponent(q)); $('itemList').replaceChildren(...r.rows.map((d) => { const o = document.createElement('option'); o.value = d.symbol; o.label = d.name; o.textContent = d.name; return o; })); } catch { /* sem busca */ }
+  }, 250); };
+  return i;
+}
+function qRow(box, fields) {
+  const row = document.createElement('div'); row.className = 'q-row';
+  for (const f of fields) row.append(f);
+  const x = document.createElement('button'); x.type = 'button'; x.className = 'btn'; x.textContent = '✕'; x.title = 'Remover'; x.onclick = () => row.remove();
+  row.append(x); box.append(row); return row;
+}
+const numIn = (v, ph, w = 80) => { const i = document.createElement('input'); i.type = 'number'; i.value = v; i.placeholder = ph; i.style.width = w + 'px'; i.min = 0; return i; };
+const txtIn = (v, ph, w = 140) => { const i = document.createElement('input'); i.value = v || ''; i.placeholder = ph; i.style.width = w + 'px'; return i; };
+function addNeed(g) { const it = itemInput(g?.item), n = numIn(g?.count ?? 1, 'qtd'); n.min = 1; qRow($('qNeed'), [it, n]).dataset.kind = 'need'; }
+function addDrop(g) {
+  const w = document.createElement('select'); w.innerHTML = '<option value="">qualquer mapa</option>' + qMaps.map((m) => '<option>' + m + '</option>').join(''); w.value = g?.world || '';
+  qRow($('qDrops'), [itemInput(g?.item), txtIn(g?.mob === undefined ? '*' : g.mob, 'monstro MI_… ou *', 150), numIn(g?.chance ?? 100, '% chance', 70), w, txtIn(g?.near?.point, 'ponto (zona)', 110), numIn(g?.near?.radius ?? 60, 'raio', 70)]).dataset.kind = 'drop';
+}
+$('qAddNeed').onclick = () => addNeed();
+$('qAddDrop').onclick = () => addDrop();
+
+function qOpen(q) {
+  $('qForm').hidden = false;
+  $('qFormTitle').textContent = q ? 'Editar quest' : 'Nova quest';
+  $('qOrig').value = q?.id || '';
+  $('qName').value = q?.name || ''; $('qNpc').value = q?.npc || ''; $('qLevel').value = q?.minLevel || 1;
+  $('qOffer').value = q?.text?.offer || ''; $('qProgress').value = q?.text?.progress || ''; $('qDone').value = q?.text?.done || '';
+  $('qParty').checked = !!q?.party; $('qPartyMin').value = q?.party?.min || 2; $('qLeader').checked = q?.party ? q.party.leaderOnly !== false : true;
+  $('qExp').value = q?.reward?.exp || 0; $('qPenya').value = q?.reward?.penya || 0;
+  const tw = $('qTpWorld'); tw.innerHTML = '<option value="">não teleportar</option>' + qMaps.map((m) => '<option>' + m + '</option>').join(''); tw.value = q?.reward?.teleport?.world || '';
+  $('qTpPoint').value = q?.reward?.teleport?.point || ''; $('qEvent').value = q?.reward?.event || '';
+  $('qEnabled').checked = q ? q.enabled !== false : true; $('qRepeat').checked = !!q?.repeatable;
+  $('qNeed').replaceChildren(); $('qDrops').replaceChildren();
+  for (const g of q?.need || []) addNeed(g);
+  if (!q?.need?.length) addNeed();
+  for (const g of q?.drops || []) addDrop(g);
+  $('qForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+const qEdit = (q) => qOpen(q);
+$('qNew').onclick = () => qOpen(null);
+$('qCancel').onclick = () => { $('qForm').hidden = true; };
+$('qForm').onsubmit = async (ev) => {
+  ev.preventDefault();
+  const rows = (kind) => [...document.querySelectorAll('#view-quests .q-row[data-kind="' + kind + '"]')].map((r) => [...r.querySelectorAll('input,select')].map((e) => e.value));
+  const body = {
+    originalId: $('qOrig').value, name: $('qName').value, npc: $('qNpc').value, minLevel: $('qLevel').value,
+    offer: $('qOffer').value, progress: $('qProgress').value, done: $('qDone').value,
+    need: rows('need').map(([item, count]) => ({ item: item.trim(), count })).filter((g) => g.item),
+    drops: rows('drop').map(([item, mob, chance, world, point, radius]) => ({ item: item.trim(), mob: mob.trim(), chance, world, ...(point.trim() ? { near: { point: point.trim(), radius } } : {}) })).filter((g) => g.item),
+    partyMin: $('qParty').checked ? $('qPartyMin').value : 0, leaderOnly: $('qLeader').checked,
+    reward: { exp: $('qExp').value, penya: $('qPenya').value, teleportWorld: $('qTpWorld').value, teleportPoint: $('qTpPoint').value, event: $('qEvent').value },
+    enabled: $('qEnabled').checked, repeatable: $('qRepeat').checked,
+  };
+  try { qList = (await api('/quests', { method: 'PUT', body: JSON.stringify(body) })).quests; qRender(); $('qForm').hidden = true; say($('qMsg'), 'Quest "' + body.name + '" salva. O jogo já usa.'); } catch (e) { say($('qMsg'), e.message, true); }
+};
+
+// menu NPC: todos os NPCs com ID, nome, mapa e posição
+let npcTimer = 0;
+async function npcLoad() {
+  const sel = $('npcWorld'), w = sel.value || 'all';
+  try {
+    const r = await api('/npcs?world=' + encodeURIComponent(w) + '&q=' + encodeURIComponent($('npcQ').value.trim()));
+    qMaps = r.maps;
+    if (sel.options.length !== r.maps.length + 2) { sel.innerHTML = '<option value="all">Todos os mapas (com posição)</option>' + r.maps.map((m) => '<option>' + m + '</option>').join('') + '<option value="*">★ Todos os NPCs do jogo (para pôr no mapa)</option>'; sel.value = w; }
+    $('npcKeys').replaceChildren(...[...new Map(r.list.map((n) => [n.key, n])).values()].slice(0, 300).map((n) => { const o = document.createElement('option'); o.value = n.key; o.label = n.name; return o; }));
+    const rows = $('npcRows'); rows.replaceChildren();
+    for (const n of r.list) {
+      const tr = document.createElement('tr');
+      const idCell = document.createElement('td'); const code = document.createElement('code'); code.textContent = n.key; code.style.cursor = 'pointer'; code.title = 'Clique para copiar o ID';
+      code.onclick = async () => { try { await navigator.clipboard.writeText(n.key); say($('npcMsg'), 'ID "' + n.key + '" copiado.'); } catch { say($('npcMsg'), 'ID: ' + n.key); } };
+      idCell.append(code); tr.append(idCell);
+      for (const v of [n.name, n.map ?? '', n.x ?? '', n.y ?? '', n.z ?? '']) { const td = document.createElement('td'); td.textContent = v; tr.append(td); }
+      const td = document.createElement('td'); const b = document.createElement('button'); b.className = 'btn'; b.type = 'button'; b.textContent = 'Usar numa quest';
+      b.onclick = () => { qPendingNpc = n.key; location.hash = '#quests'; };
+      td.append(b); tr.append(td); rows.append(tr);
+    }
+    $('npcCount').textContent = (r.total ?? r.list.length) + ' NPCs' + (r.list.length < (r.total ?? 0) ? ' (mostrando ' + r.list.length + '; filtre para ver os outros)' : '');
+  } catch (e) { say($('npcMsg'), e.message, true); }
+}
+let qPendingNpc = '';
+addEventListener('hashchange', () => { if (location.hash === '#quests' && qPendingNpc) setTimeout(() => { qOpen(null); $('qNpc').value = qPendingNpc; say($('qMsg'), 'ID "' + qPendingNpc + '" colocado no formulário.'); qPendingNpc = ''; }, 300); });
+$('npcWorld').onchange = npcLoad;
+$('npcQ').oninput = () => { clearTimeout(npcTimer); npcTimer = setTimeout(npcLoad, 250); };

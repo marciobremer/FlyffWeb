@@ -1,5 +1,7 @@
 import type http from 'node:http';
-import { RES_DIR, WORLD } from '../common/config';
+import fs from 'node:fs';
+import path from 'node:path';
+import { EXTRA_DIR, RES_DIR, WORLD } from '../common/config';
 import { ServerWorld } from './world';
 import { ItemCatalog } from '../common/items';
 import { Inventory } from '../character/inventory';
@@ -20,6 +22,25 @@ const EXTRA_WORLDS: Record<string, { id: number; define: string; start: [number,
   WdRartesia: { id: 4, define: 'WI_WORLD_RARTESIA', start: [1400, 120, 1287] }, // Traseia
   WdDarkRartesia: { id: 5, define: 'WI_WORLD_DARKRARTESIA', start: [1400, 120, 1287] }, // Dark Traseia
 };
+
+/**
+ * Mapas do projeto (não existem na Resource do FlyFF): `data/res-extra/World/<nome>/l2world.json` = `{ id, define, start }`, ao lado do
+ * `<nome>.wld`. Gerados por `npm run l2world` (ver tools/cruma/README.md). O `id` precisa ser único (use 100 ou mais).
+ */
+function projectWorlds(): Record<string, { id: number; define: string; start: [number, number, number] }> {
+  const out: Record<string, { id: number; define: string; start: [number, number, number] }> = {};
+  const root = path.join(EXTRA_DIR, 'World');
+  let names: string[] = [];
+  try { names = fs.readdirSync(root); } catch { return out; }
+  for (const name of names) {
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(root, name, 'l2world.json'), 'utf8')) as { id?: number; define?: string; start?: number[] };
+      if (!Number.isInteger(j.id) || typeof j.define !== 'string' || !Array.isArray(j.start) || j.start.length !== 3) continue;
+      out[name] = { id: j.id!, define: j.define, start: [j.start[0], j.start[1], j.start[2]] };
+    } catch { /* pasta sem l2world.json */ }
+  }
+  return out;
+}
 
 /**
  * Liga um mundo (um mapa) num servidor HTTP: mobs, regras de combate/drops/lojas/skills, inventário em memória e o
@@ -43,8 +64,9 @@ export function startWorld(server: http.Server, world = WORLD, extra: Pick<Realt
   // Azria e os outros mapas extras: mobs e NPCs próprios (EXTRA_WORLDS=WdKebaras,WdCisland,WdRartesia,WdDarkRartesia — o padrão; vazio para nenhum)
   const extraWorlds: WorldRuntime[] = [];
   const pre = new Map<string, ServerWorld>();
-  for (const name of (process.env.EXTRA_WORLDS ?? 'WdKebaras,WdCisland,WdRartesia,WdDarkRartesia').split(',').map((s) => s.trim()).filter(Boolean)) {
-    const info = EXTRA_WORLDS[name];
+  const mine = projectWorlds();
+  for (const name of (process.env.EXTRA_WORLDS ?? ['WdKebaras', 'WdCisland', 'WdRartesia', 'WdDarkRartesia', ...Object.keys(mine)].join(',')).split(',').map((s) => s.trim()).filter(Boolean)) {
+    const info = EXTRA_WORLDS[name] ?? mine[name];
     if (!info || name === world) continue;
     try {
       const xw = new ServerWorld(RES_DIR, name).load();
@@ -88,6 +110,7 @@ export function startWorld(server: http.Server, world = WORLD, extra: Pick<Realt
   };
   return attachRealtime(server, {
     mainPortals: portalsOf(sw), loadWorld, loadInstance, worldInfo: (k) => (typeof k === 'number' ? table.byId.get(k) : table.byDefine.get(k)), instanceRules: rules,
+    worldByName: (n) => [...table.byDefine.values()].find((w) => w.name.toLowerCase() === n.toLowerCase()),
     mainWorld: world, worlds: extraWorlds,
     mobs, inventory, combat, drops: new DropRules(RES_DIR, items),
     shops: new ShopCatalog(RES_DIR, items, world), skills: new SkillCatalog(RES_DIR, items), ...extra,

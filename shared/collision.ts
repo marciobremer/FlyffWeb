@@ -22,9 +22,16 @@ export class CollisionWorld {
   /** incrementado a cada troca, para descartar construções assíncronas antigas do mesmo tile */
   private version = new Map<string, number>();
 
+  /** só leitura: os triângulos (x, y, z FlyFF, 3 vértices cada) de cada tile; chave 'x:…' = props .glb do editor. O editor os desenha como colisões. */
+  *entries(): IterableIterator<[string, Float32Array]> { for (const [k, t] of this.tiles) yield [k, t.tris]; }
+
   get triangleCount() { let n = 0; for (const t of this.tiles.values()) n += t.ny.length; return n; }
 
   clear() { this.tiles.clear(); this.version.clear(); }
+
+  /** triângulos extras (props .glb do editor) em coordenadas FlyFF: ficam fora dos tiles do mapa, com chave própria */
+  setExtra(key: string, tris: Float32Array) { if (tris.length >= 9) this.tiles.set('x:' + key, build(tris)); }
+  clearExtras() { for (const k of [...this.tiles.keys()]) if (k.startsWith('x:')) this.tiles.delete(k); }
   removeTile(key: string) { this.tiles.delete(key); this.version.set(key, (this.version.get(key) ?? 0) + 1); }
 
   /** (Re)constrói o tile a partir dos objetos e de um carregador de .o3d (o modelo de cada objeto). */

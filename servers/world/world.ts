@@ -5,6 +5,9 @@ import { parseLnd } from '../../shared/formats/lnd';
 import { decodeText, parseRgn, parseTxtTxt, type Region, type Respawn } from '../../shared/formats/rgn';
 import { parseDefines } from '../../shared/formats/inc';
 import { MAP_SIZE } from '../../shared/formats/types';
+import { EXTRA_DIR } from '../common/config';
+import { editsMtime, loadEdits } from '../common/worldedits';
+import { inOpenArea, type OpenArea } from '../../shared/worldedits';
 
 /**
  * Dados do mundo que o servidor precisa para simular (lidos direto da pasta Resource): tamanho do mapa (.wld), respawns (.rgn),
@@ -45,10 +48,14 @@ export class ServerWorld {
     try { const b = fs.readFileSync(p); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer; } catch { return null; }
   }
   /** arquivo da pasta do mundo sem diferenciar maiúsculas (o Windows não liga, o Linux sim) */
-  private worldFile(file: string) { return path.join(this.resDir, 'World', this.name, this.files.get(file.toLowerCase()) ?? file); }
+  private worldFile(file: string) { return path.join(this.dir, this.files.get(file.toLowerCase()) ?? file); }
+  /** pasta do mundo: `Resource/World/<nome>`, ou `data/res-extra/World/<nome>` (mapas do projeto, como o do L2) se não houver na Resource */
+  private dir = '';
 
   load() {
-    const dir = path.join(this.resDir, 'World', this.name);
+    const own = path.join(this.resDir, 'World', this.name), extra = path.join(EXTRA_DIR, 'World', this.name);
+    const dir = fs.existsSync(own) ? own : extra;
+    this.dir = dir;
     for (const f of fs.readdirSync(dir)) this.files.set(f.toLowerCase(), f);
     const wld = this.ab(this.worldFile(`${this.name}.wld`));
     if (!wld) throw new Error(`Não achei ${this.name}.wld em ${dir}`);
@@ -95,7 +102,22 @@ export class ServerWorld {
     const mpu = this.wld.mpu;
     const ix = Math.min(MAP_SIZE, Math.max(0, Math.round((x - tx * s) / mpu)));
     const iz = Math.min(MAP_SIZE, Math.max(0, Math.round((z - tz * s) / mpu)));
-    return a[iz * (MAP_SIZE + 1) + ix];
+    const v = a[iz * (MAP_SIZE + 1) + ix];
+    return (v === 1 || v === 3) && inOpenArea(this.openAreas(), x, z) ? 0 : v; // áreas liberadas no editor (//liberar)
+  }
+
+  private open: OpenArea[] | undefined;
+  private openMtime = -1;
+  private openCheck = 0;
+  /** áreas liberadas do mundo (world-edits `openAreas`), relidas quando o arquivo muda (confere a cada 2 s) */
+  openAreas(): OpenArea[] | undefined {
+    const now = Date.now();
+    if (now - this.openCheck > 2000) {
+      this.openCheck = now;
+      const m = editsMtime(this.name);
+      if (m !== this.openMtime) { this.openMtime = m; this.open = loadEdits(this.name).openAreas; }
+    }
+    return this.open;
   }
 
   walkable(x: number, z: number) { const a = this.attrAt(x, z); return a !== 1 && a !== 3 && a !== 4; }

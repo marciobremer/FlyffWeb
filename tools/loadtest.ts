@@ -62,31 +62,44 @@ function runWorker(cfg: LoadConfig, mine: { token: string; characterId: number; 
     const [x, z] = randomPoint();
     const b: Bot = { ws: null, joined: false, p: [x, cfg.y, z], to: [x, z], h: 0, moving: false, waitUntil: 0, lastStates: 0, nextPing: 0, nextChat: Date.now() + Math.random() * CHAT_MS, sentStand: true };
     bots.push(b);
-    const ws = new WebSocket(cfg.url, { perMessageDeflate: false, handshakeTimeout: 15000 });
-    b.ws = ws;
-    ws.on('open', () => send(b, { t: 'join', token, characterId, p: b.p }));
-    ws.on('message', (data: Buffer) => {
-      rxBytes += data.length; rxMsgs++;
-      const head = data.toString('latin1', 0, 16);
-      if (head.startsWith('{"t":"states"')) {
-        const now = Date.now();
-        if (b.lastStates && now - b.lastStates < 3000) push(gaps, now - b.lastStates);
-        b.lastStates = now;
-      } else if (head.startsWith('{"t":"pong"')) {
-        const m = JSON.parse(String(data)) as { c: number };
-        push(rtts, performance.now() - m.c);
-      } else if (head.startsWith('{"t":"welcome"')) {
-        const m = JSON.parse(String(data)) as { p: [number, number, number] };
-        b.p = [...m.p]; b.to = [m.p[0], m.p[2]]; b.joined = true; b.nextPing = Date.now() + Math.random() * PING_MS;
-      } else if (head.startsWith('{"t":"teleport"')) {
-        const m = JSON.parse(String(data)) as { p: [number, number, number] };
-        b.p = [...m.p]; pulls++;
-      } else if (head.startsWith('{"t":"error"')) {
-        fail((JSON.parse(String(data)) as { error?: string }).error ?? 'erro do servidor');
-      }
-    });
-    ws.on('error', (e) => { if (!b.joined) fail(e.message); });
-    ws.on('close', () => { if (b.joined && !stopping) fail('conexão fechada pelo servidor'); b.joined = false; b.ws = null; });
+    /** abre a conexão; o servidor pode mandar o jogo para o WebSocket dedicado do Rust (`redirect`), como faz o cliente */
+    const open = (url: string, canRedirect: boolean) => {
+      const ws = new WebSocket(url, { perMessageDeflate: false, handshakeTimeout: 15000 });
+      b.ws = ws;
+      let moved = false, bad = false;
+      ws.on('open', () => send(b, { t: 'join', token, characterId, p: b.p }));
+      ws.on('message', (data: Buffer) => {
+        rxBytes += data.length; rxMsgs++;
+        const head = data.toString('latin1', 0, 16);
+        if (head.startsWith('{"t":"states"')) {
+          const now = Date.now();
+          if (b.lastStates && now - b.lastStates < 3000) push(gaps, now - b.lastStates);
+          b.lastStates = now;
+        } else if (head.startsWith('{"t":"pong"')) {
+          const m = JSON.parse(String(data)) as { c: number };
+          push(rtts, performance.now() - m.c);
+        } else if (head.startsWith('{"t":"welcome"')) {
+          const m = JSON.parse(String(data)) as { p: [number, number, number] };
+          b.p = [...m.p]; b.to = [m.p[0], m.p[2]]; b.joined = true; b.nextPing = Date.now() + Math.random() * PING_MS;
+        } else if (head.startsWith('{"t":"teleport"')) {
+          const m = JSON.parse(String(data)) as { p: [number, number, number] };
+          b.p = [...m.p]; pulls++;
+        } else if (head.startsWith('{"t":"redirect"') && canRedirect) {
+          const m = JSON.parse(String(data)) as { port?: number };
+          if (Number.isInteger(m.port)) { moved = true; const u = new URL(url); u.port = String(m.port); open(u.toString(), false); }
+        } else if (head.startsWith('{"t":"error"')) {
+          bad = true; fail((JSON.parse(String(data)) as { error?: string }).error ?? 'erro do servidor');
+        }
+      });
+      ws.on('error', (e) => { if (!b.joined) { bad = true; fail(e.message); } });
+      ws.on('close', () => {
+        if (moved) return; // a conexão nova assume
+        if (b.joined && !stopping) fail('conexão fechada pelo servidor');
+        else if (!b.joined && !stopping && !bad) fail('conexão fechada antes de entrar no mundo');
+        b.joined = false; b.ws = null;
+      });
+    };
+    open(cfg.url, true);
   }
 
   // entrada escalonada: cada bot no seu horário (a rampa é global, repartida entre os workers)

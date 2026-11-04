@@ -4,6 +4,7 @@ import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js
 import type { Landscape } from '../shared/formats/lnd';
 import { OT, type WorldObject } from '../shared/formats/types';
 import { objectMatrix } from '../shared/math';
+import { tuneGizmo } from './gizmo';
 
 /**
  * Modo edição de mundo (MVP): seleciona objetos estáticos dos tiles, move/gira (Y)/escala, apaga, duplica, desfaz, e exporta as
@@ -47,6 +48,7 @@ export class WorldEditor {
 
   constructor(private ctx: EditContext) {
     this.tc = new TransformControls(ctx.camera, ctx.dom);
+    tuneGizmo(this.tc, ctx.camera);
     this.tc.setSpace('world');
     ctx.scene.add(this.proxy, this.tc.getHelper());
     this.tc.getHelper().visible = false;
@@ -59,10 +61,21 @@ export class WorldEditor {
   private dragBefore: Snap | null = null;
 
   setOnChange(fn: () => void) { this.onChange = fn; }
+
+  /** depois de salvar no mapa: o que está na tela passa a ser o estado salvo (zera os contadores e o histórico) */
+  markSaved() {
+    this.original = new WeakMap();
+    this.added.clear();
+    this.deleted.clear();
+    this.undoStack = [];
+    this.onChange();
+  }
   get dragging() { return this.tc.dragging; }
   /** o ponteiro está sobre o gizmo? (evita selecionar outro objeto ao clicar numa alça) */
   get hoveringGizmo() { return this.tc.axis !== null; }
   get hasSelection() { return !!this.selected; }
+  /** posição (espaço da cena) do objeto selecionado, para a tecla F da câmera */
+  get focusPoint(): Vector3 | null { return this.selected ? this.proxy.position.clone() : null; }
   get stats() { return { modified: this.countModified(), added: this.added.size, deleted: this.deleted.size, undo: this.undoStack.length }; }
 
   setEnabled(on: boolean) {
@@ -182,6 +195,16 @@ export class WorldEditor {
     this.undoStack.push({ kind: 'delete', tile: sel.tile, obj: sel.obj, wasAdded });
     this.deselect();
     this.ctx.rebuild(sel.tile);
+  }
+
+  /** objeto novo (do catálogo mdlObj) no tile indicado, na posição do mundo; fica no histórico e entra no JSON exportado */
+  addObject(tile: EditableTile, modelId: number, pos: [number, number, number]) {
+    const obj: WorldObject = { type: OT.OBJ, modelId, pos: [...pos], rot: [0, 0, 0], scale: [1, 1, 1], motion: 0, ai: 0, ai2: 0 };
+    tile.land.objects.push(obj);
+    this.added.add(obj);
+    this.undoStack.push({ kind: 'add', tile, obj });
+    this.ctx.rebuild(tile);
+    this.onChange();
   }
 
   duplicateSelected() {

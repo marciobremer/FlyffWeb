@@ -8,7 +8,8 @@ import { readJson } from './common/http';
 import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
-import { DIST } from './common/config';
+import { join as joinPath } from 'node:path';
+import { DIST, EXTRA_DIR, RES_DIR } from './common/config';
 import { bootTotal, saveBootManifest } from './common/bootmanifest';
 
 /** `/assets/game-<hash>.js` do build atual (relido só quando o index.html muda) */
@@ -70,6 +71,18 @@ export function apiMiddleware() {
           const saved = saveEdits(world, await readJson(req, 1_000_000));
           return saved ? send(res, 200, saved) : send(res, 400, { error: 'Nome de mundo inválido.' });
         }
+      }
+      if (path === '/gapi/worlds') {
+        // mapas que existem: os da Resource (jogo) e os do projeto em data/res-extra/World (ex.: os do L2); só pasta com <nome>.wld conta
+        const list = (root: string) => {
+          try {
+            return fs.readdirSync(joinPath(root, 'World'), { withFileTypes: true })
+              .filter((d) => d.isDirectory() && fs.existsSync(joinPath(root, 'World', d.name, `${d.name}.wld`))).map((d) => d.name).sort((a, b) => a.localeCompare(b));
+          } catch { return []; }
+        };
+        const main = list(RES_DIR), extra = list(EXTRA_DIR).filter((n) => !main.includes(n));
+        res.setHeader('cache-control', 'no-cache');
+        return send(res, 200, { main, extra });
       }
       send(res, 404, { error: 'Rota desconhecida.' });
     };

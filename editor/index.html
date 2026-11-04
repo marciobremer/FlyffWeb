@@ -9,161 +9,285 @@
 </head>
 <body>
   <canvas id="view"></canvas>
-  <aside id="panel">
-    <h1>FlyFF World Editor</h1>
-    <div id="status">Carregando…</div>
 
-    <fieldset>
-      <legend>Mundo</legend>
-      <label>Mapa <input id="worldName" value="WdMadrigal" /></label>
-      <button id="reload">Abrir</button>
-      <label>Raio de tiles <input id="radius" type="range" min="1" max="8" value="3" /> <span id="radiusVal">3</span></label>
-      <label>Cor do terreno
-        <select id="colorMode">
-          <option value="textures">Texturas reais</option>
-          <option value="layers">Camadas (cores)</option>
-          <option value="attrs">Atributos (NoWalk/NoFly/NoMove/Die)</option>
-          <option value="height">Altura</option>
-        </select>
-      </label>
-    </fieldset>
+  <!-- ícones: um único traço (1,7 px), desenhados aqui e usados com <use> -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-select" viewBox="0 0 24 24"><path d="M5 4l5.5 15 2.3-6.2L19 10.5z"/></symbol>
+      <symbol id="i-move" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-2.5 2.5M12 3l2.5 2.5M12 21l-2.5-2.5M12 21l2.5-2.5M3 12l2.5-2.5M3 12l2.5 2.5M21 12l-2.5-2.5M21 12l-2.5 2.5"/></symbol>
+      <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v4.5h-4.5"/></symbol>
+      <symbol id="i-scale" viewBox="0 0 24 24"><path d="M4 20l16-16M4 20h6M4 20v-6M20 4h-6M20 4v6"/></symbol>
+      <symbol id="i-snap" viewBox="0 0 24 24"><path d="M5 4v7a7 7 0 0 0 14 0V4M5 8h4M15 8h4"/></symbol>
+      <symbol id="i-ground" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></symbol>
+      <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 7L4 12l5 5M4 12h10a6 6 0 0 1 0 12"/></symbol>
+      <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6"/></symbol>
+      <symbol id="i-cube" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5"/></symbol>
+      <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+      <symbol id="i-prop" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5M3 17.5l9 5 9-5" transform="translate(0 -1.5)"/></symbol>
+      <symbol id="i-mountain" viewBox="0 0 24 24"><path d="M3 20l6.5-11 4 6.5 2.5-3.5L21 20zM9.5 9l1.8 3"/></symbol>
+      <symbol id="i-erosion" viewBox="0 0 24 24"><path d="M12 3v8M8.5 7.5L12 11l3.5-3.5M3 16c3 0 3-3 6-3s3 3 6 3 3-3 6-3M3 21h18"/></symbol>
+      <symbol id="i-flat" viewBox="0 0 24 24"><path d="M3 12h18M12 4v5M9 6.500l3 3 3-3M12 20v-5M9 17.500l3-3 3 3"/></symbol>
+      <symbol id="i-smooth" viewBox="0 0 24 24"><path d="M3 12c3-6 6-6 9 0s6 6 9 0M3 19h18"/></symbol>
+      <symbol id="i-collide" viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><rect x="9" y="9" width="6" height="6" rx="1"/></symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11.5a7 7 0 0 0-14 0C5 14.800 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+      <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+      <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9-5.2-2.8-5.2 2.8 1-5.9-4.3-4.1 5.9-.8z"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    </defs>
+  </svg>
 
-    <fieldset>
-      <legend>Ambiente</legend>
-      <label>Hora <input id="hour" type="range" min="0" max="23.75" step="0.25" value="12" /> <span id="envInfo">12:00</span></label>
-      <label><input type="checkbox" id="worldLight" checked /> Iluminação do mundo</label>
-      <label><input type="checkbox" id="shadows" checked /> Sombras</label>
-      <label>Inclinação do sol <input id="sunTilt" type="range" min="0" max="70" step="5" value="30" /></label>
-      <label><input type="checkbox" id="worldFog" /> Névoa do mundo (.wld/continente)</label>
-      <label><input type="checkbox" id="showSky" checked /> Skybox e nuvens</label>
-      <label><input type="checkbox" id="showWater" checked /> Água e nuvens do mar</label>
+  <header id="toolbar" role="toolbar" aria-label="Ferramentas do editor">
+    <div class="tgroup" role="group" aria-label="O que editar">
+      <button id="editToggle" class="tmode" title="Editar objetos do mapa" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-cube"/></svg><span>Objetos</span></button>
+      <button id="npcToggle" class="tmode" title="Editar NPCs" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-user"/></svg><span>NPCs</span></button>
+      <button id="propToggle" class="tmode" title="Editar props 3D (.glb)" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-prop"/></svg><span>Props</span></button>
+      <button id="terrainToggle" class="tmode" title="Esculpir o terreno: subir, descer, suavizar e nivelar" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-mountain"/></svg><span>Terreno</span></button>
+      <button id="ptToggle" class="tmode" title="Marcar pontos de teleporte" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-pin"/></svg><span>Pontos</span></button>
+    </div>
+    <span class="tsep"></span>
+    <div class="tgroup" role="group" aria-label="Ferramentas">
+      <button class="tbtn" data-act="add" title="Adicionar: escolha um item na lista à esquerda (Esc cancela)" aria-label="Adicionar: escolha um item na lista à esquerda (Esc cancela)" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg></button>
+      <button class="tbtn" data-act="select" title="Selecionar (Esc)" aria-label="Selecionar (Esc)" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-select"/></svg></button>
+      <button class="tbtn" data-act="translate" title="Mover (W)" aria-label="Mover (W)" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-move"/></svg></button>
+      <button class="tbtn" data-act="rotate" title="Girar (E)" aria-label="Girar (E)" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-rotate"/></svg></button>
+      <button class="tbtn" data-act="scale" title="Escalar (R)" aria-label="Escalar (R)" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-scale"/></svg></button>
+      <label class="tbtn" title="Snap: mover em passos de 1, girar de 15° e escalar de 0,25"><svg class="i" aria-hidden="true"><use href="#i-snap"/></svg><input id="snapToggle" type="checkbox" checked aria-label="Snap" /></label>
+    </div>
+    <span class="tsep"></span>
+    <div class="tgroup" role="group" aria-label="Ações">
+      <button class="tbtn" data-act="ground" title="Ao chão (G)" aria-label="Ao chão (G)"><svg class="i" aria-hidden="true"><use href="#i-ground"/></svg></button>
+      <button class="tbtn" data-act="dup" title="Duplicar (Ctrl+D)" aria-label="Duplicar (Ctrl+D)"><svg class="i" aria-hidden="true"><use href="#i-copy"/></svg></button>
+      <button class="tbtn" data-act="del" title="Apagar (Del)" aria-label="Apagar (Del)"><svg class="i" aria-hidden="true"><use href="#i-trash"/></svg></button>
+      <button class="tbtn" data-act="undo" title="Desfazer (Ctrl+Z)" aria-label="Desfazer (Ctrl+Z)"><svg class="i" aria-hidden="true"><use href="#i-undo"/></svg></button>
+      <button class="tbtn" data-act="save" title="Salvar tudo no mapa: objetos, NPCs, props e terreno" aria-label="Salvar tudo no mapa"><svg class="i" aria-hidden="true"><use href="#i-save"/></svg></button>
+    </div>
+    <div class="tgroup" id="terrainTools" role="group" aria-label="Pincel do terreno" hidden>
+      <span class="tsep"></span>
+      <button class="tbtn brush" data-brush="raise" title="Montanha: clique, arraste o mouse para cima e solte (Shift: sobe e desce)" aria-label="Montanha" aria-pressed="true"><svg class="i" aria-hidden="true"><use href="#i-mountain"/></svg></button>
+      <button class="tbtn brush" data-brush="lower" title="Erosão: clique, arraste o mouse para baixo e solte (Shift: sobe e desce)" aria-label="Erosão" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-erosion"/></svg></button>
+      <button class="tbtn brush" data-brush="flatten" title="Plano: segure e passe sobre a área para deixar tudo na altura do primeiro ponto" aria-label="Plano" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-flat"/></svg></button>
+      <button class="tbtn brush" data-brush="smooth" title="Suavizar: segure e passe para alisar as irregularidades" aria-label="Suavizar" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-smooth"/></svg></button>
+    </div>
+    <span class="tsep"></span>
+    <div class="tgroup" role="group" aria-label="Exibir">
+      <button class="tbtn" data-act="collisions" title="Mostrar as colisões (malhas que bloqueiam o personagem)" aria-label="Mostrar colisões" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-collide"/></svg></button>
+    </div>
+    <span id="toolHint" class="thint"></span>
+  </header>
+
+  <aside id="dock">
+    <div class="dtabs" role="tablist" aria-label="Painéis">
+      <button role="tab" id="tab-elements" aria-controls="pane-elements" aria-selected="true">Elementos</button>
+      <button role="tab" id="tab-details" aria-controls="pane-details" aria-selected="false">Detalhes</button>
+      <button role="tab" id="tab-world" aria-controls="pane-world" aria-selected="false">Mundo</button>
+    </div>
+    <div class="dpane" id="pane-elements" role="tabpanel" aria-labelledby="tab-elements">
+      <div class="lib-search"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg><input id="libSearch" type="search" placeholder="Buscar objeto, NPC ou prop…" aria-label="Buscar na lista" /></div>
+      <div id="lib" class="lib"></div>
+    </div>
+    <div class="dpane" id="pane-details" role="tabpanel" aria-labelledby="tab-details" hidden>
+      <section class="grp">
+        <h3>Terreno</h3>
+        <div id="terrainPanel" hidden>
+          <label>Raio <input id="brushRadius" type="range" min="2" max="150" step="1" value="16" /> <span id="brushRadiusVal">16</span></label>
+          <label title="Montanha/Erosão: altura por pixel de arrasto. Plano/Suavizar: velocidade">Força <input id="brushStrength" type="range" min="1" max="40" step="1" value="8" /> <span id="brushStrengthVal">8</span></label>
+          <p class="note">Montanha e Erosão: clique, arraste o mouse para cima ou para baixo e solte para fixar. Plano e Suavizar: segure e passe sobre a área. Ctrl + roda do mouse muda o raio. Ctrl+Z desfaz o último traço. Salvar grava o terreno junto dos NPCs e props.</p>
+          <div id="terrainInfo" class="note"></div>
+          <button id="terrainRevert">Descartar alterações do terreno</button>
+        </div>
+      </section>
+      <p id="detailsEmpty" class="empty">Escolha o que editar na barra de ferramentas (Objetos, NPCs, Props ou Pontos). As opções do modo aparecem aqui.</p>
+    <section class="grp">
+      <h3>Objetos do mapa</h3>      <div id="editPanel" hidden>
       <div>
-        <button id="envSave" title="Grava o que está marcado aqui como padrão deste mundo (vale também no jogo)">Salvar ambiente</button>
-        <button id="envClear" title="Volta ao ambiente original do mundo">Limpar salvo</button>
+        <button data-tool="translate" class="tool active">Mover (1)</button>
+        <button data-tool="rotate" class="tool">Girar (2)</button>
+        <button data-tool="scale" class="tool">Escala (3)</button>
       </div>
-      <div id="envInfo2" style="color:var(--dim);font-size:11px"></div>
-    </fieldset>
-
-    <fieldset>
-      <legend>Filtro</legend>
-      <label>Filtro
-        <select id="filterType">
-          <option value="none">Nenhum</option>
-          <option value="zelda">Zelda (Breath of the Wild)</option>
-        </select>
-      </label>
-      <label>Intensidade <input id="filterStrength" type="range" min="0" max="1" step="0.05" value="1" /> <span id="filterStrengthVal">100%</span></label>
-      <label>Saturação <input id="filterSaturation" type="range" min="0" max="1.5" step="0.05" value="1" /> <span id="filterSaturationVal">100%</span></label>
-      <label><input type="checkbox" id="filterOutline" checked /> Contorno (cel)</label>
-      <div style="margin-top:6px;color:var(--dim);font-size:11px">Sombra do sol</div>
-      <label>Nitidez (área) <input id="shadowArea" type="range" min="40" max="260" step="10" value="120" /> <span id="shadowAreaVal">120</span></label>
-      <label>Resolução
-        <select id="shadowRes">
-          <option value="2048">2048 (leve)</option>
-          <option value="4096" selected>4096</option>
-          <option value="8192">8192 (pesada)</option>
-        </select>
-      </label>
-      <label>Suavidade <input id="shadowSoft" type="range" min="0" max="4" step="0.25" value="1.5" /> <span id="shadowSoftVal">1.5</span></label>
-      <div style="color:var(--dim);font-size:11px">Área menor = sombra mais nítida, mas ela some mais perto da câmera.</div>
-      <div style="color:var(--dim);font-size:11px">"Salvar ambiente" grava o filtro e a sombra junto (vale no jogo).</div>
-    </fieldset>
-
-    <fieldset>
-      <legend>Camadas visíveis</legend>
-      <label><input type="checkbox" id="showTerrain" checked /> Terreno</label>
-      <label><input type="checkbox" id="showObjs" checked /> Objetos</label>
-      <label><input type="checkbox" id="showSfx" checked /> SFX</label>
-      <label><input type="checkbox" id="showMovers" checked /> Movers (.dyo)</label>
-      <label><input type="checkbox" id="showSpawns" checked /> Spawns (.rgn)</label>
-      <label><input type="checkbox" id="showRegions" /> Regiões (.rgn)</label>
-      <label><input type="checkbox" id="showContinents" /> Continentes</label>
-      <label><input type="checkbox" id="showGrid" /> Grade de tiles</label>
-      <label><input type="checkbox" id="wireframe" /> Wireframe</label>
-    </fieldset>
-
-    <fieldset>
-      <legend>Edição de mundo</legend>
-      <button id="editToggle">✏ Entrar no modo edição</button>
-      <div id="editPanel" hidden>
-        <div>
-          <button data-tool="translate" class="tool active">Mover (1)</button>
-          <button data-tool="rotate" class="tool">Girar (2)</button>
-          <button data-tool="scale" class="tool">Escala (3)</button>
-        </div>
-        <div>
-          <button id="editGround">Ao chão (G)</button>
-          <button id="editDup">Duplicar (Ctrl+D)</button>
-          <button id="editDel">Apagar (Del)</button>
-        </div>
-        <div>
-          <button id="editUndo">Desfazer (Ctrl+Z)</button>
-          <button id="editExport">Exportar alterações (.json)</button>
-        </div>
-        <div id="editInfo" style="color:var(--dim);font-size:11px">Clique em um objeto estático para editar.</div>
+      <div>
+        <button id="editGround">Ao chão (G)</button>
+        <button id="editDup">Duplicar (Ctrl+D)</button>
+        <button id="editDel">Apagar (Del)</button>
       </div>
-    </fieldset>
-
-    <fieldset>
-      <legend>NPCs</legend>
-      <button id="npcToggle">👤 Editar NPCs</button>
-      <div id="npcPanel" hidden>
-        <div>
-          <button data-npctool="translate" class="npctool active">Mover</button>
-          <button data-npctool="rotate" class="npctool">Girar</button>
-          <button id="npcGround">Ao chão (G)</button>
-        </div>
-        <div>
-          <button id="npcDup">Duplicar</button>
-          <button id="npcDel">Remover (Del)</button>
-          <button id="npcUndo">Desfazer (Ctrl+Z)</button>
-        </div>
-        <input id="npcFilter" type="search" placeholder="Adicionar NPC: filtrar (nome ou chave)…" style="width:100%" />
-        <select id="npcList" size="6" style="width:100%"></select>
-        <div>
-          <button id="npcAdd">Adicionar na mira da câmera</button>
-        </div>
-        <div>
-          <button id="npcSave">💾 Salvar NPCs</button>
-          <button id="npcRevert">Descartar</button>
-        </div>
-        <div id="npcInfo" style="color:var(--dim);font-size:11px">Clique em um NPC para selecionar.</div>
+      <div>
+        <button id="editUndo">Desfazer (Ctrl+Z)</button>
+        <button id="editExport">Exportar alterações (.json)</button>
       </div>
-    </fieldset>
-
-    <fieldset>
-      <legend>Personagem</legend>
-      <label>Sexo <select id="playerSex"><option value="male">Male</option><option value="female">Female</option></select></label>
-      <button id="spawnFlaris">Spawnar em Flaris</button>
-      <button id="spawnHere">Spawnar aqui</button>
-      <label><input type="checkbox" id="playerMode" checked /> Controlar personagem (WASD · Espaço pula · Alt anda)</label>
-      <div id="playerInfo" style="color:var(--dim);font-size:11px"></div>
-    </fieldset>
-
-    <fieldset>
-      <legend>Locais (teleporte)</legend>
-      <input id="placeFilter" type="search" placeholder="Filtrar: flaris, saint, darkon…" style="width:100%" />
-      <div id="places"></div>
-    </fieldset>
-
-    <fieldset>
-      <legend>Ir para</legend>
-      <label>Tile <input id="gotoX" type="number" min="0" value="13" /> , <input id="gotoY" type="number" min="0" value="5" /></label>
-      <button id="goto">Ir</button>
-    </fieldset>
-
-    <fieldset>
-      <legend>Exportar (Three.js)</legend>
-      <button id="exportLoaded">Tiles carregados (.zip)</button>
-      <button id="exportAll">Mapa completo (.zip)</button>
-    </fieldset>
-
-    <fieldset>
-      <legend>Seleção</legend>
-      <pre id="info">Clique em um objeto.</pre>
-    </fieldset>
-    <div id="hint">Botão esquerdo: orbitar · direito: mover · roda: zoom · WASD/QE: voar · Shift: rápido</div>
+      <div id="editInfo" class="note">Clique em um objeto estático para editar.</div>
+    </div>
+    </section>
+    <section class="grp">
+      <h3>NPCs</h3>      <div id="npcPanel" hidden>
+      <div>
+        <button data-npctool="translate" class="npctool active">Mover</button>
+        <button data-npctool="rotate" class="npctool">Girar</button>
+        <button id="npcGround">Ao chão (G)</button>
+      </div>
+      <div>
+        <button id="npcDup">Duplicar</button>
+        <button id="npcDel">Remover (Del)</button>
+        <button id="npcUndo">Desfazer (Ctrl+Z)</button>
+      </div>        <div>
+        <button id="npcSave">💾 Salvar NPCs</button>
+        <button id="npcRevert">Descartar</button>
+      </div>
+      <div id="npcInfo" class="note">Clique em um NPC para selecionar.</div>
+    </div>
+    </section>
+    <section class="grp">
+      <h3>Props 3D</h3>      <div id="propPanel" hidden>        <div>
+        <button data-proptool="translate" class="proptool active">Mover</button>
+        <button data-proptool="rotate" class="proptool">Girar</button>
+        <button id="propGround">Ao chão (G)</button>
+      </div>
+      <div>
+        <label>Altura <input id="propHeight" type="number" step="0.5" min="0.01" style="width:70px" /></label>
+        <label>Escala <input id="propScale" type="number" step="0.001" min="0.0001" style="width:80px" /></label>
+        <label>Giro° <input id="propRot" type="number" step="5" style="width:60px" /></label>
+      </div>
+      <label><input type="checkbox" id="propCollide" checked /> Colisão (o personagem não atravessa)</label>
+      <div>
+        <button id="propDup">Duplicar</button>
+        <button id="propDel">Remover (Del)</button>
+        <button id="propUndo">Desfazer (Ctrl+Z)</button>
+      </div>
+      <div>
+        <button id="propSave">💾 Salvar props</button>
+        <button id="propRevert">Descartar</button>
+      </div>
+      <div id="propInfo" class="note">Escolha um .glb e clique em Adicionar.</div>
+    </div>
+    </section>
+    <section class="grp">
+      <h3>Pontos de teleporte</h3>      <div id="ptPanel" hidden>
+      <div class="note">Clique no mapa (chão, objeto ou prop): o ponto exato aparece abaixo. Ajuste pelos campos se precisar.</div>
+      <div>
+        <label>x <input id="ptX" type="number" step="0.1" style="width:78px" /></label>
+        <label>y <input id="ptY" type="number" step="0.1" style="width:70px" /></label>
+        <label>z <input id="ptZ" type="number" step="0.1" style="width:78px" /></label>
+      </div>
+      <div>
+        <button id="ptCopy">Copiar x y z</button>
+        <button id="ptCopyTp">Copiar //tp</button>
+      </div>
+      <div>
+        <input id="ptName" type="text" placeholder="nome do ponto" maxlength="40" style="width:120px" />
+        <button id="ptSave">💾 Salvar ponto</button>
+      </div>
+      <div>
+        <button id="ptArrival" title="Quem entra neste mapa (porta de dungeon, //mapa, reviver) aparece aqui, no lugar do ponto padrão">⭐ Salvar como chegada do mapa</button>
+      </div>
+      <select id="ptList" size="5" style="width:100%"></select>
+      <div>
+        <button id="ptGo">Ver</button>
+        <button id="ptLoad">Marcar de novo</button>
+        <button id="ptDel">Apagar</button>
+      </div>
+      <div id="ptInfo" class="note"></div>
+    </div>
+    </section>
+    <section class="grp">
+      <h3>Seleção</h3>
+    <pre id="info">Clique em um objeto.</pre>
+    </section>
+    </div>
+    <div class="dpane" id="pane-world" role="tabpanel" aria-labelledby="tab-world" hidden>
+    <section class="grp">
+      <h3>Mundo</h3>
+    <label>Mapa <select id="worldName"><option value="WdMadrigal" selected>WdMadrigal</option></select></label>
+    <button id="reload">Abrir</button>
+    <label>Raio de tiles <input id="radius" type="range" min="1" max="8" value="3" /> <span id="radiusVal">3</span></label>
+    <label>Cor do terreno
+      <select id="colorMode">
+        <option value="textures">Texturas reais</option>
+        <option value="layers">Camadas (cores)</option>
+        <option value="attrs">Atributos (NoWalk/NoFly/NoMove/Die)</option>
+        <option value="height">Altura</option>
+      </select>
+    </label>
+    </section>
+    <section class="grp">
+      <h3>Ambiente</h3>
+    <label>Hora <input id="hour" type="range" min="0" max="23.75" step="0.25" value="12" /> <span id="envInfo">12:00</span></label>
+    <label><input type="checkbox" id="worldLight" checked /> Iluminação do mundo</label>
+    <label><input type="checkbox" id="shadows" checked /> Sombras</label>
+    <label>Inclinação do sol <input id="sunTilt" type="range" min="0" max="70" step="5" value="30" /></label>
+    <label><input type="checkbox" id="worldFog" /> Névoa do mundo (.wld/continente)</label>
+    <label><input type="checkbox" id="showSky" checked /> Skybox e nuvens</label>
+    <label><input type="checkbox" id="showWater" checked /> Água e nuvens do mar</label>
+    <div>
+      <button id="envSave" title="Grava o que está marcado aqui como padrão deste mundo (vale também no jogo)">Salvar ambiente</button>
+      <button id="envClear" title="Volta ao ambiente original do mundo">Limpar salvo</button>
+    </div>
+    <div id="envInfo2" class="note"></div>
+    </section>
+    <section class="grp">
+      <h3>Filtro</h3>
+    <label>Filtro
+      <select id="filterType">
+        <option value="none">Nenhum</option>
+        <option value="zelda">Zelda (Breath of the Wild)</option>
+      </select>
+    </label>
+    <label>Intensidade <input id="filterStrength" type="range" min="0" max="1" step="0.05" value="1" /> <span id="filterStrengthVal">100%</span></label>
+    <label>Saturação <input id="filterSaturation" type="range" min="0" max="1.5" step="0.05" value="1" /> <span id="filterSaturationVal">100%</span></label>
+    <label><input type="checkbox" id="filterOutline" checked /> Contorno (cel)</label>
+    <div style="margin-top:6px;color:var(--dim);font-size:11px">Sombra do sol</div>
+    <label>Nitidez (área) <input id="shadowArea" type="range" min="40" max="260" step="10" value="120" /> <span id="shadowAreaVal">120</span></label>
+    <label>Resolução
+      <select id="shadowRes">
+        <option value="2048">2048 (leve)</option>
+        <option value="4096" selected>4096</option>
+        <option value="8192">8192 (pesada)</option>
+      </select>
+    </label>
+    <label>Suavidade <input id="shadowSoft" type="range" min="0" max="4" step="0.25" value="1.5" /> <span id="shadowSoftVal">1.5</span></label>
+    <div class="note">Área menor = sombra mais nítida, mas ela some mais perto da câmera.</div>
+    <div class="note">"Salvar ambiente" grava o filtro e a sombra junto (vale no jogo).</div>
+    </section>
+    <section class="grp">
+      <h3>Camadas visíveis</h3>
+    <label><input type="checkbox" id="showTerrain" checked /> Terreno</label>
+    <label><input type="checkbox" id="showObjs" checked /> Objetos</label>
+    <label><input type="checkbox" id="showSfx" checked /> SFX</label>
+    <label><input type="checkbox" id="showMovers" checked /> Movers (.dyo)</label>
+    <label><input type="checkbox" id="showSpawns" checked /> Spawns (.rgn)</label>
+    <label><input type="checkbox" id="showRegions" /> Regiões (.rgn)</label>
+    <label><input type="checkbox" id="showContinents" /> Continentes</label>
+    <label><input type="checkbox" id="showGrid" /> Grade de tiles</label>
+    <label><input type="checkbox" id="wireframe" /> Wireframe</label>
+    </section>
+    <section class="grp">
+      <h3>Personagem</h3>
+    <label>Sexo <select id="playerSex"><option value="male">Male</option><option value="female">Female</option></select></label>
+    <button id="spawnFlaris">Spawnar em Flaris</button>
+    <button id="spawnHere">Spawnar aqui</button>
+    <label><input type="checkbox" id="playerMode" checked /> Controlar personagem (WASD · Espaço pula · Alt anda)</label>
+    <div id="playerInfo" class="note"></div>
+    </section>
+    <section class="grp">
+      <h3>Locais (teleporte)</h3>
+    <input id="placeFilter" type="search" placeholder="Filtrar: flaris, saint, darkon…" style="width:100%" />
+    <div id="places"></div>
+    </section>
+    <section class="grp">
+      <h3>Ir para</h3>
+    <label>Tile <input id="gotoX" type="number" min="0" value="13" /> , <input id="gotoY" type="number" min="0" value="5" /></label>
+    <button id="goto">Ir</button>
+    </section>
+    <section class="grp">
+      <h3>Exportar (Three.js)</h3>
+    <button id="exportLoaded">Tiles carregados (.zip)</button>
+    <button id="exportAll">Mapa completo (.zip)</button>
+    </section>
+    </div>
+    <div id="status" role="status">Carregando…</div>
   </aside>
+  <div id="cursorTip" class="cursor-tip" hidden></div>
   <div id="hud"></div>
   <script type="module" src="./main.ts"></script>
 </body>

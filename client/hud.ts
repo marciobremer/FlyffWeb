@@ -18,6 +18,7 @@ export class GameHud {
   private open = false;
   /** abre a janela de movimentos (tecla O) */
   onMotion: () => void = () => {};
+  onQuests: () => void = () => {};
   /** abre o Mensageiro (amigos, tecla E) */
   onMessenger: () => void = () => {};
   /** party (P) e lista de partys (L) */
@@ -52,7 +53,7 @@ export class GameHud {
       { label: 'Switch Equip', icon: 'icon_MenuGlowchange.dds' },
       { label: 'Search Shop', icon: 'icon_MenuPrivateShop.dds' },
       { label: 'Loja pessoal', icon: 'icon_MenuPrivateShop.dds' },
-      { label: 'Quests', key: 'Q', icon: 'icon_MenuQuest.dds' },
+      { label: 'Quests', key: 'Q', icon: 'icon_MenuQuest.dds', action: () => this.onQuests() },
       { label: 'Habilidades', key: 'K', icon: 'icon_MenuSkill.dds', action: () => this.onSkills() },
       { label: 'Movimento', key: 'O', icon: 'icon_MenuMotion.dds', action: () => this.onMotion() },
       { label: 'Mapa do Mundo', key: 'M', icon: 'icon_MenuWorldmap.dds' },

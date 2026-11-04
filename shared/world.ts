@@ -24,7 +24,7 @@ import { Sky } from './sky';
 import { computeEnvironment, findContinent, type Environment } from './environment';
 import { attachSetSfx } from './setSfx';
 import { defaultFilter, PostFx } from './postfx';
-import { defaultShadow, type ShadowSettings } from './worldedits';
+import { defaultShadow, inOpenArea, type ShadowSettings } from './worldedits';
 import { PropLayer } from './props';
 import './world.css';
 
@@ -132,6 +132,8 @@ export class WorldView {
   inputBlocked: () => boolean = () => false;
   /** quando definido, assume a câmera sem personagem (o WASD do voo livre fica de fora); só o editor define */
   editorCamera: ((dt: number) => void) | null = null;
+  /** o editor guarda yaw/pitch próprios: avisado quando lookAt muda a orientação da câmera */
+  onReorient: (() => void) | null = null;
 
   onStatus: (text: string) => void = () => {};
   /** texto "hh:mm · continente" quando o ambiente muda */
@@ -277,6 +279,8 @@ export class WorldView {
     const tileKey = key(view.x, view.y);
     this.collReady.set(tileKey, this.collision.setTile(tileKey, view.land.objects, (o) => {
       const e = d.objModels.get(o.modelId);
+      // portões (BigDoor: cidades e dungeons) ficam abertos para o personagem: a colisão do modelo é a da porta fechada e virava parede invisível
+      if (e && /BigDoor/i.test(e.name)) return Promise.resolve(null);
       return e && e.modelType !== 'MODELTYPE_SFX' && this.lib.exists(e) ? this.lib.get(e).then((m) => m?.source ?? null) : Promise.resolve(null);
     }));
     // SFX com .sfx disponível → SfxManager; os demais (arquivo ausente) ficam como losango placeholder
@@ -318,6 +322,7 @@ export class WorldView {
 
   private disposeTile(v: TileView) {
     v.disposed = true;
+    this.data?.stashObjects(key(v.x, v.y), v.land.objects); // edições de objetos ainda não salvas sobrevivem ao tile sair da tela
     this.tilesGroup.remove(v.group);
     disposeTerrain(v.terrain);
     this.water.dispose(v.waterGroup);
@@ -518,16 +523,20 @@ export class WorldView {
     if (!t) return 0;
     const ix = Math.min(MAP_SIZE, Math.max(0, Math.round((x - t.x * s) / d.wld.mpu)));
     const iz = Math.min(MAP_SIZE, Math.max(0, Math.round((z - t.y * s) / d.wld.mpu)));
-    return t.land.attrs[iz * (MAP_SIZE + 1) + ix];
+    const a = t.land.attrs[iz * (MAP_SIZE + 1) + ix];
+    return (a === 1 || a === 3) && inOpenArea(d.edits.openAreas, x, z) ? 0 : a; // área liberada no editor (//liberar): a barreira invisível deixa passar
   }
 
   /** Posiciona a câmera olhando para (x,z) do mundo FlyFF. */
-  lookAt(x: number, z: number, dist = 260, fallbackY = 100) {
+  /** `up`/`back`: quanto a câmera sobe e recua em relação ao alvo, por unidade de `dist` (mais `up` e menos `back` = mais de cima, olhando mais para baixo) */
+  lookAt(x: number, z: number, dist = 260, fallbackY = 100, up = 0.8, back = 0.7) {
     const y = this.sampleHeight(x, z) ?? fallbackY;
     const [tx, ty, tz] = toThree(x, y, z);
     this.controls.target.set(tx, ty, tz);
-    this.camera.position.set(tx - dist * 0.7, ty + dist * 0.8, tz + dist * 0.7);
+    this.camera.position.set(tx - dist * back, ty + dist * up, tz + dist * back);
     this.controls.update();
+    this.camera.lookAt(tx, ty, tz);
+    this.onReorient?.();
     this.lastStream = 0;
   }
 
@@ -561,7 +570,9 @@ export class WorldView {
       this.player = new Player(this.playerGroup, d, this.lib, {
         heightAt: (px, pz) => this.sampleHeight(px, pz), attrAt: (px, pz) => this.attrAt(px, pz),
         objectGround: (px, pz, yTop) => this.collision.groundAt(px, pz, yTop),
-        blocked: (x0, z0, x1, z1, py, r, hs) => this.collision.blocked(x0, z0, x1, z1, py, r, hs),
+        voidGround: () => !!this.data?.wld.noTerrain,
+        // área liberada (//liberar): a parede invisível (colisão de objeto) deixa passar
+        blocked: (x0, z0, x1, z1, py, r, hs) => (inOpenArea(this.data?.edits.openAreas, x1, z1) ? false : this.collision.blocked(x0, z0, x1, z1, py, r, hs)),
         attachSetSfx: (inst, equip) => this.attachSetSfx(inst, equip),
       });
     }
@@ -619,7 +630,7 @@ export class WorldView {
     if (token !== this.loadToken) return;
     this.data = d;
     this.lib.reset(d.modelFiles, d.textureFiles);
-    this.terrainTex.reset(d.terrainTextures, d.terrainFiles);
+    this.terrainTex.reset(d.terrainTextures, d.terrainFiles, d.terrainUv);
     this.water.reset(d.waterLists, d.terrainTextures, d.terrainFiles, d.wld.seacloud);
     this.sky.reset(d.weatherFiles);
     this.sfxMgr.clear();

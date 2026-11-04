@@ -1,4 +1,5 @@
 import type { TradeView } from './trade';
+import type { QuestDialog, QuestEntry } from './quests';
 import { PLAYER_LABEL_LIFT } from '../shared/rank';
 import { Matrix4, Mesh, type Object3D } from 'three';
 import type { WorldView } from '../shared/world';
@@ -8,7 +9,7 @@ import { applyEnchantGlow } from '../shared/enchantGlow';
 import { attachRide, flyMotion, rideOf } from '../shared/ride';
 import { objectMatrix } from '../shared/math';
 import { OT, type WorldObject } from '../shared/formats/types';
-import { motionOf, motionsFor } from '../shared/motions';
+import { motionOf, motionsFor, nextHit } from '../shared/motions';
 import type { GroundRow } from './ground';
 
 /**
@@ -67,7 +68,7 @@ export interface ItemView {
 export interface InvMessage { gold: number; /** Red Chip (contador fora da bolsa) */ chips?: number; bag: number; items: [number, number, number, number, number?, number?, number?, number[]?, number?, number[]?, number?, number?][]; defs: Record<number, ItemView>; /** fail stack do ferreiro (dica) */ stack?: Record<string, Record<number, number>>; /** raridades da arma: [nome, cor 0xAARRGGBB, × ataque, × bônus] */ rar?: [string, number, number, number][] }
 
 
-interface Remote { view: PlayerView; inst: MoverInstance | null; target: [number, number, number]; cur: [number, number, number]; h: number; curH: number; s: string; gone: boolean; /** último golpe tocado (MTI_ATK1/2 alternando) */ hit?: number }
+interface Remote { view: PlayerView; inst: MoverInstance | null; target: [number, number, number]; cur: [number, number, number]; h: number; curH: number; s: string; gone: boolean; /** último golpe tocado da sequência (1–4) e quando */ hit?: number; hitAt?: number }
 
 export class RemotePlayers {
   private list = new Map<number, Remote>();
@@ -175,8 +176,10 @@ export class RemotePlayers {
   swing(id: number) {
     const r = this.list.get(id);
     if (!r?.inst || r.s === 'dead' || r.s.startsWith('fly')) return;
-    r.hit = ((r.hit ?? 0) % 2) + 1;
-    r.inst.play(motionOf('atk', r.view.mt ?? 0, r.hit)[0], false);
+    const now = performance.now();
+    r.hit = nextHit(now - (r.hitAt ?? 0) > 2500 ? 0 : r.hit ?? 0, r.view.level ?? 1, r.view.mt ?? 0);
+    r.hitAt = now;
+    r.inst.restart(motionOf('atk', r.view.mt ?? 0, r.hit)[0], false);
   }
 
   /** outro jogador lança uma skill: toca o movimento (CASTING01, depois 02) e volta ao estado dele */
@@ -255,7 +258,7 @@ export class RemotePlayers {
   stance(id: number) { return this.list.get(id)?.view.mt ?? 0; }
 
   /** balão de fala acima da cabeça (chat) */
-  say(id: number, text: string) { this.list.get(id)?.inst?.say(text); }
+  say(id: number, text: string, shout = false) { this.list.get(id)?.inst?.say(text, 60, shout ? 8000 : 6000, shout); }
 
   /** posição atual (suavizada) de um jogador remoto */
   pos(id: number): [number, number, number] | null { const r = this.list.get(id); return r ? [...r.cur] : null; }
@@ -328,6 +331,8 @@ export class NetClient {
   onInvis: (on: boolean) => void = () => {};
   /** seu modo imortal de GM/admin (//god) */
   onGod: (on: boolean) => void = () => {};
+  /** voo livre de GM ligou/desligou (//fly) */
+  onGmFly: (on: boolean) => void = () => {};
   /** pet coletor: do jogador `a` apareceu (m = MI_*) ou sumiu (m = 0); foi buscar um item em (x, z), chega em `ms` */
   onPet: (a: number, m: number) => void = () => {};
   onPetGo: (a: number, x: number, z: number, ms: number) => void = () => {};
@@ -359,7 +364,11 @@ export class NetClient {
   onEmote: (id: number, motion: string, mode: number) => void = () => {};
   onEmo: (id: number, index: number) => void = () => {};
   /** o que o NPC clicado oferece (abre o menu do NPC) */
-  onNpcMenu: (m: { key: string; name: string; shop: boolean; buff: boolean; smith: string[] }) => void = () => {};
+  onNpcMenu: (m: { key: string; name: string; shop: boolean; buff: boolean; smith: string[]; quests: { id: string; name: string; st: 'offer' | 'active' | 'ready' }[] }) => void = () => {};
+  onQuestDialog: (d: QuestDialog) => void = () => {};
+  onQuests: (list: QuestEntry[]) => void = () => {};
+  /** clima do mapa onde está: chovendo ou não */
+  onWeather: (rain: boolean) => void = () => {};
   /** resultado do ferreiro/martelo: deu certo, efeito (success/fail; null = recusado antes), espaço do item e a mensagem */
   onSmith: (ok: boolean, fx: 'success' | 'fail' | null, s: number | null, text: string) => void = () => {};
   /** item usado (quanto curou, espera) e sua barra de atalhos */
@@ -491,6 +500,8 @@ export class NetClient {
         if (id === this.myId) this.onInvis(!!m.on); else this.remotes.setInvis(id, !!m.on);
       } else if (m.t === 'god') {
         this.onGod(!!m.on);
+      } else if (m.t === 'gmFly') {
+        this.onGmFly(!!m.on);
       } else if (m.t === 'pong') {
         const rtt = performance.now() - Number(m.c);
         if (rtt >= 0 && rtt < 60000) this.ping = this.ping === null ? rtt : this.ping * 0.7 + rtt * 0.3;
@@ -538,7 +549,13 @@ export class NetClient {
       } else if (m.t === 'emo') {
         this.onEmo(Number(m.id), Number(m.i));
       } else if (m.t === 'npcMenu') {
-        this.onNpcMenu({ key: String(m.key), name: String(m.name ?? ''), shop: !!m.shop, buff: !!m.buff, smith: Array.isArray(m.smith) ? (m.smith as string[]) : [] });
+        this.onNpcMenu({ key: String(m.key), name: String(m.name ?? ''), shop: !!m.shop, buff: !!m.buff, smith: Array.isArray(m.smith) ? (m.smith as string[]) : [], quests: Array.isArray(m.quests) ? (m.quests as { id: string; name: string; st: 'offer' | 'active' | 'ready' }[]) : [] });
+      } else if (m.t === 'questDlg') {
+        this.onQuestDialog(m as unknown as QuestDialog);
+      } else if (m.t === 'weather') {
+        this.onWeather(m.kind === 'rain');
+      } else if (m.t === 'quests') {
+        this.onQuests(Array.isArray(m.list) ? (m.list as QuestEntry[]) : []);
       } else if (m.t === 'smith') {
         this.onSmith(m.ok === true, m.fx === 'success' || m.fx === 'fail' ? m.fx : null, typeof m.s === 'number' ? m.s : null, String(m.text ?? ''));
       } else if (m.t === 'shop') {
@@ -618,6 +635,8 @@ export class NetClient {
   /** loja do NPC: abrir (perto dele), comprar, vender */
   shopOpen(key: string) { return this.raw({ t: 'shopOpen', key }); }
   npcMenu(key: string) { return this.raw({ t: 'npcMenu', key }); }
+  /** quest: abrir o diálogo, aceitar, entregar (perto do NPC `key`) ou abandonar */
+  quest(op: 'open' | 'accept' | 'turnIn' | 'abandon', id: string, key = '') { return this.raw({ t: 'quest', op, id, key }); }
   /** guild: criar, convidar, responder, sair, expulsar, desfazer, ver */
   guild(t: 'guildCreate' | 'guildInvite' | 'guildAnswer' | 'guildLeave' | 'guildKick' | 'guildDisband' | 'guildInfo', extra: Record<string, unknown> = {}) { return this.raw({ t, ...extra }); }
   /** party: convidar, responder convite, sair, expulsar, passar liderança, buff de party, lista */
@@ -647,7 +666,7 @@ export class NetClient {
   shopSell(key: string, s: number, n: number) { return this.raw({ t: 'sell', key, s, n }); }
   /** usa um item da bolsa pelo id (atalho) / salva a barra de atalhos */
   useItem(id: number) { return this.raw({ t: 'use', id }); }
-  saveBar(slots: ({ k: 'item' | 'skill'; id: number } | null)[]) { return this.raw({ t: 'bar', slots }); }
+  saveBar(slots: ({ k: 'item' | 'skill' | 'chat'; id: number; text?: string } | null)[]) { return this.raw({ t: 'bar', slots }); }
   /** distribui pontos de atributo */
   jobChange(job: number) { return this.raw({ t: 'jobChange', job }); }
   statUp(add: { str: number; sta: number; dex: number; int: number }) { return this.raw({ t: 'statUp', ...add }); }

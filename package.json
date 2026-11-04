@@ -12,6 +12,7 @@
     "db:migrate": "tsx servers/common/db/migrate.ts",
     "db:import": "tsx servers/common/db/import-flyff.ts",
     "db:import-website": "tsx tools/import-website.ts",
+    "l2world": "tsx tools/l2world.ts",
     "bench": "tsx tools/bench-world.ts",
     "world": "tsx servers/world/main.ts",
     "test:persist": "tsx tools/test-persist.ts",

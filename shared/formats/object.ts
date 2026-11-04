@@ -6,15 +6,16 @@ const CTRL_ELEM = 432; // CtrlElem com MAX_JOB = 32
 
 /**
  * Lê um objeto a partir de `o` (começando no `u32 type`). Réplica de `CObject::CreateObject(file)` + `CObject::Read`.
- * `pos.x/z` no arquivo estão em "células" e são multiplicados por `mpu`.
+ * `pos.x/z` no arquivo são multiplicados por 4 sempre (CObject::Read do ATools), qualquer que seja o MPU do mundo:
+ * em mundos MPU 1/2 (ex.: DuClockwork) as peças ficam 4× mais espalhadas que o MPU, como no jogo.
  */
-export function readObject(dv: DataView, o: number, mpu = 4): { obj: WorldObject; next: number } {
+export function readObject(dv: DataView, o: number, _mpu = 4): { obj: WorldObject; next: number } {
   const type = dv.getUint32(o, true);
   const f = (k: number) => dv.getFloat32(o + k, true);
   const obj: WorldObject = {
     type,
     rot: [f(8), f(4), f(16)],
-    pos: [f(20) * mpu, f(24), f(28) * mpu],
+    pos: [f(20) * 4, f(24), f(28) * 4],
     scale: [f(32), f(36), f(40)],
     modelId: dv.getUint32(o + 48, true),
     motion: dv.getUint32(o + 52, true),

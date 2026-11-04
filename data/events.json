@@ -1,0 +1,54 @@
+{
+  "weather": { "worlds": ["WdMadrigal"], "rainChance": 15, "checkMinutes": 10, "rainMinutes": [5, 12] },
+  "events": [
+    {
+      "id": "cw_chefe",
+      "name": "Clockworks aparece na arena (disparado pela quest cw_entrada)",
+      "do": [
+        { "announce": "O Clockworks desperta na arena!", "loops": 1 },
+        { "wait": 8 },
+        { "summon": { "mob": "MI_CLOCKWORK1", "world": "DuClockwork", "point": "cw_chefe", "count": 1, "unique": true } }
+      ]
+    },
+    {
+      "id": "exp_noite",
+      "name": "EXP em dobro quando anoitece",
+      "enabled": false,
+      "when": { "gameHour": 19 },
+      "do": [
+        { "announce": "Anoiteceu! EXP em dobro por 15 minutos.", "loops": 2 },
+        { "rates": { "exp": 2 }, "minutes": 15 }
+      ]
+    },
+    {
+      "id": "chuva_drop",
+      "name": "Drop maior enquanto chove",
+      "enabled": false,
+      "when": { "weather": "rain" },
+      "do": [
+        { "announce": "Está chovendo! Drop +50% por 10 minutos.", "loops": 2 },
+        { "rates": { "drop": 1.5 }, "minutes": 10 }
+      ]
+    },
+    {
+      "id": "sabado_20h",
+      "name": "Aviso de sábado às 20h",
+      "enabled": false,
+      "when": { "time": "20:00", "days": ["sab"] },
+      "do": [
+        { "announce": "Evento de sábado: EXP em dobro por 1 hora!", "loops": 3 },
+        { "rates": { "exp": 2 }, "minutes": 60 }
+      ]
+    },
+    {
+      "id": "presente_hora",
+      "name": "Presente a cada hora (exemplo)",
+      "enabled": false,
+      "when": { "every": 60 },
+      "do": [
+        { "announce": "Presente da hora: todos ganharam chocolate!", "loops": 1 },
+        { "give": { "item": "II_GEN_FOO_INS_CHOCOLATE", "count": 5 } }
+      ]
+    }
+  ]
+}

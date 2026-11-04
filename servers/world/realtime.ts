@@ -8,6 +8,9 @@ import { sessionFrom, type Session } from '../auth/sessions';
 import type { MobWorld } from './mobs';
 import { INVENTORY_CHANNEL, type Inventory, type InvState } from '../character/inventory';
 import { gmAuthority, runGmCommand } from './gm';
+import { loadEdits, saveEdits } from '../common/worldedits';
+import { customTeleports } from '../common/customteleports';
+import { ARRIVAL_POINT } from '../../shared/worldedits';
 import { rankOf, type Rank } from '../../shared/rank';
 import { RIDE_TAG } from '../../shared/look';
 import { TRADE_SLOTS, type TradeOffer } from '../character/inventory';
@@ -30,6 +33,10 @@ import { PartyManager, PARTY_MAX, PARTY_SKILLS, partyExpShares, type Party } fro
 import type { MoverProp } from './world';
 import { UpgradeRules, type SmithResult } from './upgrade';
 import type { InvEdit } from '../character/inventory';
+import { QuestBook, type QuestLog } from './quests';
+import { QuestFlow } from './questflow';
+import { EventScheduler } from './events';
+import { setRateBoost } from '../common/rates';
 
 /**
  * Tempo real (fase 2): WebSocket em `/ws` no mesmo servidor HTTP (Vite em dev, `server/index.ts` em produção).
@@ -56,6 +63,7 @@ import type { InvEdit } from '../character/inventory';
  *   { t: 'pierce', card, target }                   piercing: espeta a carta do espaço `card` da bolsa na suit do espaço `target` (também
  *                                                   da bolsa, não equipada) — resposta { t: 'pierced', ok, s } e o inventário novo
  *   { t: 'npcMenu', key } / { t: 'npcBuff', key }     perto do NPC: o que ele oferece (loja, buffs) / receber os buffs (Buff Pang)
+ *   { t: 'quest', op: 'open'|'accept'|'turnIn'|'abandon', id, key } / { t: 'quests' }   quests do NPC `key` (perto dele) → `questDlg` / `quests` (servers/world/questflow.ts)
  *   { t: 'teleports' } → { t: 'teleports', list }   destinos da janela Teleporter (tecla V): nome, imagem, descrição, drops
  *   { t: 'zckTeleport', k }                         teleporte da janela Teleporter: destino `k` da lista
  *   { t: 'buffOff', id }                            tira o buff da skill `id` (botão direito no ícone)
@@ -83,6 +91,8 @@ import type { InvEdit } from '../character/inventory';
  *   { t: 'petGo', a, x, z, ms }                      o pet de `a` vai buscar o item em (x, z) e chega em `ms`
  *   { t: 'petFilter', f, n } ↔                       filtro do pet (o cliente manda para gravar; o servidor manda ao entrar, n = nome e ícone dos itens das listas)
  *   { t: 'petFind', q } → { t: 'petFind', list }     busca de itens para as listas do filtro: [id, nome, ícone]
+ *   { t: 'weather', kind }                          clima do mapa onde você está ('rain' | 'clear'), ao entrar e quando muda (servers/world/events.ts)
+ *   { t: 'questDlg', id, key, name, st, text, goals, reward } / { t: 'quests', list }   diálogo da quest (offer|active|ready|done) / diário de quests em andamento
  *   { t: 'clock', now, fixed }                       relógio do servidor (dia e noite) e a hora fixada pelo GM (null = andando)
  *   { t: 'friends', list: FriendView[] } / { t: 'friendOn', id, on } / { t: 'friendReq', id, name }
  *   { t: 'friendNew', f: FriendView } / { t: 'friendDel', id }   lista de amigos (ao entrar), amigo entrou/saiu, pedido
@@ -140,12 +150,14 @@ interface Conn { ws: WebSocket; player: PlayerView | null; accountId: number; di
   /** pet coletor ativo (item IK3_PET): item, MI_* que aparece, ocupado buscando um item até `busy` (ms) e itens que não couberam */
   pet?: { item: number; mover: number; busy: number; skip: Set<number> };
   /** filtro do pet (janela Pet Filter, tecla U) */ petFilter?: PetFilter;
+  /** andamento das quests (servers/world/quests.ts) */ quests?: QuestLog;
   /** modo de batalha desligado (MOT_BASE_BATTLE): postura normal mesmo com arma; atacar liga de novo */ peace?: boolean; /** postura da arma equipada */ weaponMt?: number;
   /** ids dos amigos (Mensageiro) e pedidos de amizade recebidos (id de quem pediu → quando) */ friends?: Set<number>; friendReqs?: Map<number, number>;
   /** convites de party recebidos (id de quem convidou → quando) */ partyReqs?: Map<number, number>;
   /** trade aberto e pedidos de trade recebidos (id de quem pediu → quando) */ trade?: Trade | null; tradeReqs?: Map<number, number>;
   /** recebendo os buffs do Buff Pang (um a cada 0,5 s) */ buffing?: boolean;
   /** voo livre de GM (//fly): o servidor aceita a velocidade de voo */ gmFly?: boolean;
+  /** velocidade de corrida em % da normal (//speed, só GM; 100 = normal) */ speedPct?: number;
   /** última vez que pisou numa porta (evita repetir o aviso parado em cima dela) */ portalAt?: number;
   /** desde quando está numa dungeon de instância de outra party (sai depois de 3 min) */ instLeftAt?: number;
   /** trocando de mundo: a conexão fecha e o cliente entra de novo no mundo novo (não sai da party nem avisa os amigos) */ switching?: boolean;
@@ -224,7 +236,7 @@ export interface RealtimeOptions {
   /** carrega um mundo extra na primeira vez que alguém vai para ele (porta de dungeon) / cria a cópia de dungeon de uma party */
   /** portas do mundo principal */ mainPortals?: Portal[];
   loadWorld?: (define: string) => WorldRuntime | null; loadInstance?: (define: string, key: string) => WorldRuntime | null;
-  worldInfo?: (idOrDefine: number | string) => WorldInfo | undefined; instanceRules?: Map<string, InstanceRule>;
+  worldInfo?: (idOrDefine: number | string) => WorldInfo | undefined; /** mapa pelo nome da pasta (DuClockwork) */ worldByName?: (name: string) => WorldInfo | undefined; instanceRules?: Map<string, InstanceRule>;
   /** mundos além do principal (ex.: WdKebaras = Azria) */ worlds?: WorldRuntime[]; mainWorld?: string; mobs?: MobWorld; inventory?: Inventory; combat?: CombatRules; drops?: DropRules; shops?: ShopCatalog; skills?: SkillCatalog; resolveSession?: (token: string) => Promise<Session | null> }
 export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   const inventory = opts.inventory ?? null;
@@ -254,7 +266,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
    * Destinos do teleporte (janela Teleporter, tecla V): o AegonTeleporter.inc do Titanium (imagem, descrição com o nível
    * aconselhado e o que dropa); sem ele, o ZckTeleporteur.inc. O cliente pede a lista pronta ('teleports') e manda o índice.
    */
-  interface Teleport { name: string; header: string; image: string; type: 'city' | 'collect' | 'dungeon' | 'zone'; desc: string; world: string; pos: [number, number, number]; items: string[] }
+  interface Teleport { name: string; header: string; image: string; type: 'city' | 'collect' | 'dungeon' | 'zone'; desc: string; world: string; pos: [number, number, number]; items: string[]; /** criado no painel admin (data/teleports-custom.json): `world` é o nome da pasta do mapa */ custom?: boolean }
   const teleports: Teleport[] = (() => {
     if (!inventory) return [];
     const dir = inventory.catalog.resDir;
@@ -271,7 +283,9 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     try { return parseTeleports(read('ZckTeleporteur.inc')).map((d) => ({ name: d.name, header: d.name, image: d.image, type: d.type, desc: d.desc, world: d.world, pos: d.pos, items: d.items })); } catch { return []; }
   })();
   /** lista para a janela: nome, imagem, descrição e os itens que dropam ali (ItemView, para a dica do item) */
-  const teleportView = () => teleports.map((d, k) => ({ k, name: d.name, header: d.header, image: d.image, type: d.type, desc: d.desc,
+  /** os do jogo mais os criados no painel admin (World → Teleportes), na ordem em que a janela os mostra */
+  const allTeleports = (): Teleport[] => [...teleports, ...customTeleports().map((t) => ({ name: t.name, header: t.name, image: '', type: t.type, desc: t.desc, world: t.world, pos: t.pos, items: [] as string[], custom: true }))];
+  const teleportView = () => allTeleports().map((d, k) => ({ k, name: d.name, header: d.header, image: d.image, type: d.type, desc: d.desc,
     items: d.items.map((s) => inventory?.catalog.bySymbol.get(s)).filter((x) => !!x).map((x) => inventory!.catalog.viewFull(x!)) }));
   const rules = opts.combat ?? null;
   /** ferreiro (upgrade, elemento, piercing, ultimate) — também dá ao combate as joias da ultimate e o fator de elemento */
@@ -652,8 +666,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
 
   /** velocidade máxima no chão ou no ar (u/s) para o anti-speedhack */
   function maxSpeed(c: Conn) {
-    const p = c.player!, run = rules && c.cb ? rules.runSpeed(c.cb.f, p.sex) : 6;
-    return c.gmFly || p.eq.some((s) => s.startsWith(RIDE_TAG)) ? Math.max(run, FLY_MAX_SPEED) : run;
+    const p = c.player!, mul = (c.speedPct ?? 100) / 100, run = (rules && c.cb ? rules.runSpeed(c.cb.f, p.sex) : 6) * mul;
+    return c.gmFly || p.eq.some((s) => s.startsWith(RIDE_TAG)) ? Math.max(run, FLY_MAX_SPEED * mul) : run;
   }
 
   /** confere um passo de `d` unidades contra a reserva de deslocamento; recusado, manda o cliente de volta à posição do servidor */
@@ -680,7 +694,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       atkMs: rules?.attackInterval(cb.f, c.player!.mt) ?? 1000, aspd: rules?.attackSpeed(cb.f) ?? 1, atk: rules?.shownAtk(cb.f) ?? [0, 0], atkShow: rules?.shownAtkValue(cb.f) ?? 0, range: rules?.attackRange(cb.f) ?? 2, def: rules?.showDefense(cb.f) ?? 0, crit: rules?.critChance(cb.f) ?? 0, cdmg: rules?.critBonus(cb.f) ?? 0, ...(rules ? rules.panel(cb.f) : {}),
       str: cb.f.base.str, sta: cb.f.base.sta, dex: cb.f.base.dex, int: cb.f.base.int, bonus: { str: cb.f.str - cb.f.base.str, sta: cb.f.sta - cb.f.base.sta, dex: cb.f.dex - cb.f.base.dex, int: cb.f.int - cb.f.base.int },
       acc: rules ? rules.accuracy(cb.f) : 0, dodge: rules ? rules.dodge(cb.f) : 0, spd: rules ? Math.floor(Math.floor(rules.attackSpeed(cb.f) * 100) / 2) : 0, points: cb.points, job: cb.f.job, jobOpts: rules ? rules.jobOptions(cb.f.job, lv) : [],
-      mv: rules ? +rules.runSpeed(cb.f, c.player!.sex).toFixed(3) : 6, fx: rules ? rules.bonusList(cb.f) : [] };
+      mv: +((rules ? rules.runSpeed(cb.f, c.player!.sex) : 6) * ((c.speedPct ?? 100) / 100)).toFixed(3), fx: rules ? rules.bonusList(cb.f) : [] };
   }
 
   /** recalcula os máximos (nível/classe mudou) mantendo a proporção atual ou enchendo */
@@ -1228,6 +1242,13 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
    * Troca de mundo (ticket de Azria, teleporte para outro mapa): grava posição e mundo, avisa o cliente — ele mostra a tela
    * de carregamento do mapa, abre o mundo novo e entra de novo pelo `join` (a conexão antiga fecha sem sair da party).
    */
+  /** pontos do editor (data/world-edits) do mapa; o `chegada` vale no lugar do ponto padrão de entrada */
+  const pointsOf = (wr: WorldRuntime) => loadEdits(wr.base ?? wr.name).points ?? [];
+  const arrivalOf = (wr: WorldRuntime | null | undefined): [number, number, number] | null => {
+    const a = wr ? pointsOf(wr).find((q) => q.name.toLowerCase() === ARRIVAL_POINT) : undefined;
+    return a ? [...a.pos] : null;
+  };
+
   async function changeWorld(c: Conn, world: string, pos: [number, number, number]) {
     const p = c.player;
     if (!p || !worlds.has(world)) return;
@@ -1268,12 +1289,23 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   }
   const fmtCool = (ms: number) => `${Math.floor(ms / 60000)} min ${Math.floor((ms % 60000) / 1000)} s`;
 
+  /** portais fechados do mapa (world-edits `closedPortals`), relidos a cada 2 s */
+  const closedCache = new Map<string, { at: number; list: string[] }>();
+  const closedPortals = (wr: WorldRuntime): string[] => {
+    const k = wr.base ?? wr.name, hit = closedCache.get(k), now = Date.now();
+    if (hit && now - hit.at < 2000) return hit.list;
+    const list = loadEdits(k).closedPortals ?? [];
+    closedCache.set(k, { at: now, list });
+    return list;
+  };
+
   /** pisou numa porta de dungeon */
   async function usePortal(c: Conn, pt: Portal) {
     const p = c.player, cb = c.cb;
     if (!p || !cb || cb.dead || c.switching) return;
     const now = Date.now();
     if (now - (c.portalAt ?? 0) < 3000) return; // parado em cima da porta: não repete o aviso
+    if (closedPortals(W(c)).includes(pt.define)) return; // portal fechado no editor (//portal fechar): só rampa
     c.portalAt = now;
     if (p.s !== 'stand' && p.s !== 'walk' && p.s !== 'run') return;
     const info = opts.worldInfo?.(pt.define);
@@ -1315,7 +1347,9 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     }
     if (!target) { reply(c, 'Esta dungeon ainda não está disponível neste servidor.'); return; }
     reply(c, `Entrando em ${info?.name ?? target.name}…`);
-    await changeWorld(c, key, pt.pos);
+    // `saida:<mapa de onde veio>` (ponto do editor no mapa de destino) manda na volta; depois a chegada do mapa; por fim o ponto do .rgn
+    const exit = here ? pointsOf(target).find((q) => q.name.toLowerCase() === `saida:${baseOf(here).toLowerCase()}`) : undefined;
+    await changeWorld(c, key, exit ? [...exit.pos] : arrivalOf(target) ?? pt.pos);
   }
 
   /** a cada 10 s: cópias de dungeon vazias por 10 min somem; quem saiu da party da cópia é retirado depois de 3 min */
@@ -1404,18 +1438,20 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
    */
   function zckTeleport(c: Conn, key: number) {
     const mobWorld = W(c).mobs;
-    const p = c.player, cb = c.cb, d = teleports[key];
+    const p = c.player, cb = c.cb, d = allTeleports()[key];
     if (!p || !d) return;
     const now = Date.now();
     if (cb?.dead) { reply(c, 'Você não pode se teletransportar morto.'); return; }
     if (cb && (now - cb.lastHurt < 5000 || now < cb.nextAtk + 1500)) { reply(c, 'Você não pode se teletransportar em combate.'); return; }
     if (p.s !== 'stand') { reply(c, 'Pare de andar para se teletransportar.'); return; }
-    const dw = worldByDefine(d.world);
+    const dw = d.custom ? worldNamed(d.world) : worldByDefine(d.world);
     if (!dw) { reply(c, `${d.name} ainda não está disponível neste servidor.`); return; }
-    if (dw.name !== p.w) { reply(c, `Indo para ${d.name}…`); void changeWorld(c, dw.name, [...d.pos]); return; }
-    if (mobWorld && !mobWorld.terrain.walkable(d.pos[0], d.pos[2])) { reply(c, 'Não é possível se teletransportar para lá.'); return; }
-    p.p = [...d.pos]; c.dirty = true;
-    send(c.ws, { t: 'teleport', p: d.pos });
+    const over = pointsOf(dw).find((q) => q.name.toLowerCase() === d.name.toLowerCase() || q.name.toLowerCase() === `tp:${d.name.toLowerCase()}`);
+    const dest: [number, number, number] = over ? [...over.pos] : [...d.pos]; // ponto do editor com o nome do destino troca a posição do arquivo
+    if (dw.name !== p.w) { reply(c, `Indo para ${d.name}…`); void changeWorld(c, dw.name, dest); return; }
+    if (mobWorld && !mobWorld.terrain.walkable(dest[0], dest[2])) { reply(c, 'Não é possível se teletransportar para lá.'); return; }
+    p.p = [...dest]; c.dirty = true;
+    send(c.ws, { t: 'teleport', p: dest });
     reply(c, `Teletransportado para ${d.name}.`);
   }
 
@@ -1449,6 +1485,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
    */
   function dropLoot(m: Mob, killer: Conn) {
     const p = killer.player;
+    if (p) void quests?.onKill(killer, m.modelId, m.x, m.z).catch((e) => console.error('realtime: quests', e));
     if (!dropRules || !inventory || !m.prop || !p) return;
     const now = Date.now();
     for (const d of dropRules.roll(m.modelId, m.prop, p.level)) {
@@ -1833,6 +1870,61 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   // ---------- lojas dos NPCs (server/shops.ts) ----------
   const reply = (c: Conn, text: string) => send(c.ws, { t: 'chat', id: 0, name: '', text });
 
+  // ---------- quests (servers/world/quests.ts = data/quests.json; questflow.ts = aceitar, progresso, entregar) ----------
+  const quests = inventory ? new QuestFlow<Conn>({
+    inventory, book: new QuestBook(inventory.catalog),
+    send: (c, msg) => send(c.ws, msg), say: reply, addExp,
+    party: (c) => { const p = c.player ? parties.of(c.player.id) : null; return p ? { size: p.members.length, leader: p.leader } : null; },
+    near: (c, key) => !!c.player && !!W(c).shops?.near(key, c.player.p[0], c.player.p[2]),
+    worldOf: (c) => W(c).base ?? W(c).name,
+    pointPos: (world, name) => loadEdits(world).points?.find((q) => q.name.toLowerCase() === name.toLowerCase())?.pos ?? null,
+    teleport: async (c, world, point) => {
+      const wr = worldNamed(world);
+      if (!wr) return `O mapa "${world}" não está disponível neste servidor.`;
+      const pt = point ? pointsOf(wr).find((q) => q.name.toLowerCase() === point.toLowerCase()) : undefined;
+      await changeWorld(c, wr.name, pt ? [...pt.pos] : arrivalOf(wr) ?? ([...(wr.start ?? REVIVE_AT)] as [number, number, number]));
+      return point && !pt ? `Ponto "${point}" não existe em ${world}: você foi para a chegada do mapa.` : null;
+    },
+    runEvent: (id) => { if (!events.run(id, 'quest')) console.warn(`quests: evento "${id}" não existe em data/events.json`); },
+  }) : null;
+
+  // ---------- eventos e clima (servers/world/events.ts = data/events.json) ----------
+  /** o mundo (aberto) pelo nome da pasta, define WI_* ou nome do runtime; abre o mapa se ainda não está carregado */
+  function worldNamed(name: string): WorldRuntime | null {
+    const l = name.toLowerCase();
+    const have = [...worlds.values()].find((w) => !w.instance && (w.name.toLowerCase() === l || w.base?.toLowerCase() === l || w.define.toLowerCase() === l));
+    if (have) return have;
+    const info = opts.worldByName?.(name) ?? opts.worldInfo?.(name);
+    return info ? ensureWorld(info.define) : null;
+  }
+  const baseOf = (wr: WorldRuntime) => wr.base ?? wr.name;
+  const events = new EventScheduler({
+    announce: (text, loops) => { broadcast({ t: 'announce', text, loops }); },
+    summon: (s) => {
+      const wr = worldNamed(s.world ?? MAIN);
+      if (!wr?.mobs) return `summon: mapa "${s.world ?? MAIN}" indisponível`;
+      const id = inventory?.catalog.defines.get(s.mob);
+      if (id === undefined) return `summon: monstro "${s.mob}" não existe`;
+      if (s.unique && wr.mobs.mobs.some((m) => m.modelId === id && m.s !== 'dead')) return null;
+      const pt = s.point ? pointsOf(wr).find((q) => q.name.toLowerCase() === s.point!.toLowerCase()) : undefined;
+      if (s.point && !pt) return `summon: ponto "${s.point}" não existe em ${baseOf(wr)} (marque no editor)`;
+      const at: [number, number, number] = pt ? pt.pos : s.at ? [s.at[0], wr.start[1], s.at[1]] : wr.start;
+      return wr.mobs.summon(id, at[0], at[2], at[1], s.count) ? null : `summon: não consegui invocar ${s.mob}`;
+    },
+    boost: (r, ms) => setRateBoost(r, ms),
+    give: (item, count, world) => {
+      const it = inventory?.catalog.bySymbol.get(item);
+      if (!it) { console.warn(`evento: item "${item}" não existe`); return 0; }
+      let n = 0;
+      for (const c of conns) if (c.player && (!world || baseOf(W(c)).toLowerCase() === world.toLowerCase())) { void giveLoot(c, it.id, count, 0, 0); n++; }
+      return n;
+    },
+    fixedHour: () => clockFixed,
+    weatherChanged: (world, kind) => { for (const c of conns) if (c.player && baseOf(W(c)) === world) send(c.ws, { t: 'weather', kind }); },
+  });
+  events.start();
+  http.on('close', () => events.stop());
+
   function shopOpen(c: Conn, key: string) {
     const shops = W(c).shops;
     const p = c.player;
@@ -1925,7 +2017,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     cb.dead = false;
     cb.hp = Math.ceil(cb.maxHp / 2); cb.mp = Math.max(cb.mp, Math.ceil(cb.maxMp / 2)); cb.fp = Math.max(cb.fp, Math.ceil(cb.maxFp / 2));
     cb.dirty = true;
-    const at = W(c).start;
+    const at = arrivalOf(W(c)) ?? W(c).start;
     p.p = [...at]; p.s = 'stand'; c.dirty = true;
     send(c.ws, { t: 'teleport', p: at, revive: true });
   }
@@ -2206,8 +2298,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (!s) { send(c.ws, { t: 'error', error: 'Sessão expirada. Entre novamente.' }); c.ws.close(); return; }
     c.peace = true; // sempre entra em pé (postura normal, mesmo com arma): o primeiro golpe que receber ou der liga o modo de batalha
     const r = await query<{ id: string; name: string; sex: number; hair_mesh: number; hair_color: number; head_mesh: number; level: number; job: number; pos_x: number; pos_y: number; pos_z: number; angle: number;
-      str: number; sta: number; dex: number; int: number; hp: number; mp: number; fp: number; exp: string; stat_points: number; shortcuts: unknown; skills: Record<string, number>; skill_points: number; world_id: number; pet_filter: unknown }>(
-      'SELECT id, name, sex, hair_mesh, hair_color, head_mesh, level, job, pos_x, pos_y, pos_z, angle, world_id, str, sta, dex, "int", hp, mp, fp, exp, stat_points, shortcuts, skills, skill_points, pet_filter FROM characters WHERE id = $1 AND account_id = $2 AND NOT deleted',
+      str: number; sta: number; dex: number; int: number; hp: number; mp: number; fp: number; exp: string; stat_points: number; shortcuts: unknown; skills: Record<string, number>; skill_points: number; world_id: number; pet_filter: unknown; quests: unknown }>(
+      'SELECT id, name, sex, hair_mesh, hair_color, head_mesh, level, job, pos_x, pos_y, pos_z, angle, world_id, str, sta, dex, "int", hp, mp, fp, exp, stat_points, shortcuts, skills, skill_points, pet_filter, quests FROM characters WHERE id = $1 AND account_id = $2 AND NOT deleted',
       [Number(msg.characterId), s.accountId]);
     const ch = r.rows[0];
     if (!ch) { send(c.ws, { t: 'error', error: 'Personagem não encontrado nesta conta.' }); c.ws.close(); return; }
@@ -2249,7 +2341,10 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     const me = c.player;
     c.petFilter = cleanPetFilter(ch.pet_filter);
     sendPetFilter(c);
+    quests?.load(c, ch.quests);
+    void quests?.push(c);
     send(c.ws, { t: 'clock', now: Date.now(), fixed: clockFixed });
+    send(c.ws, { t: 'weather', kind: events.weatherOf(baseOf(W(c))) });
     const old = byId.get(id);
     if (old && old !== c) { for (const o of [...old.viewers]) hideFrom(o, old); for (const o of [...old.seen.values()]) hideFrom(old, o); }
     byId.set(id, c);
@@ -2437,6 +2532,72 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
               const made = id >= 0 ? mw.summon(id, at ? at[0] : p.p[0] + 3, at ? at[1] : p.p[2] + 3, p.p[1], n) : 0;
               return made ? `${made}× ${mw.terrain.moverProps.get(id)?.symbol} invocado(s) ${at ? 'no lugar marcado' : 'perto de você'}.` : `Monstro ${what} não existe.`;
             },
+            worldList: () => [...worlds.values()].filter((w) => !w.name.includes('#')).map((w) => ({ name: w.base ?? w.name, id: w.id })),
+            travel: (q) => {
+              const l = q.toLowerCase().trim();
+              const all = [...worlds.values()].filter((w) => !w.name.includes('#'));
+              const wr = all.find((w) => w.name.toLowerCase() === l || String(w.id) === l)
+                ?? all.find((w) => w.name.toLowerCase().includes(l) || w.define.toLowerCase().includes(l));
+              if (!wr) return `Não achei o mapa "${q}". Use //mapa para ver a lista.`;
+              if (c.player?.w === wr.name) return `Você já está em ${wr.name}.`;
+              void changeWorld(c, wr.name, arrivalOf(wr) ?? ([...(wr.start ?? REVIVE_AT)] as [number, number, number])).catch((e) => console.error('realtime: //mapa', e));
+              return `Indo para ${wr.name}…`;
+            },
+            event: (op, id) => {
+              if (op === 'run') return id ? (events.run(id, `GM ${c.player?.name}`) ? `Evento "${id}" disparado.` : `Evento "${id}" não existe.`) : 'Uso: //evento run <id>';
+              const l = events.list();
+              return l.length ? `Eventos: ${l.map((e) => `${e.id}${e.when ? '' : ' (manual)'}`).join(', ')}. Uso: //evento run <id>` : 'Nenhum evento em data/events.json.';
+            },
+            weather: (kind, minutes) => {
+              const wr = baseOf(W(c));
+              if (!kind) return `Clima em ${wr}: ${events.weatherOf(wr) === 'rain' ? 'chovendo' : 'limpo'}.`;
+              events.setWeather(kind, minutes, wr);
+              return kind === 'rain' ? `Chuva em ${wr} por ${minutes} min.` : `Tempo limpo em ${wr}.`;
+            },
+            portal: (op, what) => {
+              const wr = W(c), k = baseOf(wr), here = loadEdits(k), ps = wr.portals ?? [];
+              const closed = new Set(here.closedPortals ?? []);
+              const name = (d: string) => `${opts.worldInfo?.(d)?.name ?? d}${closed.has(d) ? ' (fechado)' : ''}`;
+              if (op === 'list') return ps.length ? `Portais de ${k}: ${[...new Set(ps.map((x) => x.define))].map(name).join(', ')}. Uso: //portal fechar|abrir <nome do mapa de destino>` : `${k} não tem portais.`;
+              const q = (what ?? '').toLowerCase();
+              const def = [...new Set(ps.map((x) => x.define))].find((d) => d.toLowerCase() === q || (opts.worldInfo?.(d)?.name ?? '').toLowerCase() === q);
+              if (!def) return `Não achei o portal "${what ?? ''}" neste mapa. Use //portal para listar.`;
+              if (op === 'close') closed.add(def); else closed.delete(def);
+              saveEdits(k, { ...here, closedPortals: [...closed] });
+              closedCache.delete(k);
+              return `Portal para ${opts.worldInfo?.(def)?.name ?? def} ${op === 'close' ? 'fechado: não teleporta mais' : 'aberto de novo'}.`;
+            },
+            attr: () => { const p = c.player, a = p ? W(c).mobs?.terrain.attrAt(p.p[0], p.p[2]) : undefined; return a === undefined ? '' : ['normal', 'NoWalk (bloqueado)', 'NoFly', 'NoMove (bloqueado)', 'Die (mata)'][a] ?? String(a); },
+            open: (op, arg) => {
+              const wr = W(c), k = baseOf(wr), p = c.player, e = loadEdits(k), list = [...(e.openAreas ?? [])];
+              const fmt = (a: { x1: number; z1: number; x2: number; z2: number }, i: number) => `${i + 1}) x ${Math.round(a.x1)}–${Math.round(a.x2)}, z ${Math.round(a.z1)}–${Math.round(a.z2)}`;
+              if (op === 'list') return list.length ? `Áreas liberadas em ${k}: ${list.map(fmt).join(' · ')}` : `${k} não tem áreas liberadas. Use //liberar <raio> onde há uma barreira invisível.`;
+              if (op === 'clear') { saveEdits(k, { ...e, openAreas: [] }); return 'Todas as áreas liberadas foram apagadas.'; }
+              if (op === 'del') { const i = Number(arg) - 1; if (!list[i]) return 'Número inválido (veja //liberar lista).'; list.splice(i, 1); saveEdits(k, { ...e, openAreas: list }); return 'Área apagada.'; }
+              if (!p) return '';
+              const r = Math.max(1, Math.min(200, Number(arg) || 8));
+              list.push({ x1: p.p[0] - r, z1: p.p[2] - r, x2: p.p[0] + r, z2: p.p[2] + r });
+              saveEdits(k, { ...e, openAreas: list });
+              return `Passagem liberada num quadrado de ${r * 2} m em volta de você (${Math.round(p.p[0])}, ${Math.round(p.p[2])}). Vale para todos; no seu jogo aperte F5 para recarregar o mapa e atravessar.`;
+            },
+            speed: (pct) => {
+              if (pct === undefined) return `Velocidade: ${c.speedPct ?? 100}% (100 = normal). Uso: //speed <10 a 1000>; //speed 100 volta ao normal.`;
+              c.speedPct = pct === 100 ? undefined : pct;
+              if (c.cb) c.cb.dirty = true; // reenvia os atributos (velocidade de corrida) ao cliente
+              return pct === 100 ? 'Velocidade normal.' : `Velocidade em ${pct}% da normal (até você sair do jogo ou usar //speed 100).`;
+            },
+            where: () => baseOf(W(c)),
+            quest: (op, id) => (!quests ? Promise.resolve('Sem quests neste servidor.') : op === 'reset' ? quests.reset(c, id) : Promise.resolve(quests.list(c))),
+            point: (q) => {
+              const wr = W(c), pts = pointsOf(wr), p = c.player;
+              if (!q) return pts.length ? `Pontos de ${wr.base ?? wr.name}: ${pts.map((x) => x.name).join(', ')}. Uso: //ponto <nome>` : 'Este mapa não tem pontos marcados (use a ferramenta "Pontos" do editor).';
+              const l = q.toLowerCase();
+              const pt = pts.find((x) => x.name.toLowerCase() === l) ?? pts.find((x) => x.name.toLowerCase().includes(l));
+              if (!pt || !p) return `Não achei o ponto "${q}".`;
+              if (!inWorld(pt.pos)) return 'Esse ponto está fora do mapa.';
+              p.p = [...pt.pos]; c.dirty = true; send(c.ws, { t: 'teleport', p: pt.pos });
+              return `Teleportado para ${pt.name}.`;
+            },
             teleport: (id, p) => {
               if (!inWorld(p)) return false;
               for (const o of conns) if (o.player?.id === id) { o.player.p = [...p]; o.dirty = true; send(o.ws, { t: 'teleport', p }); }
@@ -2540,7 +2701,14 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         const key = msg.key.slice(0, 40), k = key.toLowerCase();
         const shops = W(c).shops;
         if (!shops?.near(key, c.player.p[0], c.player.p[2])) return;
-        send(ws, { t: 'npcMenu', key, name: shops.npcNames.get(k) ?? key, shop: shops.shops.has(k) || shops.tokenShops.has(k), buff: shops.npcBuffs.has(k), smith: [...(shops.npcMenus.get(k) ?? [])] });
+        const base = { t: 'npcMenu', key, name: shops.npcNames.get(k) ?? key, shop: shops.shops.has(k) || shops.tokenShops.has(k), buff: shops.npcBuffs.has(k), smith: [...(shops.npcMenus.get(k) ?? [])] };
+        void (quests ? quests.menuFor(c, key) : Promise.resolve([])).then((q) => send(ws, { ...base, quests: q })).catch((e) => console.error('realtime: menu do NPC', e));
+      } else if (msg.t === 'quest' && c.player && typeof msg.id === 'string' && typeof msg.key === 'string' && quests) {
+        const id = msg.id.slice(0, 64), key = msg.key.slice(0, 40), op = msg.op, q = quests;
+        // um pedido de cada vez por jogador (a entrega confere e tira os itens de uma vez só)
+        c.invQueue = c.invQueue.then(() => (op === 'open' ? q.dialog(c, id, key) : op === 'accept' ? q.accept(c, id, key) : op === 'turnIn' ? q.turnIn(c, id, key) : op === 'abandon' ? q.abandon(c, id) : undefined)).catch((e) => console.error('realtime: quest', e));
+      } else if (msg.t === 'quests' && c.player && quests) {
+        void quests.push(c);
       } else if (msg.t === 'npcBuff' && c.player && typeof msg.key === 'string') {
         npcBuff(c, msg.key.slice(0, 40));
       } else if (msg.t === 'buffOff' && c.player && Number.isInteger(msg.id)) {

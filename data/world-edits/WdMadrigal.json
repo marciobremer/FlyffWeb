@@ -246,8 +246,155 @@
    }
   },
   "removed": [],
-  "added": []
+  "added": [
+   {
+    "modelId": 876,
+    "type": 5,
+    "characterKey": "mada_redrobegirl",
+    "name": "Mysterious Robe girl",
+    "pos": [
+     3889,
+     59,
+     4102
+    ],
+    "rot": [
+     0,
+     -165,
+     0
+    ],
+    "scale": [
+     1,
+     1,
+     1
+    ]
+   }
+  ]
  },
+ "props": [
+  {
+   "file": "L2/Field_Deco_Artifact_S.green_h.FDeco_House_03.glb",
+   "pos": [
+    7306,
+    155.692,
+    3928
+   ],
+   "rotY": -35,
+   "scale": 0.0311
+  },
+  {
+   "file": "L2/Dion_tree_S.town_A.Dion_general_tree1_A.glb",
+   "pos": [
+    7350,
+    155.222,
+    3918
+   ],
+   "rotY": 0,
+   "scale": 0.0171
+  },
+  {
+   "file": "L2/Dion_tree_S.red_mt_A.DionRtree2_A.glb",
+   "pos": [
+    7296,
+    155.692,
+    3919
+   ],
+   "rotY": 0,
+   "scale": 0.0171
+  },
+  {
+   "file": "L2/Dion_tree_S.guillotineTree_A.guillotinetree3_A.glb",
+   "pos": [
+    7313,
+    155.692,
+    3940
+   ],
+   "rotY": 0,
+   "scale": 0.0171
+  },
+  {
+   "file": "L2/Dion_tree_S.Girantree_A.girantree2_A.glb",
+   "pos": [
+    7328,
+    155.692,
+    3928
+   ],
+   "rotY": 0,
+   "scale": 0.0171
+  },
+  {
+   "file": "L2/world_bridge_S.Innadrile.Innadrile_Bridge_A.glb",
+   "pos": [
+    7358,
+    105,
+    3981
+   ],
+   "rotY": -95,
+   "scale": 0.037251
+  },
+  {
+   "file": "L2/Field_Deco_Artifact_S.carriage_street.FDeco_Wagon.glb",
+   "pos": [
+    7300,
+    155.692,
+    3920
+   ],
+   "rotY": -170,
+   "scale": 0.0171
+  },
+  {
+   "file": "L2/field_deco_S.diongiranstone.dgstone05.glb",
+   "pos": [
+    7353,
+    82,
+    3986
+   ],
+   "rotY": 0,
+   "scale": 0.0521
+  },
+  {
+   "file": "L2/field_deco_S.diongiranstone.dgstone05.glb",
+   "pos": [
+    7367,
+    85.131,
+    3978
+   ],
+   "rotY": -70,
+   "scale": 0.0521
+  },
+  {
+   "file": "L2/field_deco_S.diongiranstone.dgstone05.glb",
+   "pos": [
+    7382,
+    85.066,
+    3981
+   ],
+   "rotY": 0,
+   "scale": 0.0321
+  },
+  {
+   "file": "L2/Field_Deco_Artifact2_S.merman.merman.glb",
+   "pos": [
+    7164,
+    89,
+    3115
+   ],
+   "rotY": -5,
+   "scale": 0.0111
+  }
+ ],
+ "closedPortals": [
+  "WI_DUNGEON_CLOCKWORK"
+ ],
+ "points": [
+  {
+   "name": "Darken City",
+   "pos": [
+    8320.06,
+    100,
+    3716.3
+   ]
+  }
+ ],
  "environment": {
   "hour": 12,
   "sunTilt": 35,
@@ -258,9 +405,9 @@
   "showWater": true,
   "filter": {
    "filter": "zelda",
-   "strength": 0.7,
+   "strength": 0.3,
    "outline": true,
-   "saturation": 0.7
+   "saturation": 0.45
   },
   "shadow": {
    "area": 70,

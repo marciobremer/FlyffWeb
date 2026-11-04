@@ -1,0 +1,45 @@
+{
+ "format": "reactionmmo-world-edits",
+ "version": 1,
+ "world": "WdL2Giran",
+ "npcs": {
+  "moved": {},
+  "removed": [],
+  "added": []
+ },
+ "props": [
+  {
+   "file": "L2/terrain/22_22/scene.glb",
+   "pos": [
+    392.64,
+    182.817,
+    1144.832
+   ],
+   "rotY": 0,
+   "scale": 0.023,
+   "collide": false
+  },
+  {
+   "file": "L2/terrain/22_22/solid.glb",
+   "pos": [
+    392.64,
+    182.817,
+    1144.832
+   ],
+   "rotY": 0,
+   "scale": 0.023,
+   "hidden": true
+  },
+  {
+   "file": "L2/terrain/22_22/geo.glb",
+   "pos": [
+    392.64,
+    182.817,
+    1144.832
+   ],
+   "rotY": 0,
+   "scale": 0.023,
+   "hidden": true
+  }
+ ]
+}

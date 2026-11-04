@@ -214,3 +214,21 @@ dl.ltnow { grid-template-columns: repeat(4, auto); }
 .sktip table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .sktip th, .sktip td { padding: 2px 6px; text-align: left; border-bottom: 1px solid var(--line); }
 .sktip th { color: var(--dim); font-weight: 600; }
+
+.tp-bar { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+.tp-bar input { flex: 1; max-width: 360px; }
+.tp-wrap { max-height: 420px; overflow: auto; border: 1px solid var(--line, #243044); border-radius: 8px; }
+.tp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tp-table th { position: sticky; top: 0; background: var(--panel, #0f1826); text-align: left; padding: 6px 8px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.tp-table td { padding: 4px 8px; border-top: 1px solid var(--line, #243044); white-space: nowrap; }
+.tp-num { width: 90px; }
+.tp-table .btn { padding: 3px 10px; margin-right: 4px; }
+.tp-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; padding: 10px; border: 1px dashed var(--line, #243044); border-radius: 8px; }
+.tp-add input[type=text], .tp-add input:not([type]) { min-width: 160px; }
+
+.qf { display: flex; flex-wrap: wrap; gap: 12px; margin: 8px 0; align-items: flex-end; }
+.qf label, .qwide { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--dim); }
+.qf label input, .qf label select { min-width: 160px; }
+.qwide { margin: 8px 0; } .qwide textarea { width: 100%; }
+.q-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; align-items: center; }
+.q-item { min-width: 260px; }

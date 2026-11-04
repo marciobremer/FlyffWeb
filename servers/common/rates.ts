@@ -27,11 +27,21 @@ export function cleanRates(v: unknown, strict = false): Rates {
   return out;
 }
 
+/** bônus temporário de um evento (servers/world/events.ts): multiplica as taxas do arquivo até `until` (só neste processo) */
+let boost: { r: Rates; until: number } | null = null;
+export function setRateBoost(r: Rates | null, ms = 0) { boost = r && ms > 0 ? { r, until: Date.now() + ms } : null; }
+
 let cached: Rates = { ...DEFAULT_RATES };
 let cachedMtime = -1, checkedAt = 0;
 
 /** taxas atuais (relê o arquivo no máximo a cada 2 s, e só se ele mudou) */
 export function rates(): Rates {
+  const base = fileRates();
+  if (boost && boost.until <= Date.now()) boost = null;
+  return boost ? { exp: base.exp * boost.r.exp, penya: base.penya * boost.r.penya, drop: base.drop * boost.r.drop } : base;
+}
+
+function fileRates(): Rates {
   const now = Date.now();
   if (now - checkedAt < CHECK_MS) return cached;
   checkedAt = now;
