@@ -1,0 +1,5 @@
+/* pergunta centralizada do jogo (client/dialog.ts), no mesmo visual da caixinha da lixeira */
+.gd-veil { position: fixed; inset: 0; z-index: 100000; display: flex; align-items: center; justify-content: center; background: rgb(0 0 0 / .18); }
+.gd-box { min-width: 260px; max-width: min(440px, 88vw); padding: 12px 14px; border: 1px solid #c0392b; border-radius: 8px; background: #fffaf7; box-shadow: 0 6px 22px rgb(0 0 0 / .5); font: 13px/1.35 Tahoma, Verdana, system-ui, sans-serif; }
+.gd-box p { margin: 0 0 10px; color: #5a2a1a; font-weight: 700; white-space: pre-line; }
+.gd-box div { display: flex; gap: 8px; justify-content: flex-end; }
