@@ -343,7 +343,7 @@ export async function runGmCommand(ctx: GmContext, text: string): Promise<void> 
       else if (rarityByName.has(low)) r = rarityByName.get(low)!;
       else if (pierce) p = Number(pierce[1]);
       else if (isInt(a)) count = Math.min(9999, Math.max(1, Number(a)));
-      else if (m && ELEMENTS[m[1]]) { e = ELEMENTS[m[1]]; el = Math.min(10, Number(m[2] ?? 1)); }
+      else if (m && ELEMENTS[m[1]]) { e = ELEMENTS[m[1]]; el = Math.min(20, Number(m[2] ?? 1)); }
       else { ctx.reply(`Não entendi "${a}". Ex.: //give-item ${def.symbol} 1 +5 fogo+3`); return; }
     }
     let left: number;

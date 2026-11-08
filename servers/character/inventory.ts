@@ -562,7 +562,7 @@ export class Inventory {
     const sockets = clamp(up.p, maxPiercing(d.parts));
     // raridade só em arma (IK1_WEAPON), até o maior nível do WeaponRarity.inc
     const rarity = d.kind1 === 1 ? clamp(up.r, Math.max(0, this.catalog.rarity.length - 1)) : 0;
-    const u = { u: clamp(up.u, maxUpgrade(d.parts)), e: clamp(up.e, 5), el: clamp(up.el, 10), ...(sockets ? { p: new Array<number>(sockets).fill(0) } : {}), ...(rarity ? { r: rarity } : {}) };
+    const u = { u: clamp(up.u, maxUpgrade(d.parts)), e: clamp(up.e, 5), el: clamp(up.el, 20), ...(sockets ? { p: new Array<number>(sockets).fill(0) } : {}), ...(rarity ? { r: rarity } : {}) };
     if (!u.e) u.el = 0;
     if (!plain(u) && d.parts < 0) throw new Error(`${d.name} não é equipamento: não aceita enchant nem elemento`);
     const pack = plain(u) ? d.packMax : 1;

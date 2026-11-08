@@ -55,7 +55,7 @@ export class GmPanel extends GameWindow {
   private piercing = select(Array.from({ length: 5 }, (_, i) => [String(i), i ? `${i}` : 'Nenhum'] as [string, string]));
   private piercingField = field('Furos', this.piercing);
   private element = select(ELEMENT_NAMES.map((n, i) => [String(i), n || 'Nenhum'] as [string, string]));
-  private elementLv = select(Array.from({ length: 11 }, (_, i) => [String(i), `+${i}`] as [string, string]));
+  private elementLv = select(Array.from({ length: 21 }, (_, i) => [String(i), `+${i}`] as [string, string]));
   private q = el('input', { className: 'gm-in', type: 'search', placeholder: 'nome ou II_…', maxLength: 40 });
   private kind = select(KINDS);
   /** filtro de raridade (dwItemGrade) */
