@@ -483,6 +483,7 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 .item-tip .set-on { color: #0000cc; padding-left: 12px; }
 .item-tip .set-off { color: #8a8a8a; padding-left: 12px; }
 .item-tip .set-fx { color: #ff9d00; }
+.item-tip .set-fx-off { color: #8a8a8a; }
 .item-tip .awake { color: #0000ff; }
 .item-tip .box-head { color: #1a4fb0; font-weight: 700; }
 .item-tip .e1 { color: #d83a1a; } .item-tip .e2 { color: #1a64d8; } .item-tip .e3 { color: #b08a00; } .item-tip .e4 { color: #109060; } .item-tip .e5 { color: #8a5a20; }

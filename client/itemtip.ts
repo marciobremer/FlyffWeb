@@ -126,7 +126,7 @@ function lines(d: ItemView, it: TipItem, elementNames: string[]): Line[] {
   if (d.job !== undefined && d.job >= 0 && JOBS[d.job]) out.push({ text: `Classe: ${JOBS[d.job].name}`, cls: player.job !== undefined && d.job > 0 && player.job !== d.job ? 'bad' : undefined });
   if (d.lv > 1) out.push({ text: `Nível: ${d.lv}`, cls: player.level !== undefined && player.level < d.lv ? 'bad' : undefined });
   if (it.n > 1) out.push({ text: `Quantidade: ${it.n}` });
-  // conjunto (PutSetItemOpt): nome (equipadas/total), peças (azul = equipada), efeitos que valem com as equipadas (laranja)
+  // conjunto (PutSetItemOpt): nome (equipadas/total), peças (azul = equipada), efeitos do conjunto (laranja = já valem, cinza = faltam peças)
   if (d.set) {
     // cada item equipado preenche uma peça só (2 vagas de anel precisam de 2 anéis)
     const left = new Map<number, number>();
@@ -135,7 +135,8 @@ function lines(d: ItemView, it: TipItem, elementNames: string[]): Line[] {
     const n = pieces.filter((p) => p.on).length;
     out.push({ text: `${d.set.name} (${n}/${d.set.pieces})`, gap: true });
     for (const p of pieces) out.push({ text: p.name || lookup(p.id)?.name || '?', cls: p.on ? 'set-on' : 'set-off' });
-    for (const [need, k, v] of d.set.avail) if (need <= n) out.push({ text: `Efeito do conjunto: ${fxText(k, v)}`, cls: 'set-fx' });
+    // todos os efeitos aparecem: os que já valem em laranja; os que faltam peças em cinza, com quantas peças pedem
+    for (const [need, k, v] of d.set.avail) out.push(need <= n ? { text: `Efeito do conjunto: ${fxText(k, v)}`, cls: 'set-fx' } : { text: `Efeito do conjunto (${need} peças): ${fxText(k, v)}`, cls: 'set-fx-off' });
   }
   // piercing (suit): um losango por furo aberto — cheio com carta, vazio sem; bônus das cartas somados por atributo
   if (it.p?.length) {
