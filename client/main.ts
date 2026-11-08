@@ -21,7 +21,7 @@ import { Combat } from './combat';
 import { GroundItems } from './ground';
 import { CharacterWindow } from './charwnd';
 import { MiniMap, WorldMap, type MapDot, type MapView } from './minimap';
-import { SmithWindow, smithOptions, isUpgradeMaterial } from './smith';
+import { SmithWindow, smithOptions, isUpgradeMaterial, isAwakeScroll } from './smith';
 import { ShopWindow } from './shop';
 import { SkillWindow } from './skillwnd';
 import { JobWindow } from './jobwnd';
@@ -699,7 +699,7 @@ inventory.onUse = (c, s) => {
   // carta de piercing: martelinho para escolher a suit da bolsa
   if (it && c === 0 && inventory.def(it.id)?.card) { inventory.startPierce(s); pierceFx(); return; }
   // material de upgrade (Sunstone, orichalcum brilhante, moonstone, carta de elemento): o mesmo martelo, para escolher o item
-  if (it && c === 0 && isUpgradeMaterial(inventory.def(it.id)?.sym)) { inventory.startPierce(s, true); pierceFx(); return; }
+  if (it && c === 0 && (isUpgradeMaterial(inventory.def(it.id)?.sym) || isAwakeScroll(inventory.def(it.id)?.sym))) { inventory.startPierce(s, true); pierceFx(); return; }
   if (!net.invUse(c, s)) chat.system(t('Sem conexão com o servidor.'));
 };
 /**
@@ -709,7 +709,7 @@ inventory.onUse = (c, s) => {
 inventory.onUpgrade = (m, s) => {
   const it = inventory.all.get(`0:${s}`), d = it && inventory.def(it.id), sym = inventory.def(inventory.all.get(`0:${m}`)?.id ?? -1)?.sym ?? '';
   const ultimate = sym === 'II_GEN_MAT_ORICHALCUM02', element = sym.startsWith('II_GEN_MAT_ELE_');
-  const risk = it && d && (ultimate || (element ? it.el >= 3 : it.u >= 3));
+  const risk = it && d && !isAwakeScroll(sym) && (ultimate || (element ? it.el >= 3 : it.u >= 3));
   const send = () => { if (!net.upgrade(s, m)) { chat.system(t('Sem conexão com o servidor.')); inventory.cancelPierce(); } };
   if (!risk) { send(); return; }
   void inventory.confirm(`Sem pergaminho de proteção, se falhar ${d.name}${it.u ? ` +${it.u}` : ''} é destruído. Para não perder o item, use o "Upgrade seguro" do BoBoChan (Flaris).`, 'Melhorar')

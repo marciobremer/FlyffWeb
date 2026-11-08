@@ -55,7 +55,7 @@ export interface Fighter {
 }
 
 /** item equipado: definição, enchant, espaço (PARTS_*), cartas espetadas (piercing, 0 = furo vazio), elemento e joias da ultimate */
-export interface Equipped { d: ItemDef; u: number; s: number; p?: number[]; e?: number; el?: number; g?: number[]; /** raridade da arma (WeaponRarity.inc) */ r?: number }
+export interface Equipped { d: ItemDef; u: number; s: number; p?: number[]; e?: number; el?: number; g?: number[]; /** raridade da arma (WeaponRarity.inc) */ r?: number; /** despertar: [DST, valor, …] */ a?: number[] }
 
 /** `float` do C++: int × float vira float (32 bits) antes do (int) — 10 × 1.3f dá 12, não 13 */
 const f32mul = (a: number, b: number) => Math.trunc(Math.fround(a * Math.fround(b)));
@@ -181,7 +181,9 @@ export class CombatRules {
     let weapon: ItemDef | null = null, weaponUpgrade = 0, defMin = 0, defMax = 0, adjHit = 0, parry = 0;
     let wElem: [number, number] = [0, 0], sElem: [number, number] = [0, 0], wRare = 1;
     const add = (k: number, v: number) => { if (k > 0 && v) dst.set(k, (dst.get(k) ?? 0) + v); };
-    for (const { d, u, s, p, e, el, g, r } of equipped) {
+    for (const { d, u, s, p, e, el, g, r, a } of equipped) {
+      // despertar (SetDestParamRandomOpt): cada opção sorteada soma o DST dela
+      for (let i = 0; a && i + 1 < a.length; i += 2) add(a[i], a[i + 1]);
       // arma ultimate: joias engastadas (GetDestParamUltimate, só na mão direita)
       if (s === 10 && g?.length && this.upgrade) for (const [k, v] of this.upgrade.gemDst(g)) add(k, v);
       if (e && s === 10) wElem = [e, el ?? 0];

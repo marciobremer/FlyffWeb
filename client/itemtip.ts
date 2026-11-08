@@ -10,7 +10,7 @@ import { EXPUP_ROWS, SETITEM_ROWS, effectiveExpUp } from '../shared/expup';
  * Para peça equipável aparece uma segunda dica ao lado: "[ Equipado ]" com o que já está no espaço, para comparar.
  */
 export interface TipItem { id: number; n: number; u: number; e: number; el: number; /** piercing: carta por furo (0 = vazio) */ p?: number[]; /** joias da ultimate por espaço (0 = vazio) */ g?: number[]; /** raridade da arma (0 = Common) */ r?: number;
-  /** container (1 = equipado) e falhas seguidas de upgrade no nível atual */ c?: number; t?: number }
+  /** container (1 = equipado) e falhas seguidas de upgrade no nível atual */ c?: number; t?: number; /** despertar: [DST, valor, …] */ a?: number[] }
 
 /** DST_* (defineAttribute.h) → nome; cobre todos os bônus usados por armas e armaduras (o resto aparece como "Efeito #n") */
 const DST: Record<number, string> = {
@@ -158,8 +158,9 @@ function lines(d: ItemView, it: TipItem, elementNames: string[]): Line[] {
     for (const [name, n] of d.box) out.push({ text: `- ${name}${n > 1 ? ` (${n}x)` : ''}` });
     out.push({ text: 'Duplo clique para abrir.', cls: 'hint' });
   }
-  // PutAwakeningBlessing: equipamento sem despertar ainda
-  if (AWAKE_PARTS.has(d.parts) && (d.k1 === 1 || d.k1 === 2) && !d.card) out.push({ text: '"Pode ser despertado"', cls: 'awake' });
+  // PutAwakeningBlessing: as opções sorteadas, ou "pode ser despertado" no equipamento sem despertar ainda
+  if (it.a?.length) { for (let i = 0; i + 1 < it.a.length; i += 2) out.push({ text: fxText(it.a[i], it.a[i + 1]), cls: 'awake' }); }
+  else if (AWAKE_PARTS.has(d.parts) && (d.k1 === 1 || d.k1 === 2) && !d.card) out.push({ text: '"Pode ser despertado"', cls: 'awake' });
   return out;
 }
 

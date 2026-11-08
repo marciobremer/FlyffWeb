@@ -4,6 +4,7 @@ import { decodeText } from '../../shared/formats/rgn';
 import { maxPiercing } from '../../shared/upgrade';
 import type { ItemCatalog, ItemDef } from '../common/items';
 import { BAG, type InvEdit, type InvItem } from '../character/inventory';
+import { Awakening } from './awakening';
 
 /**
  * Ferreiro: upgrade de equipamento, joias, elemento e piercing (CItemUpgrade, WORLDSERVER/ItemUpgrade.cpp) e a linha das armas
@@ -48,10 +49,12 @@ export class UpgradeRules {
   /** joia por faixa de nível da arma (LEVEL_GEM) e o que cada joia vira na ultimate, por DST (ABILITY) */
   gemLevels: { gem: number; min: number; max: number }[] = [];
   gemAbility: { dst: number; list: { gem: number; ability: number; values: number[] }[] }[] = [];
+  readonly awakening: Awakening;
   private id: Record<string, number> = {};
   private k: Record<string, number> = {};
 
   constructor(private items: ItemCatalog) {
+    this.awakening = new Awakening(items);
     const read = (f: string) => { try { const b = fs.readFileSync(path.join(items.resDir, f)); return decodeText(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer, 'windows-1252'); } catch { return ''; } };
     const D = (s: string) => (/^-?\d+$/.test(s) ? Number(s) : items.defines.get(s) ?? -1);
     const strip = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ').replace(/--[^\n]*/g, ' ');
@@ -235,6 +238,7 @@ export class UpgradeRules {
     if (!mat || !md) return refuse('Escolha o material.');
     if (it === mat) return refuse('O material não pode ser o próprio item.');
     if (it.x) return refuse('Itens de tempo não recebem upgrade.');
+    if (this.awakening.handles(md)) return this.awakening.use(x, it, d, mat, md);
     if (this.isSunstone(md)) return this.general(x, it, d, mat, opts);
     if (this.isShiningOri(md)) return this.ultimateEnchant(x, it, d, mat, opts.safe);
     if (this.isMoonstone(md)) {

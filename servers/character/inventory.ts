@@ -33,11 +33,12 @@ export const RED_CHIP = 26460;
 export interface InvItem { c: number; s: number; id: number; n: number; u: number; e: number; el: number; /** piercing: um item de carta por espaço aberto (0 = vazio) */ p?: number[]; /** item de tempo ativado: vale até (ms) */ x?: number;
   /** falhas seguidas de upgrade no nível atual (fail stack do UpgradeSuccess.inc) */ t?: number;
   /** arma ultimate: joias engastadas, um item por espaço aberto (0 = vazio) */ g?: number[];
-  /** raridade da arma (WeaponRarity.inc, 0 = Common) */ r?: number }
+  /** raridade da arma (WeaponRarity.inc, 0 = Common) */ r?: number;
+  /** despertar (randomoption.inc): lista plana [DST, valor, DST, valor, …] com até 3 opções */ a?: number[] }
 /** melhorias pedidas ao criar um item (painel de GM) */
 export interface ItemUpgrade { u?: number; e?: number; el?: number; /** espaços de piercing abertos (suit: até 4) */ p?: number; /** raridade da arma (WeaponRarity.inc) */ r?: number }
-const plain = (i: { u: number; e: number; el: number; p?: number[]; g?: number[]; r?: number }) => !i.u && !i.e && !i.el && !i.p?.length && !i.g?.length && !i.r;
-const sameUpgrade = (a: InvItem, b: InvItem) => a.u === b.u && a.e === b.e && a.el === b.el && (a.p ?? []).join() === (b.p ?? []).join() && (a.g ?? []).join() === (b.g ?? []).join() && (a.r ?? 0) === (b.r ?? 0);
+const plain = (i: { u: number; e: number; el: number; p?: number[]; g?: number[]; r?: number; a?: number[] }) => !i.u && !i.e && !i.el && !i.p?.length && !i.g?.length && !i.r && !i.a?.length;
+const sameUpgrade = (a: InvItem, b: InvItem) => a.u === b.u && a.e === b.e && a.el === b.el && (a.p ?? []).join() === (b.p ?? []).join() && (a.g ?? []).join() === (b.g ?? []).join() && (a.r ?? 0) === (b.r ?? 0) && (a.a ?? []).join() === (b.a ?? []).join();
 export interface InvState { /** espaços abertos da bolsa deste personagem (BAG_SLOTS…BAG_MAX; o painel de GM desbloqueia) */ bag: number; gold: number; /** Red Chip (II_CHP_RED): contador como o penya, fora da bolsa */ chips: number; items: InvItem[] }
 /** o que um lado põe na janela de trade: espaços da bolsa (com quanto de cada pilha) e penya */
 export interface TradeOffer { items: { s: number; n: number; /** item que estava no espaço ao oferecer */ id: number }[]; gold: number }
@@ -98,15 +99,16 @@ export class Inventory {
     const q = (text: string, params?: unknown[]) => (db ? db.query(text, params) : query(text, params));
     const g = await q(`SELECT gold, red_chips FROM characters WHERE id = $1${lock ? ' FOR UPDATE' : ''}`, [characterId]);
     const r = await q(
-      `SELECT container, slot, item_id, count, upgrade, element, element_level, piercing, upgrade_tries, gems, rarity, (extract(epoch from expires_at) * 1000)::float8 AS expires FROM character_items WHERE character_id = $1 ORDER BY container, slot${lock ? ' FOR UPDATE' : ''}`, [characterId]);
+      `SELECT container, slot, item_id, count, upgrade, element, element_level, piercing, upgrade_tries, gems, rarity, awakening, (extract(epoch from expires_at) * 1000)::float8 AS expires FROM character_items WHERE character_id = $1 ORDER BY container, slot${lock ? ' FOR UPDATE' : ''}`, [characterId]);
     let bag = BAG_SLOTS;
     try { bag = Number((await q('SELECT bag_slots FROM characters WHERE id = $1', [characterId])).rows[0]?.bag_slots ?? BAG_SLOTS); } catch { /* sem a coluna (migração 024): 42 */ }
     bag = Math.max(BAG_SLOTS, Math.min(BAG_MAX, bag));
-    return { bag, gold: Number(g.rows[0]?.gold ?? 0), chips: Number(g.rows[0]?.red_chips ?? 0), items: r.rows.map((x: { container: number; slot: number; item_id: number; count: number; upgrade: number; element: number; element_level: number; piercing: unknown; upgrade_tries: number; gems: unknown; rarity: number; expires: number | null }) => {
+    return { bag, gold: Number(g.rows[0]?.gold ?? 0), chips: Number(g.rows[0]?.red_chips ?? 0), items: r.rows.map((x: { container: number; slot: number; item_id: number; count: number; upgrade: number; element: number; element_level: number; piercing: unknown; upgrade_tries: number; gems: unknown; rarity: number; awakening: unknown; expires: number | null }) => {
       const p = Array.isArray(x.piercing) ? x.piercing.map((v) => Number(v) || 0).slice(0, MAX_PIERCING) : [];
       const g = Array.isArray(x.gems) ? x.gems.map((v) => Number(v) || 0).slice(0, 5) : [];
+      const a = Array.isArray(x.awakening) ? x.awakening.map((v) => Number(v) || 0).slice(0, 6) : [];
       return { c: x.container, s: x.slot, id: x.item_id, n: x.count, u: x.upgrade, e: x.element, el: x.element_level, ...(p.length ? { p } : {}), ...(x.expires ? { x: Math.round(x.expires) } : {}),
-        ...(x.upgrade_tries ? { t: x.upgrade_tries } : {}), ...(g.length ? { g } : {}), ...(x.rarity ? { r: x.rarity } : {}) };
+        ...(x.upgrade_tries ? { t: x.upgrade_tries } : {}), ...(g.length ? { g } : {}), ...(x.rarity ? { r: x.rarity } : {}), ...(a.length ? { a } : {}) };
     }) };
   }
 
@@ -121,12 +123,12 @@ export class Inventory {
     if (!ups.length && !dels.length && !goldDelta && !chipsDelta) return;
     await db.query(
       `WITH ups AS (
-         INSERT INTO character_items (character_id, container, slot, item_id, count, upgrade, element, element_level, piercing, expires_at, upgrade_tries, gems, rarity)
-         SELECT $1, t.c, t.s, t.i, t.n, t.u, t.e, t.el, t.p::jsonb, CASE WHEN t.x IS NULL THEN NULL ELSE to_timestamp(t.x / 1000.0) END, t.t, t.g::jsonb, t.r
-           FROM unnest($2::int[], $3::int[], $4::int[], $5::int[], $6::int[], $7::int[], $8::int[], $12::text[], $13::float8[], $15::int[], $16::text[], $17::int[]) AS t(c, s, i, n, u, e, el, p, x, t, g, r)
+         INSERT INTO character_items (character_id, container, slot, item_id, count, upgrade, element, element_level, piercing, expires_at, upgrade_tries, gems, rarity, awakening)
+         SELECT $1, t.c, t.s, t.i, t.n, t.u, t.e, t.el, t.p::jsonb, CASE WHEN t.x IS NULL THEN NULL ELSE to_timestamp(t.x / 1000.0) END, t.t, t.g::jsonb, t.r, t.a::jsonb
+           FROM unnest($2::int[], $3::int[], $4::int[], $5::int[], $6::int[], $7::int[], $8::int[], $12::text[], $13::float8[], $15::int[], $16::text[], $17::int[], $18::text[]) AS t(c, s, i, n, u, e, el, p, x, t, g, r, a)
          ON CONFLICT (character_id, container, slot) DO UPDATE
            SET item_id = EXCLUDED.item_id, count = EXCLUDED.count, upgrade = EXCLUDED.upgrade, element = EXCLUDED.element, element_level = EXCLUDED.element_level, piercing = EXCLUDED.piercing, expires_at = EXCLUDED.expires_at,
-               upgrade_tries = EXCLUDED.upgrade_tries, gems = EXCLUDED.gems, rarity = EXCLUDED.rarity
+               upgrade_tries = EXCLUDED.upgrade_tries, gems = EXCLUDED.gems, rarity = EXCLUDED.rarity, awakening = EXCLUDED.awakening
          RETURNING 1),
        dels AS (
          DELETE FROM character_items ci USING unnest($9::int[], $10::int[]) AS d(c, s)
@@ -135,7 +137,7 @@ export class Inventory {
         WHERE id = $1 AND ($11 <> 0 OR $14 <> 0)`,
       [characterId, ups.map((i) => i.c), ups.map((i) => i.s), ups.map((i) => i.id), ups.map((i) => i.n), ups.map((i) => i.u), ups.map((i) => i.e), ups.map((i) => i.el),
         dels.map((d) => d[0]), dels.map((d) => d[1]), goldDelta, ups.map((i) => JSON.stringify(i.p ?? [])), ups.map((i) => i.x ?? null), chipsDelta,
-        ups.map((i) => i.t ?? 0), ups.map((i) => JSON.stringify(i.g ?? [])), ups.map((i) => i.r ?? 0)]);
+        ups.map((i) => i.t ?? 0), ups.map((i) => JSON.stringify(i.g ?? [])), ups.map((i) => i.r ?? 0), ups.map((i) => JSON.stringify(i.a ?? []))]);
   }
 
   /**
@@ -759,9 +761,9 @@ export class Inventory {
     }
     return { t: 'inv', gold: st.gold, chips: st.chips, bag: st.bag, items: st.items.map((i) => {
       // [c, s, id, n, u, e, el, piercing, tempo, joias da ultimate, raridade, falhas de upgrade] — só até o último campo que o item tem
-      const row: unknown[] = [i.c, i.s, i.id, i.n, i.u, i.e, i.el, i.p ?? [], i.x ?? 0, i.g ?? [], i.r ?? 0, i.t ?? 0];
-      const last = i.t ? 12 : i.r ? 11 : i.g?.length ? 10 : i.x ? 9 : i.p?.length ? 8 : 7;
-      return row.slice(0, last) as [number, number, number, number, number, number, number, number[]?, number?, number[]?, number?, number?];
+      const row: unknown[] = [i.c, i.s, i.id, i.n, i.u, i.e, i.el, i.p ?? [], i.x ?? 0, i.g ?? [], i.r ?? 0, i.t ?? 0, i.a ?? []];
+      const last = i.a?.length ? 13 : i.t ? 12 : i.r ? 11 : i.g?.length ? 10 : i.x ? 9 : i.p?.length ? 8 : 7;
+      return row.slice(0, last) as [number, number, number, number, number, number, number, number[]?, number?, number[]?, number?, number?, number[]?];
     }), defs, rar: this.catalog.rarity.map((x) => [x.name, x.color, x.atk, x.stats]), ...(this.failStack ? { stack: this.failStack } : {}) };
   }
 

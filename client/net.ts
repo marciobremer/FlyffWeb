@@ -66,7 +66,7 @@ export interface ItemView {
   box?: [string, number][]; desc?: string;
 }
 /** inventário inteiro (server/inventory.ts Inventory.view): itens [container, slot, itemId, quantidade] */
-export interface InvMessage { gold: number; /** Red Chip (contador fora da bolsa) */ chips?: number; bag: number; items: [number, number, number, number, number?, number?, number?, number[]?, number?, number[]?, number?, number?][]; defs: Record<number, ItemView>; /** fail stack do ferreiro (dica) */ stack?: Record<string, Record<number, number>>; /** raridades da arma: [nome, cor 0xAARRGGBB, × ataque, × bônus] */ rar?: [string, number, number, number][] }
+export interface InvMessage { gold: number; /** Red Chip (contador fora da bolsa) */ chips?: number; bag: number; items: [number, number, number, number, number?, number?, number?, number[]?, number?, number[]?, number?, number?, number[]?][]; defs: Record<number, ItemView>; /** fail stack do ferreiro (dica) */ stack?: Record<string, Record<number, number>>; /** raridades da arma: [nome, cor 0xAARRGGBB, × ataque, × bônus] */ rar?: [string, number, number, number][] }
 
 
 interface Remote { view: PlayerView; inst: MoverInstance | null; target: [number, number, number]; cur: [number, number, number]; h: number; curH: number; s: string; gone: boolean; /** último golpe tocado da sequência (1–4) e quando */ hit?: number; hitAt?: number }

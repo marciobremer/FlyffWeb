@@ -91,7 +91,7 @@ function loadDescriptions(resDir: string): (tid: string) => string {
  * ou espaço — nesse caso `items` pode ter sido alterada (por isso o ensaio é feito numa cópia). `touch` marca os espaços mexidos.
  */
 export function applyCraft(items: InvItem[], r: Recipe, bagSlots: number, packMax: (id: number) => number, touch: (slot: number) => void = () => {}): boolean {
-  const plain = (i: InvItem) => !i.u && !i.e && !i.el && !i.p?.length && !i.g?.length && !i.r && !i.x;
+  const plain = (i: InvItem) => !i.u && !i.e && !i.el && !i.p?.length && !i.g?.length && !i.r && !i.x && !i.a?.length;
   for (const c of r.comps) {
     let need = c.n;
     for (const i of items) {

@@ -644,7 +644,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       // item de tempo vencido não dá nada (CItemElem::expired: sem DST, defesa, set nem piercing)
       if (i.x && i.x <= now) continue;
       const d = inventory.catalog.byId.get(i.id);
-      if (d) equipped.push({ d, u: i.u, s: i.s, p: i.p, e: i.e, el: i.el, g: i.g, r: i.r });
+      if (d) equipped.push({ d, u: i.u, s: i.s, p: i.p, e: i.e, el: i.el, g: i.g, r: i.r, a: i.a });
     }
     return rules!.buildFighter(ch, equipped, buffs);
   }
@@ -782,7 +782,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         gold: o.gold,
         items: o.items.map((e) => {
           const it = st.items.find((i) => i.c === 0 && i.s === e.s), d = it && inventory.catalog.byId.get(it.id);
-          return it && d ? { s: e.s, it: { id: it.id, n: e.n, u: it.u, e: it.e, el: it.el, ...(it.p ? { p: it.p } : {}), ...(it.x ? { x: it.x } : {}), ...(it.r ? { r: it.r } : {}) }, d: inventory.catalog.viewFull(d) } : null;
+          return it && d ? { s: e.s, it: { id: it.id, n: e.n, u: it.u, e: it.e, el: it.el, ...(it.p ? { p: it.p } : {}), ...(it.x ? { x: it.x } : {}), ...(it.r ? { r: it.r } : {}), ...(it.a?.length ? { a: it.a } : {}) }, d: inventory.catalog.viewFull(d) } : null;
         }).filter(Boolean),
       };
     };
@@ -1429,7 +1429,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     const exp = await loadCraftXp(p.id), lvl = crafting.levelOf(exp), [lo, hi] = crafting.bounds(lvl);
     const want = new Set<number>(); for (const r of crafting.recipes.values()) for (const k of r.comps) want.add(k.id);
     const have: Record<number, number> = {};
-    for (const i of (await inventory.state(p.id)).items) if (i.c === 0 && want.has(i.id) && !i.u && !i.e && !i.el && !i.p?.length && !i.g?.length && !i.r && !i.x) have[i.id] = (have[i.id] ?? 0) + i.n;
+    for (const i of (await inventory.state(p.id)).items) if (i.c === 0 && want.has(i.id) && !i.u && !i.e && !i.el && !i.p?.length && !i.g?.length && !i.r && !i.x && !i.a?.length) have[i.id] = (have[i.id] ?? 0) + i.n;
     return { lvl, exp, lo, hi, have };
   }
   async function craftOpen(c: Conn) {

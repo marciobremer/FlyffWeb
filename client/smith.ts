@@ -37,6 +37,8 @@ const SUN = ['II_GEN_MAT_ORICHALCUM01', 'II_GEN_MAT_ORICHALCUM01_1'], ORI2 = 'II
 const ELE_CARDS = ['II_GEN_MAT_ELE_FLAME', 'II_GEN_MAT_ELE_RIVER', 'II_GEN_MAT_ELE_GENERATOR', 'II_GEN_MAT_ELE_CYCLON', 'II_GEN_MAT_ELE_DESERT'];
 const GEMS = ['II_GEN_MAT_TOPAZ', 'II_GEN_MAT_RUBY', 'II_GEN_MAT_SAPPHIRE', 'II_GEN_MAT_EMERALD', 'II_GEN_MAT_DIAMOND', 'II_GEN_MAT_BLACK_DIAMOND'];
 const SCROLL = { prot: 'II_SYS_SYS_SCR_SMELPROT', prot3: 'II_SYS_SYS_SCR_SMELPROT3', prot4: 'II_SYS_SYS_SCR_SMELPROT4', piercing: 'II_SYS_SYS_SCR_PIEPROT' };
+/** pergaminhos de despertar: Awakening, Reversion (e a de evento) e Blessing of the Goddess (e a de evento) */
+export const isAwakeScroll = (sym: string | undefined) => !!sym && ['II_SYS_SYS_SCR_AWAKE', 'II_SYS_SYS_SCR_AWAKECANCEL', 'II_SYS_SYS_SCR_AWAKECANCEL02', 'II_SYS_SYS_SCR_BLESSEDNESS', 'II_SYS_SYS_SCR_BLESSEDNESS02'].includes(sym);
 export const isUpgradeMaterial = (sym: string | undefined) => !!sym && (SUN.includes(sym) || sym === ORI2 || MOON.includes(sym) || ELE_CARDS.includes(sym));
 
 export class SmithWindow extends GameWindow {

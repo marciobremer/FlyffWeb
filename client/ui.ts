@@ -166,7 +166,8 @@ const MODEL_RECT = { x: 58, y: 52, w: 184, h: 176 };
 
 /** u = enchant (+0–10), e = elemento (0 nenhum, 1 fogo, 2 água, 3 elétrico, 4 vento, 5 terra), el = nível do elemento */
 export interface InvItem { c: number; s: number; id: number; n: number; u: number; e: number; el: number; /** piercing: carta por espaço aberto (0 = vazio) */ p?: number[]; /** item de tempo ativado (ticket): vale até (ms) */ x?: number;
-  /** arma ultimate: joias engastadas por espaço aberto (0 = vazio) */ g?: number[]; /** raridade da arma (0 = Common) */ r?: number; /** falhas seguidas de upgrade no nível atual */ t?: number }
+  /** arma ultimate: joias engastadas por espaço aberto (0 = vazio) */ g?: number[]; /** raridade da arma (0 = Common) */ r?: number; /** falhas seguidas de upgrade no nível atual */ t?: number;
+  /** despertar: [DST, valor, …] */ a?: number[] }
 export const ELEMENT_NAMES = ['', 'Fogo', 'Água', 'Elétrico', 'Vento', 'Terra'];
 export interface InvDef extends ItemView {}
 
@@ -377,12 +378,12 @@ export class InventoryWindow extends GameWindow {
   }
 
   /** estado vindo do servidor */
-  setState(gold: number, open: number, items: [number, number, number, number, number?, number?, number?, number[]?, number?, number[]?, number?, number?][], defs: Record<number, InvDef>, chips = 0) {
+  setState(gold: number, open: number, items: [number, number, number, number, number?, number?, number?, number[]?, number?, number[]?, number?, number?, number[]?][], defs: Record<number, InvDef>, chips = 0) {
     this.penya.value = gold.toLocaleString('pt-BR');
     this.chips.value = chips.toLocaleString('pt-BR');
     for (const d of Object.values(defs)) this.defs.set(d.id, d);
     this.items.clear();
-    for (const [c, s, id, n, u = 0, e = 0, el = 0, p, x, g, r, t] of items) this.items.set(keyOf(c, s), { c, s, id, n, u, e, el, ...(p?.length ? { p } : {}), ...(x ? { x } : {}), ...(g?.length ? { g } : {}), ...(r ? { r } : {}), ...(t ? { t } : {}) });
+    for (const [c, s, id, n, u = 0, e = 0, el = 0, p, x, g, r, t, a] of items) this.items.set(keyOf(c, s), { c, s, id, n, u, e, el, ...(p?.length ? { p } : {}), ...(x ? { x } : {}), ...(g?.length ? { g } : {}), ...(r ? { r } : {}), ...(t ? { t } : {}), ...(a?.length ? { a } : {}) });
     // o item separado para apagar sumiu ou mudou: sai da caixa de apagar
     let dropped = false;
     for (const [s, id] of [...this.staged]) if (this.items.get(keyOf(BAG, s))?.id !== id) { this.staged.delete(s); dropped = true; }
@@ -552,7 +553,7 @@ export class InventoryWindow extends GameWindow {
     // ticket e afins: ativado = visto ao lado; vencido = cinza (não usa mais)
     const timed = it?.x ? (it.x > Date.now() ? 'on' : 'off') : '';
     // as cartas espetadas entram na assinatura: sem isso, espetar uma carta não trocava o item do espaço (a dica ficava velha)
-    const sig = it ? `${it.id}:${it.n}:${it.u}:${it.e}:${it.el}:${timed}:${it.p?.join(',') ?? ''}` : '';
+    const sig = it ? `${it.id}:${it.n}:${it.u}:${it.e}:${it.el}:${timed}:${it.p?.join(',') ?? ''}:${it.a?.join(',') ?? ''}` : '';
     if (el.dataset.sig === sig && el.dataset.painted) { if (it) this.tipItem.set(el, it); return; }
     el.dataset.sig = sig;
     el.dataset.painted = '1';
