@@ -266,6 +266,7 @@ Limites: PvP não existe em nenhum dos lados; a espera entre golpe do jogador e 
 - `servers/world/crafting.ts` lê `AegonCrafting.inc` (114 receitas válidas: pets, armas, escudos, máscaras, capas, power-ups, tickets, reciclagem…) e a tabela de 25 níveis de craft. Regras do `OnCraftRecipe` original: nível de craft ≥ o pedido, componentes certos e em quantidade (pilhas simples), espera do `craftTime` desde o craft anterior, resultado precisa caber na bolsa; tudo ou nada (`inventory.edit` + ensaio numa cópia), gasta os componentes, dá o item e a experiência.
 - Protocolo: `{t:'craftOpen'}` → `{t:'craft', recipes, lvl, exp, lo, hi, have}`; `{t:'craftDo', id}` → `{t:'craftResult', ok, text, lvl, exp, lo, hi, have}` (+ o inventário novo).
 - **Banco**: migração `023_crafting_exp.sql` (`characters.crafting_exp integer default 0`, contrato com o Master Database). Sem a coluna, a experiência só vale até sair (aviso no log).
+- **Só perto de um NPC de craft**: `craftOpen`/`craftDo` recusam (`craftResult` com `denied`) longe dele; o menu do NPC (`npcMenu.craft`) mostra a opção Craft. NPCs em `data/craft-npcs.json` (`{ "npcs": ["mafl_craftsystem"] }`, chave do character.inc); padrão: Franklin (`mafl_craftsystem`: Flaris, Saint Morning e Darkon).
 - Cliente: `client/craft.ts` (tecla B ou `/craft`). Teste: `npx tsx tools/test-crafting.ts`.
 
 ## Contrato: modo de skills (auto/manual) — Admin → Game

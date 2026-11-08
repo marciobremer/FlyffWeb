@@ -1385,6 +1385,20 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   // ---------- craft (AegonCrafting.inc): receitas, nível/experiência de craft e fabricar ----------
   const crafting = inventory ? new CraftingRules(inventory.catalog.resDir, inventory.catalog) : null;
   if (crafting) console.log(`Craft: ${crafting.recipes.size} receitas, ${crafting.levels.length} níveis`);
+  /**
+   * NPCs de craft: o craft só abre/fabrica perto deles. Lista em data/craft-npcs.json (`{ "npcs": ["mafl_craftsystem"] }`, a chave do NPC
+   * do character.inc, sem diferenciar maiúsculas); sem o arquivo vale o Franklin (mafl_craftsystem), o NPC de craft do Titanium.
+   */
+  const craftNpcs = (() => {
+    let list = ['mafl_craftsystem'];
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data', 'craft-npcs.json'), 'utf8')) as { npcs?: unknown };
+      if (Array.isArray(j.npcs)) list = j.npcs.filter((x): x is string => typeof x === 'string');
+    } catch { /* sem o arquivo: o padrão */ }
+    return new Set(list.map((k) => k.toLowerCase()));
+  })();
+  const craftNear = (c: Conn) => { const p = c.player, shops = W(c).shops; return !!p && !!shops && [...craftNpcs].some((k) => shops.near(k, p.p[0], p.p[2])); };
+  const craftDenied = (c: Conn) => { const text = 'Para fabricar, fale com um NPC de craft.'; reply(c, text); send(c.ws, { t: 'craftResult', ok: 0, denied: 1, text }); };
   const craftXp = new Map<number, number>();
   let craftColumn = true;
   /** experiência de craft do personagem (coluna characters.crafting_exp, migração 023; sem a coluna só vale até sair) */
@@ -1411,6 +1425,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   }
   async function craftOpen(c: Conn) {
     if (!crafting) return;
+    if (!craftNear(c)) { craftDenied(c); return; }
     const st = await craftStatus(c);
     if (st) send(c.ws, { t: 'craft', recipes: [...crafting.recipes.values()].map((r) => crafting.view(r)), ...st });
   }
@@ -1418,6 +1433,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   function craftDo(c: Conn, id: number) {
     const p = c.player;
     if (!p || !crafting || !inventory || c.cb?.dead) return;
+    if (!craftNear(c)) { craftDenied(c); return; }
     c.invQueue = c.invQueue.then(async () => {
       const r = crafting.recipes.get(id);
       const fail = async (text: string) => { reply(c, text); const st = await craftStatus(c); send(c.ws, { t: 'craftResult', ok: 0, text, ...(st ?? {}) }); };
@@ -2771,7 +2787,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         const key = msg.key.slice(0, 40), k = key.toLowerCase();
         const shops = W(c).shops;
         if (!shops?.near(key, c.player.p[0], c.player.p[2])) return;
-        const base = { t: 'npcMenu', key, name: shops.npcNames.get(k) ?? key, shop: shops.shops.has(k) || shops.tokenShops.has(k), buff: shops.npcBuffs.has(k), smith: [...(shops.npcMenus.get(k) ?? [])] };
+        const base = { t: 'npcMenu', key, name: shops.npcNames.get(k) ?? key, shop: shops.shops.has(k) || shops.tokenShops.has(k), buff: shops.npcBuffs.has(k), craft: craftNpcs.has(k), smith: [...(shops.npcMenus.get(k) ?? [])] };
         void (quests ? quests.menuFor(c, key) : Promise.resolve([])).then((q) => send(ws, { ...base, quests: q })).catch((e) => console.error('realtime: menu do NPC', e));
       } else if (msg.t === 'quest' && c.player && typeof msg.id === 'string' && typeof msg.key === 'string' && quests) {
         const id = msg.id.slice(0, 64), key = msg.key.slice(0, 40), op = msg.op, q = quests;
