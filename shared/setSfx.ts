@@ -57,9 +57,9 @@ export function attachSetSfx(mgr: SfxManager, fileOf: (id: number) => string, in
     // ombros e cotovelos (0–5): só os pilares de luz subindo — sem o disco girando no plano do ombro e as manchas grandes de luz,
     // que somavam uma neblina larga no peito (a aura fica fina, em cima dos ombros, como no cliente de referência)
     const slim = link <= 5 && !hand;
-    // pilares mais grossos e um pouco mais altos (raio 0,2 → ~0,36; altura 1 → 1,2): a aura fica corpulenta em cima dos ombros
+    // pilares um pouco mais longos (altura ×1,5) e mais baixos (até a cintura), com a largura original (raio 0,2 = a largura do corpo)
     const sc: [number, number, number] = slim ? [s[0] * SLIM_SCALE[0], s[1] * SLIM_SCALE[1], s[2] * SLIM_SCALE[2]] : s;
-    mgr.playAttached(file, sc, () => inst.setSfxToken === token && !!inst.group.parent && enabled(), () => {
+    for (let layer = 0; layer < (slim ? SLIM_LAYERS : 1); layer++) mgr.playAttached(file, sc, () => inst.setSfxToken === token && !!inst.group.parent && enabled(), () => {
       const m0 = inst.boneMatrix(bones[0]);
       if (!m0) return null;
       a.setFromMatrixPosition(m0);
@@ -70,13 +70,15 @@ export function attachSetSfx(mgr: SfxManager, fileOf: (id: number) => string, in
       inst.modelSpace.updateWorldMatrix(true, false);
       a.applyMatrix4(inst.modelSpace.matrixWorld);
       // posição FlyFF (z invertido); o original desce 0,05 + o deslocamento; place() soma 0,2 de volta
-      return [a.x, a.y - 0.05 - offY - 0.2, -a.z];
+      return [a.x, a.y - 0.05 - offY - (slim ? SLIM_DROP : 0) - 0.2, -a.z];
     }, slim ? SLIM_HIDE : null);
   }
 }
 
 /** escala dos pilares de luz dos ombros/cotovelos (largura, altura, profundidade) */
-const SLIM_SCALE: [number, number, number] = [1.8, 1.2, 1.8];
+const SLIM_SCALE: [number, number, number] = [1, 1.5, 1];
+/** os pilares descem um pouco do ombro (chegam até a cintura) e desenham duas vezes: o aditivo dobra o brilho e a cor fica mais viva */
+const SLIM_DROP = 0.35, SLIM_LAYERS = 2;
 
 /** peças do brilho dos ombros que viram neblina larga: disco no plano do ombro, manchas de luz grandes e o cone alto que some */
 const SLIM_HIDE = (p: SfxPart) =>
