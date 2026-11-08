@@ -1,0 +1,17 @@
+/* janela Duração do Item (client/itemtime.ts): mesmo visual escuro/dourado da janela da guild */
+#itemTimeWnd { background: #1a1209; border: 2px solid #b8963a; border-radius: 6px; box-shadow: 0 6px 24px rgb(0 0 0 / .6); filter: none; }
+#itemTimeWnd .gwnd-title, #itemTimeWnd .gwnd-body { border-image-source: none !important; border-width: 0 !important; }
+#itemTimeWnd .gwnd-title { background: linear-gradient(#3a2d14, #1c1408) !important; color: #fff; text-align: center; font: 700 15px Tahoma, Verdana, sans-serif; text-shadow: 0 1px 2px #000; height: 26px; padding: 0 28px; }
+#itemTimeWnd .gwnd-close { color: #f0cf6a; }
+#itemTimeWnd .gwnd-body.it { display: flex; flex-direction: column; gap: 0; padding: 4px; background: #1a1209 !important; color: #e9d98f; font: 13px/1.35 Tahoma, Verdana, system-ui, sans-serif; }
+.it-list { flex: 1; min-height: 0; overflow: auto; background: #000; border: 1px solid #5a4a22; padding: 4px; }
+.it-row { display: flex; align-items: center; gap: 8px; padding: 3px 6px; border-bottom: 1px solid #1d1710; color: #fff6cf; }
+.it-row img { width: 26px; height: 26px; flex: none; }
+.it-row b { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.it-row span { flex: none; color: #f0cf6a; font-weight: 700; }
+.it-row.dead { opacity: .55; }
+.it-row.dead span { color: #c0301c; }
+.it-none { margin: 14px 8px; color: #8a8266; text-align: center; }
+.it-tabs { flex: none; display: flex; margin-top: 2px; }
+.it-tabs button { flex: 1; padding: 4px 8px; border: 0; background: #5a5242; color: #a8a08a; font: 700 13px Tahoma, sans-serif; text-align: left; cursor: pointer; }
+.it-tabs button.on { background: #000; color: #fff; }

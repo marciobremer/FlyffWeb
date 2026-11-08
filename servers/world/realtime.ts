@@ -109,6 +109,7 @@ import { setRateBoost } from '../common/rates';
  *   { t: 'invis', id, on }                          ficou invisível / visível (modo invisível de GM ou Dark Illusion; só GMs/admins e ele mesmo recebem)
  *   { t: 'god', on }                                seu modo imortal de GM/admin (//god; ligado ao entrar)
  *   { t: 'gmFly', on }                              voo livre de GM/admin (//fly, botão Voar do painel //gm)
+ *   { t: 'coolOpen' } → { t: 'cool', list: [{ name, left }] }   janela Duração do Item (J): espera para entrar de novo em cada dungeon
  *   { t: 'craftOpen' } → { t: 'craft', recipes, lvl, exp, lo, hi, have }   janela de craft (B): receitas, nível/experiência e quanto tem de cada componente
  *   { t: 'craftDo', id } → { t: 'craftResult', ok, text, lvl, exp, lo, hi, have }   fabricar a receita `id` (a janela espera o craftTime antes de pedir)
  *   { t: 'leave', id }                              alguém saiu
@@ -2874,6 +2875,11 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
           off: int(msg.off, 0, 0, 100000), n: int(msg.n, 40, 1, 80),
         });
         send(ws, { t: 'wiki', req: int(msg.req, 0, 0, 1e9), off: int(msg.off, 0, 0, 100000), ...r });
+      } else if (msg.t === 'coolOpen' && c.player) {
+        // janela Duração do Item (J), aba Masmorra: a espera para entrar de novo em cada dungeon de instância
+        const now = Date.now(), pre = `${c.player.id}:`, list: { name: string; left: number }[] = [];
+        for (const [k, v] of dungeonCool) if (k.startsWith(pre) && v.until > now) list.push({ name: opts.worldInfo?.(k.slice(pre.length))?.name ?? k.slice(pre.length), left: v.until - now });
+        send(ws, { t: 'cool', list });
       } else if (msg.t === 'craftOpen' && c.player) {
         void craftOpen(c).catch((e) => console.error('realtime: craft', e));
       } else if (msg.t === 'craftDo' && c.player && Number.isInteger(msg.id)) {
