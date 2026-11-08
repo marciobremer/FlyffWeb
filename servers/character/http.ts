@@ -5,6 +5,15 @@ import { sessionFrom } from '../auth/sessions';
 import { verifyLegacyPassword, verifyPassword } from '../auth/password';
 import type { Inventory, InvItem } from './inventory';
 import type { LookPiece } from '../../shared/look';
+import { RES_DIR } from '../common/config';
+import { worldTable } from '../world/dungeons';
+
+/** pasta do mapa de cada world_id (World.inc), para o cliente abrir o mapa certo ao entrar (torre, dungeons…); cópias de party ficam de fora */
+let worldNames: Map<number, string> | null = null;
+const worldNameOf = (id: number) => {
+  worldNames ??= new Map([...worldTable(RES_DIR).byId].filter(([, w]) => !w.define.startsWith('WI_INSTANCE_')).map(([k, w]) => [k, w.name]));
+  return worldNames.get(id);
+};
 
 /**
  * Character Server — HTTP: lista e criação de personagens da conta logada.
@@ -45,7 +54,7 @@ export async function charactersOf(accountId: number): Promise<CharacterInfo[]> 
     for (const i of items) { const it = inventory?.catalog.byId.get(i.id), sym = it?.look ?? it?.symbol; if (sym) equip.push({ s: i.s, sym, u: i.u, e: i.e, el: i.el }); }
     return {
       id: Number(c.id), slot: c.slot, name: c.name, sex: c.sex, hairMesh: c.hair_mesh, hairColor: c.hair_color, headMesh: c.head_mesh,
-      job: c.job, level: c.level, worldId: c.world_id, pos: [c.pos_x, c.pos_y, c.pos_z] as [number, number, number], angle: c.angle,
+      job: c.job, level: c.level, worldId: c.world_id, worldName: worldNameOf(c.world_id), pos: [c.pos_x, c.pos_y, c.pos_z] as [number, number, number], angle: c.angle,
       hp: c.hp, mp: c.mp, fp: c.fp, exp: Number(c.exp),
       equip, mt: inventory ? inventory.combatMotion({ bag: 42, gold: 0, chips: 0, items }, c.job) : 0,
     };

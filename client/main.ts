@@ -111,7 +111,7 @@ const LIMITS = { hair: 5, head: 5 };
 
 interface CharacterInfo {
   /** classe (JOB_*) */ job?: number;
-  id: number; slot: number; name: string; sex: number; hairMesh: number; hairColor?: number; headMesh: number; level: number; worldId: number; pos: [number, number, number]; hp: number; mp: number; fp: number; exp: number;
+  id: number; slot: number; name: string; sex: number; hairMesh: number; hairColor?: number; headMesh: number; level: number; worldId: number; /** pasta do mapa salvo (World.inc) */ worldName?: string; pos: [number, number, number]; hp: number; mp: number; fp: number; exp: number;
   /** equipado (com enchant) e postura da arma: a prévia da seleção fica igual ao personagem no jogo */
   equip?: LookPiece[]; mt?: number;
 }
@@ -1534,7 +1534,7 @@ async function enter() {
   view.controls.enabled = true; // no jogo a câmera volta a girar/dar zoom
   view.controls.autoRotate = false;
   // posição salva só vale no mundo 1 (WdMadrigal) e dentro do mapa; a altura vem do chão
-  const savedWorld = WORLD_BY_ID[ch.worldId] ?? WORLD;
+  const savedWorld = WORLD_BY_ID[ch.worldId] ?? ch.worldName ?? WORLD;
   if (savedWorld !== curWorld) await openWorld(savedWorld, ch.pos[0], ch.pos[2]);
   const d = view.data!;
   const s = 512;
