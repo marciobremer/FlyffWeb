@@ -262,6 +262,12 @@ Limites: PvP não existe em nenhum dos lados; a espera entre golpe do jogador e 
 - **Rust**: continua só no mapa principal; dungeons rodam no Node como o Azria.
 - Teste: `npx tsx tools/test-dungeons.ts`.
 
+### 11.10 Craft (2026-11-08)
+- `servers/world/crafting.ts` lê `AegonCrafting.inc` (114 receitas válidas: pets, armas, escudos, máscaras, capas, power-ups, tickets, reciclagem…) e a tabela de 25 níveis de craft. Regras do `OnCraftRecipe` original: nível de craft ≥ o pedido, componentes certos e em quantidade (pilhas simples), espera do `craftTime` desde o craft anterior, resultado precisa caber na bolsa; tudo ou nada (`inventory.edit` + ensaio numa cópia), gasta os componentes, dá o item e a experiência.
+- Protocolo: `{t:'craftOpen'}` → `{t:'craft', recipes, lvl, exp, lo, hi, have}`; `{t:'craftDo', id}` → `{t:'craftResult', ok, text, lvl, exp, lo, hi, have}` (+ o inventário novo).
+- **Banco**: migração `023_crafting_exp.sql` (`characters.crafting_exp integer default 0`, contrato com o Master Database). Sem a coluna, a experiência só vale até sair (aviso no log).
+- Cliente: `client/craft.ts` (tecla B ou `/craft`). Teste: `npx tsx tools/test-crafting.ts`.
+
 ## Contrato: modo de skills (auto/manual) — Admin → Game
 - O painel (aba Skills) grava `data/skill-mode.json` → `{ "mode": "auto" | "manual" }` via `servers/common/skillmode.ts` (`skillMode()` relê o arquivo a cada 2 s; sem arquivo = `manual`).
 - **manual**: comportamento atual (pontos a cada nível, o jogador distribui).

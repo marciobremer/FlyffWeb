@@ -6,7 +6,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { pool, query } from '../common/db/index';
 import { sessionFrom, type Session } from '../auth/sessions';
 import type { MobWorld } from './mobs';
-import { INVENTORY_CHANNEL, type Inventory, type InvState } from '../character/inventory';
+import { BAG_SLOTS, INVENTORY_CHANNEL, type Inventory, type InvState } from '../character/inventory';
+import { applyCraft, CraftingRules } from './crafting';
 import { gmAuthority, runGmCommand } from './gm';
 import { loadEdits, saveEdits } from '../common/worldedits';
 import { customTeleports } from '../common/customteleports';
@@ -108,6 +109,8 @@ import { setRateBoost } from '../common/rates';
  *   { t: 'invis', id, on }                          ficou invisível / visível (modo invisível de GM ou Dark Illusion; só GMs/admins e ele mesmo recebem)
  *   { t: 'god', on }                                seu modo imortal de GM/admin (//god; ligado ao entrar)
  *   { t: 'gmFly', on }                              voo livre de GM/admin (//fly, botão Voar do painel //gm)
+ *   { t: 'craftOpen' } → { t: 'craft', recipes, lvl, exp, lo, hi, have }   janela de craft (B): receitas, nível/experiência e quanto tem de cada componente
+ *   { t: 'craftDo', id } → { t: 'craftResult', ok, text, lvl, exp, lo, hi, have }   fabricar a receita `id` (a janela espera o craftTime antes de pedir)
  *   { t: 'leave', id }                              alguém saiu
  *   { t: 'states', list: [id, x, y, z, h, s][] }    atualizações agrupadas, 10 por segundo, só de quem mudou
  *   { t: 'inv', gold, bag, items: [c, s, itemId, n][], defs }   inventário inteiro (ao entrar e a cada mudança)
@@ -158,6 +161,7 @@ interface Conn { ws: WebSocket; player: PlayerView | null; accountId: number; di
   /** recebendo os buffs do Buff Pang (um a cada 0,5 s) */ buffing?: boolean;
   /** voo livre de GM (//fly): o servidor aceita a velocidade de voo */ gmFly?: boolean;
   /** velocidade de corrida em % da normal (//speed, só GM; 100 = normal) */ speedPct?: number;
+  /** último craft aceito (a espera é o craftTime da receita) */ lastCraft?: number;
   /** última vez que pisou numa porta (evita repetir o aviso parado em cima dela) */ portalAt?: number;
   /** desde quando está numa dungeon de instância de outra party (sai depois de 3 min) */ instLeftAt?: number;
   /** trocando de mundo: a conexão fecha e o cliente entra de novo no mundo novo (não sai da party nem avisa os amigos) */ switching?: boolean;
@@ -1377,6 +1381,72 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     }
   }, 10_000);
   http.on('close', () => clearInterval(instanceTick));
+
+  // ---------- craft (AegonCrafting.inc): receitas, nível/experiência de craft e fabricar ----------
+  const crafting = inventory ? new CraftingRules(inventory.catalog.resDir, inventory.catalog) : null;
+  if (crafting) console.log(`Craft: ${crafting.recipes.size} receitas, ${crafting.levels.length} níveis`);
+  const craftXp = new Map<number, number>();
+  let craftColumn = true;
+  /** experiência de craft do personagem (coluna characters.crafting_exp, migração 023; sem a coluna só vale até sair) */
+  async function loadCraftXp(id: number): Promise<number> {
+    const have = craftXp.get(id);
+    if (have !== undefined) return have;
+    let xp = 0;
+    if (craftColumn) {
+      try { xp = Number((await query<{ crafting_exp: number }>('SELECT crafting_exp FROM characters WHERE id = $1', [id])).rows[0]?.crafting_exp ?? 0); }
+      catch (e) { if (/crafting_exp/.test((e as Error).message)) { craftColumn = false; console.error('realtime: falta a coluna characters.crafting_exp — rode "npm run db:migrate" para guardar a experiência de craft'); } else throw e; }
+    }
+    craftXp.set(id, xp);
+    return xp;
+  }
+  /** nível, barra de experiência e quanto o jogador tem de cada componente (plano, sem enchant) */
+  async function craftStatus(c: Conn) {
+    const p = c.player;
+    if (!p || !crafting || !inventory) return null;
+    const exp = await loadCraftXp(p.id), lvl = crafting.levelOf(exp), [lo, hi] = crafting.bounds(lvl);
+    const want = new Set<number>(); for (const r of crafting.recipes.values()) for (const k of r.comps) want.add(k.id);
+    const have: Record<number, number> = {};
+    for (const i of (await inventory.state(p.id)).items) if (i.c === 0 && want.has(i.id) && !i.u && !i.e && !i.el && !i.p?.length && !i.g?.length && !i.r && !i.x) have[i.id] = (have[i.id] ?? 0) + i.n;
+    return { lvl, exp, lo, hi, have };
+  }
+  async function craftOpen(c: Conn) {
+    if (!crafting) return;
+    const st = await craftStatus(c);
+    if (st) send(c.ws, { t: 'craft', recipes: [...crafting.recipes.values()].map((r) => crafting.view(r)), ...st });
+  }
+  /** pedido de craft (OnCraftRecipe): nível, componentes, espera do craft anterior e espaço na bolsa; tudo ou nada */
+  function craftDo(c: Conn, id: number) {
+    const p = c.player;
+    if (!p || !crafting || !inventory || c.cb?.dead) return;
+    c.invQueue = c.invQueue.then(async () => {
+      const r = crafting.recipes.get(id);
+      const fail = async (text: string) => { reply(c, text); const st = await craftStatus(c); send(c.ws, { t: 'craftResult', ok: 0, text, ...(st ?? {}) }); };
+      if (!r) return fail('Receita inválida.');
+      const exp = await loadCraftXp(p.id), lvl = crafting.levelOf(exp);
+      if (r.lv > lvl) return fail('Nível de craft insuficiente.');
+      const now = Date.now();
+      if (now - (c.lastCraft ?? 0) < r.time * 1000 - 150) return fail('Aguarde o fim do craft anterior.');
+      const pk = (itemId: number) => inventory.catalog.byId.get(itemId)?.packMax ?? 1;
+      const st = await inventory.edit(p.id, (x) => {
+        const trial = x.state.items.map((i) => ({ ...i, ...(i.p ? { p: [...i.p] } : {}), ...(i.g ? { g: [...i.g] } : {}) }));
+        if (!applyCraft(trial, r, BAG_SLOTS, pk)) return null;
+        applyCraft(x.state.items, r, BAG_SLOTS, pk, (s) => x.touch(0, s));
+        return x.state;
+      });
+      if (!st) return fail('Faltam componentes ou espaço na bolsa.');
+      c.lastCraft = now;
+      const newExp = Math.min(crafting.maxExp, exp + r.exp);
+      craftXp.set(p.id, newExp);
+      if (craftColumn && newExp !== exp) void query('UPDATE characters SET crafting_exp = $2 WHERE id = $1', [p.id, newExp]).catch((e) => console.error('realtime: salvar experiência de craft', (e as Error).message));
+      send(c.ws, inventory.view(st));
+      const name = inventory.catalog.byId.get(r.result.id)?.name ?? '?';
+      const text = `Você fabricou ${r.result.n > 1 ? `${r.result.n}× ` : ''}${name}.`;
+      reply(c, text);
+      const nl = crafting.levelOf(newExp);
+      if (nl > lvl) reply(c, `Nível de craft ${nl}!`);
+      send(c.ws, { t: 'craftResult', ok: 1, text, ...((await craftStatus(c)) ?? {}) });
+    }).catch((e) => console.error('realtime: craft', e));
+  }
 
   /**
    * Ticket de mapa (ticket.inc, item de tempo: 1/3/7/15/30 dias = dwAbilityMin em minutos). Usar leva ao mapa dele e, na
@@ -2780,6 +2850,10 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
           off: int(msg.off, 0, 0, 100000), n: int(msg.n, 40, 1, 80),
         });
         send(ws, { t: 'wiki', req: int(msg.req, 0, 0, 1e9), off: int(msg.off, 0, 0, 100000), ...r });
+      } else if (msg.t === 'craftOpen' && c.player) {
+        void craftOpen(c).catch((e) => console.error('realtime: craft', e));
+      } else if (msg.t === 'craftDo' && c.player && Number.isInteger(msg.id)) {
+        craftDo(c, msg.id as number);
       } else if (msg.t === 'wikiTip' && c.player && inventory && Number.isInteger(msg.id)) {
         const d = inventory.catalog.byId.get(msg.id as number);
         if (d) send(ws, { t: 'wikiTip', item: inventory.catalog.viewFull(d) });
