@@ -57,7 +57,7 @@ export function attachSetSfx(mgr: SfxManager, fileOf: (id: number) => string, in
     // ombros e cotovelos (0–5): só os pilares de luz subindo — sem o disco girando no plano do ombro e as manchas grandes de luz,
     // que somavam uma neblina larga no peito (a aura fica fina, em cima dos ombros, como no cliente de referência)
     const slim = link <= 5 && !hand;
-    // pilares um pouco mais longos (altura ×1,5) e mais baixos (até a cintura), com a largura original (raio 0,2 = a largura do corpo)
+    // pilares só um pouco maiores que o original, no ombro (cabeça → peito, como na referência)
     const sc: [number, number, number] = slim ? [s[0] * SLIM_SCALE[0], s[1] * SLIM_SCALE[1], s[2] * SLIM_SCALE[2]] : s;
     for (let layer = 0; layer < (slim ? SLIM_LAYERS : 1); layer++) mgr.playAttached(file, sc, () => inst.setSfxToken === token && !!inst.group.parent && enabled(), () => {
       const m0 = inst.boneMatrix(bones[0]);
@@ -76,9 +76,9 @@ export function attachSetSfx(mgr: SfxManager, fileOf: (id: number) => string, in
 }
 
 /** escala dos pilares de luz dos ombros/cotovelos (largura, altura, profundidade) */
-const SLIM_SCALE: [number, number, number] = [1, 1.5, 1];
-/** os pilares descem um pouco do ombro (chegam até a cintura) e desenham duas vezes: o aditivo dobra o brilho e a cor fica mais viva */
-const SLIM_DROP = 0.35, SLIM_LAYERS = 2;
+const SLIM_SCALE: [number, number, number] = [1.25, 1.1, 1.25];
+/** os pilares ficam no ombro (SLIM_DROP > 0 desce) e desenham duas vezes: o aditivo dobra o brilho e a cor fica mais viva */
+const SLIM_DROP = 0, SLIM_LAYERS = 2;
 
 /** peças do brilho dos ombros que viram neblina larga: disco no plano do ombro, manchas de luz grandes e o cone alto que some */
 const SLIM_HIDE = (p: SfxPart) =>
