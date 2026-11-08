@@ -3,7 +3,7 @@
 #guildWnd .gwnd-title, #guildWnd .gwnd-body { border-image-source: none !important; border-width: 0 !important; }
 #guildWnd .gwnd-title { background: linear-gradient(#3a2d14, #1c1408) !important; color: #fff; text-align: center; font: 700 15px Tahoma, Verdana, sans-serif; text-shadow: 0 1px 2px #000; height: 26px; padding: 0 28px; }
 #guildWnd .gwnd-close { color: #f0cf6a; }
-#guildWnd .gwnd-body.gw { display: flex; gap: 0; padding: 4px; background: #1a1209 !important; color: #e9d98f; font: 13px/1.35 Tahoma, Verdana, system-ui, sans-serif; }
+#guildWnd .gwnd-body.gw { display: flex; flex-direction: row; gap: 0; padding: 4px; background: #1a1209 !important; color: #e9d98f; font: 13px/1.35 Tahoma, Verdana, system-ui, sans-serif; }
 .gw-tabs { flex: none; width: 150px; display: flex; flex-direction: column; background: #5a5242; border-radius: 4px 0 0 4px; }
 .gw-tab { flex: 1; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 0; border-bottom: 1px solid #3b3426; background: transparent; color: #a8a08a; font: 700 13px Tahoma, Verdana, sans-serif; text-align: left; cursor: pointer; }
 .gw-tab i { font-style: normal; width: 16px; text-align: center; }
