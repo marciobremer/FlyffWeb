@@ -17,7 +17,7 @@ import { rowRotX, rowRotZ, rowScale, rowTrans, rowYPR, TICKS_PER_SEC, transformC
 const rad = (d: number) => (d * Math.PI) / 180;
 // ritmo do Neuz (62,5 tiques/s): shared/math.ts
 const flip = new Matrix4().makeScale(1, 1, -1);
-const poseP = new Vector3(), poseS = new Vector3(), poseQ = new Quaternion(), poseR = new Matrix4();
+const poseR = new Matrix4();
 
 // ---------------------------------------------------------------- biblioteca
 export class SfxLibrary {
@@ -238,14 +238,18 @@ export class SfxInstance {
   place(x: number, y: number, z: number) { this.pos = [x, y + 0.2, z]; }
 
   /**
-   * Prende o efeito a uma matriz do mundo Three (posição e orientação — o brilho de arma gira com a arma): a posição vira FlyFF
-   * (z invertido) e a rotação vai para `matRot`, em matriz linha do D3D = transposta de F·R·F (F espelha o Z).
+   * Prende o efeito a uma matriz do mundo Three (posição e orientação — o brilho de arma gira com a arma). A matriz leva do espaço
+   * LOCAL do objeto (eixos do D3D, em que o sfx foi desenhado) para o mundo Three, que é o D3D com o Z espelhado: a posição vira
+   * FlyFF (z invertido) e a rotação local → D3D é F·M (só o lado do mundo é espelhado, não o local). `matRot` é a matriz linha do D3D
+   * = a transposta disso; as colunas saem normalizadas (sem escala).
    */
   placeMatrix(world: Matrix4) {
-    world.decompose(poseP, poseQ, poseS);
-    this.pos = [poseP.x, poseP.y, -poseP.z];
-    const r = poseR.makeRotationFromQuaternion(poseQ);
-    this.matRot = flip.clone().multiply(r).multiply(flip).transpose();
+    const e = world.elements;
+    this.pos = [e[12], e[13], -e[14]];
+    const c = (k: number): [number, number, number] => { const x = e[k], y = e[k + 1], z = -e[k + 2], l = Math.hypot(x, y, z) || 1; return [x / l, y / l, z / l]; };
+    const [a, b, d] = [c(0), c(4), c(8)];
+    // colunas a, b, d = eixos locais x, y, z no mundo D3D (matriz coluna); a linha-vetor é a transposta
+    this.matRot = poseR.set(a[0], b[0], d[0], 0, a[1], b[1], d[1], 0, a[2], b[2], d[2], 0, 0, 0, 0, 1).clone().transpose();
   }
 
   /** translação D3D: pos + TransformCoord(key.pos, matRot·YPR(posRotate))·scale */
