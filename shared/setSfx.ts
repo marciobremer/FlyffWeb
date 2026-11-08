@@ -1,5 +1,5 @@
 import { Matrix4, Vector3 } from 'three';
-import { GLOW_TAG, parseLook } from './look';
+import { GLOW_TAG, isLeftHand, parseLook } from './look';
 import type { MoverInstance } from './movers';
 import type { SfxManager } from './sfxRuntime';
 
@@ -34,7 +34,7 @@ const SET_SFX_LAYOUT: Record<number, SetSfxSpot[]> = {
  * XI_*; `enabled` desliga sem desmontar (camada de efeitos). Chamar de novo (troca de equipamento) desliga os anteriores.
  */
 export function attachSetSfx(mgr: SfxManager, fileOf: (id: number) => string, inst: MoverInstance, equip: string[], enabled: () => boolean = () => true,
-  hand?: (sym: string) => { file: string } | null) {
+  hand?: (sym: string) => { file: string; slot: string } | null) {
   const tag = equip.find((s) => s.startsWith(GLOW_TAG));
   const level = tag ? Number(tag.slice(GLOW_TAG.length)) : 0;
   const token = {};
@@ -86,7 +86,7 @@ const enchantTier = (u: number) => (u >= 10 ? 5 : u >= 9 ? 4 : u >= 7 ? 3 : u >=
 const elementTier = (el: number) => (el >= 20 ? 5 : el >= 16 ? 4 : el >= 11 ? 3 : el >= 6 ? 2 : el >= 3 ? 1 : 0);
 
 function attachWeaponSfx(mgr: SfxManager, fileOf: (id: number) => string, inst: MoverInstance, equip: string[], enabled: () => boolean,
-  hand: (sym: string) => { file: string } | null, token: object) {
+  hand: (sym: string) => { file: string; slot: string } | null, token: object) {
   const alive = () => inst.setSfxToken === token && !!inst.group.parent && enabled();
   const world = new Matrix4(), off = new Matrix4();
   for (const s of equip) {
@@ -99,17 +99,20 @@ function attachWeaponSfx(mgr: SfxManager, fileOf: (id: number) => string, inst: 
     if (enchantTier(u)) ids.push(base + enchantTier(u) - 1);
     if (e > 0 && e < ELEMENT_SFX.length && elementTier(el)) ids.push(base + ELEMENT_SFX[e] + elementTier(el) - 1);
     if (!ids.length) continue;
-    const file = h.file.toLowerCase();
-    // a malha da arma na mão (a matriz dela já tem o osso e o m_mLocalRH/LH/Shield, como o m1 do original)
-    const mesh = () => inst.meshFiles.find((m) => m.file.toLowerCase() === file)?.mesh ?? null;
+    // o referencial do brilho é o da MÃO (m1 do original = m_mLocalRH/LH/Shield × osso), sem a transformação interna da malha da arma
+    const slot = isLeftHand(s) && h.slot === 'rh' ? 'lh' : h.slot, sk = inst.tpl.skeleton;
+    const bone = slot === 'rh' ? sk.rHand : slot === 'knuckle' ? sk.rArm : slot === 'shield' ? sk.lArm : sk.lHand;
+    const loc = slot === 'rh' ? sk.localRH : slot === 'lh' ? sk.localLH : slot === 'shield' ? sk.localShield : sk.localKnuckle;
+    if (bone < 0 || !loc) continue;
+    const local = new Matrix4().fromArray(loc); // linha-vetor do D3D → coluna do Three (a transposta)
     for (const id of ids) {
       const sfx = fileOf(id);
       if (!sfx) continue;
       mgr.playAttachedPose(sfx, [1, 1, 1], alive, () => {
-        const m = mesh();
-        if (!m) return null;
+        const b = inst.boneMatrix(bone);
+        if (!b) return null;
         inst.modelSpace.updateWorldMatrix(true, false);
-        return world.multiplyMatrices(inst.modelSpace.matrixWorld, m.matrix).multiply(off.makeTranslation(shift, 0, 0));
+        return world.multiplyMatrices(inst.modelSpace.matrixWorld, b).multiply(local).multiply(off.makeTranslation(shift, 0, 0));
       });
     }
   }
