@@ -1,4 +1,5 @@
 import { Matrix4, Vector3 } from 'three';
+import { SfxBillType, SfxPartType, type SfxPart } from './formats/sfx';
 import { GLOW_TAG, isLeftHand, parseLook } from './look';
 import type { MoverInstance } from './movers';
 import type { SfxManager } from './sfxRuntime';
@@ -53,6 +54,9 @@ export function attachSetSfx(mgr: SfxManager, fileOf: (id: number) => string, in
     const file = hand ? hands : body, bones = boneOf(link);
     if (!file || !bones.length) continue;
     const s: [number, number, number] = typeof scale === 'number' ? [scale, scale, scale] : [...scale];
+    // ombros e cotovelos (0–5): só os pilares de luz subindo — sem o disco girando no plano do ombro e as manchas grandes de luz,
+    // que somavam uma neblina larga no peito (a aura fica fina, em cima dos ombros, como no cliente de referência)
+    const slim = link <= 5 && !hand;
     mgr.playAttached(file, s, () => inst.setSfxToken === token && !!inst.group.parent && enabled(), () => {
       const m0 = inst.boneMatrix(bones[0]);
       if (!m0) return null;
@@ -65,9 +69,14 @@ export function attachSetSfx(mgr: SfxManager, fileOf: (id: number) => string, in
       a.applyMatrix4(inst.modelSpace.matrixWorld);
       // posição FlyFF (z invertido); o original desce 0,05 + o deslocamento; place() soma 0,2 de volta
       return [a.x, a.y - 0.05 - offY - 0.2, -a.z];
-    });
+    }, slim ? SLIM_HIDE : null);
   }
 }
+
+/** peças do brilho dos ombros que viram neblina larga: disco no plano do ombro, manchas de luz grandes e o cone alto que some */
+const SLIM_HIDE = (p: SfxPart) =>
+  p.billType === SfxBillType.Bottom || (p.type === SfxPartType.Particle && (p.particle?.scale[0] ?? 0) >= 1.5) ||
+  (p.type === SfxPartType.CustomMesh && Math.max(...p.keys.map((k) => k.scale[1])) >= 3);
 
 /**
  * Brilho da arma (CModelObject::CreateWeaponEffect do original, __NEW_WEAPON_GLOW): dois .sfx presos na arma, que giram com ela —

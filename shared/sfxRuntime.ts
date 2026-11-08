@@ -116,6 +116,8 @@ export class SfxInstance {
    * no original — o quad nasce no plano XY (sem deitar em X 90°) e as peças de malha também giram com a arma.
    */
   fullPose = false;
+  /** peças que não devem aparecer (o brilho do conjunto nos ombros: sem o disco no chão e as manchas grandes) */
+  hidePart: ((part: SfxPart) => boolean) | null = null;
   done = false;
   private age = 0;
   maxAge = 4;
@@ -295,6 +297,7 @@ export class SfxInstance {
   private updatePart(node: PartNode, frame: number, rcam: Matrix4) {
     const part = node.part;
     if (!part.visible) return;
+    if (this.hidePart?.(part)) { if (node.mesh) node.mesh.visible = false; node.extra?.forEach((m) => { m.visible = false; }); return; }
     const key = sampleKey(part, frame);
     if (part.type === SfxPartType.Mesh) { this.updateMeshPart(node, key); return; }
     const mesh = node.mesh;
@@ -543,8 +546,9 @@ export class SfxManager {
    * efeito preso em alguém enquanto `alive()` (repete sem parar): a cada quadro vai para `getPos()` (null = ainda sem
    * posição, fica escondido). Ex.: efeito do conjunto +3…+10 nos ossos do personagem (CSfxPartsLinkShoulder).
    */
-  playAttached(file: string, scale: V3, alive: () => boolean, getPos: () => V3 | null) {
+  playAttached(file: string, scale: V3, alive: () => boolean, getPos: () => V3 | null, hidePart: ((part: SfxPart) => boolean) | null = null) {
     this.spawn(file, [0, 0, 0], 0, (inst, dt) => {
+      inst.hidePart = hidePart;
       if (!alive()) return true;
       const p = getPos();
       inst.group.visible = !!p;
