@@ -304,7 +304,7 @@ export class NetClient {
   onMobs: (add: [number, number, number, number, number, string, number | null, number?, number?][], upd: [number, number, number, number, string, number?][], del: number[]) => void = () => {};
   /** combate: golpe (k 'p' jogador→mob, 'm' mob→jogador), mob morreu, jogador morreu, seus atributos */
   /** `fx` = efeitos da skill usada (ids XI_*): c ao lançar, h no alvo, s no lançador */
-  onHit: (k: 'p' | 'm', a: number, d: number, dmg: number, flags: number, hp: number, fx?: SkillFx, sn?: [number, number]) => void = () => {};
+  onHit: (k: 'p' | 'm', a: number, d: number, dmg: number, flags: number, hp: number, fx?: SkillFx, sn?: [number, number], hx?: [number, number]) => void = () => {};
   onMobDie: (id: number, killer: number) => void = () => {};
   onPlayerDie: (id: number) => void = () => {};
   onStats: (s: PlayerStats) => void = () => {};
@@ -483,7 +483,7 @@ export class NetClient {
       } else if (m.t === 'teleport') {
         this.onTeleport(m.p as [number, number, number], !!m.revive);
       } else if (m.t === 'hit') {
-        this.onHit(m.k as 'p' | 'm', Number(m.a), Number(m.d), Number(m.dmg), Number(m.f), Number(m.hp), m.fx as SkillFx | undefined, m.sn as [number, number] | undefined);
+        this.onHit(m.k as 'p' | 'm', Number(m.a), Number(m.d), Number(m.dmg), Number(m.f), Number(m.hp), m.fx as SkillFx | undefined, m.sn as [number, number] | undefined, m.hx as [number, number] | undefined);
       } else if (m.t === 'mdie') {
         this.onMobDie(Number(m.id), Number(m.k));
       } else if (m.t === 'pdie') {

@@ -659,12 +659,12 @@ export class WorldView {
   }
 
   /** toca o efeito `XI_*` (id) na posição FlyFF; `rotY` em graus. Sem o arquivo .sfx não faz nada. */
-  playSfx(id: number, pos: [number, number, number], rotY = 0) {
+  playSfx(id: number, pos: [number, number, number], rotY = 0, scale = 1) {
     const d = this.data;
     if (!d || id < 0 || !this.layers.sfx) return;
     const entry = d.dynaModels.get(`${OT.SFX}:${id}`);
     const file = entry ? modelFileName(entry) : '';
-    if (file && this.sfxLib.has(file)) { this.sfxMgr.play(file, pos, rotY); this.sfxSound(id, pos); }
+    if (file && this.sfxLib.has(file)) { this.sfxMgr.play(file, pos, rotY, scale); this.sfxSound(id, pos); }
   }
 
   /** projétil de magia de `from` até `to` (posições FlyFF) */

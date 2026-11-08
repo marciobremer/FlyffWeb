@@ -414,6 +414,19 @@ net.onUsed = (id, g, cd) => {
 };
 net.onGround = (a, d) => { for (const id of d) ground.remove(id); ground.add(a); };
 /** altura da cabeça de um mob do servidor (para o número de dano) */
+/**
+ * Efeitos do golpe (como o CActionMover::SendActMsg/DPClient do original): errou = sfx_hitMiss01 (escala 2), crítico = sfx_hitCritical01
+ * (escala 3), os dois 1,5 m acima dos pés; golpe normal = efeito do alvo da arma (dwSfxObj3) a 1 m do chão e o de quem golpeia (dwSfxObj5).
+ */
+const hitFx = (foot: [number, number, number], miss: boolean, crit: boolean, hx: [number, number] | undefined, atk: [number, number, number] | null) => {
+  const D = view.data?.defines;
+  if (!D) return;
+  const up = (y: number): [number, number, number] => [foot[0], foot[1] + y, foot[2]];
+  if (miss) { const id = D.get('XI_HIT_MISS01'); if (id !== undefined) view.playSfx(id, up(1.5), 0, 2); return; }
+  if (crit) { const id = D.get('XI_HIT_CRITICAL01'); if (id !== undefined) view.playSfx(id, up(1.5), 0, 3); }
+  if (hx && hx[0] >= 0) view.playSfx(hx[0], up(1));
+  if (hx && hx[1] >= 0 && atk) view.playSfx(hx[1], atk);
+};
 const mobHead = (id: number): [number, number, number] | null => {
   const info = view.moverMgr.externalInfo(id);
   if (!info) return null;
@@ -466,7 +479,7 @@ setInterval(() => {
   for (const [k, l] of mobDebuffs) { const live = l.filter((d) => d.end > now); if (live.length) mobDebuffs.set(k, live); else mobDebuffs.delete(k); }
   view.setTargetDebuffs(id === null ? [] : mobDebuffs.get(id) ?? []);
 }, 250);
-net.onHit = (k, a, d, dmg, flags, hp, fx, sn) => {
+net.onHit = (k, a, d, dmg, flags, hp, fx, sn, hx) => {
   if ((k === 'p' && a === net.myId) || (k === 'm' && d === net.myId)) lastBattleAt = performance.now(); // batalha: não monta
   const mm = view.moverMgr, miss = (flags & 1) !== 0, crit = (flags & 2) !== 0;
   if (k === 'p' && sn) { // golpe da arma: o do swing sempre, o do impacto só se acertou
@@ -481,9 +494,10 @@ net.onHit = (k, a, d, dmg, flags, hp, fx, sn) => {
       mm.setExternalHp(d, hp);
       if (view.target && view.target === mm.externalInfo(d)?.inst) view.setTargetHp(hp / 1000);
       if (!miss) mm.playExternal(d, 'MTI_DMG1');
-      // números só dos seus golpes (os dos outros também aparecem, menores)
-      const at = mobHead(d);
-      if (at && (a === net.myId || !miss)) combat.popup(at, miss ? 'MISS' : String(dmg), miss ? 'miss' : crit ? 'crit' : a === net.myId ? 'mob' : 'other');
+      // número de dano (imagens do cliente) e os efeitos do golpe: errou = MISS, crítico = CRITICAL, senão o efeito da arma
+      const at = mobHead(d), foot = mm.externalInfo(d)?.pos;
+      if (at && !miss) combat.damage(at, dmg, false, crit, a !== net.myId);
+      if (foot) hitFx(foot, miss, crit, hx, a === net.myId ? view.player?.pos ?? null : remotes.pos(a));
     };
     // golpe normal de arco/besta: a flecha (XI_ITEM_RANGE_ATK1, sfx_middlearrow_01) voa do peito do arqueiro até o alvo
     // e o dano aparece quando ela chega (CMover::OnAttackRange)
@@ -497,8 +511,9 @@ net.onHit = (k, a, d, dmg, flags, hp, fx, sn) => {
     } else land();
   } else {
     mm.playExternal(a, 'MTI_ATK1');
-    const at = playerHead(d);
-    if (at) combat.popup(at, miss ? 'MISS' : String(dmg), miss ? 'miss' : d === net.myId ? (crit ? 'crit' : 'me') : 'other');
+    const at = playerHead(d), foot = d === net.myId ? view.player?.pos ?? null : remotes.pos(d);
+    if (at && !miss) combat.damage(at, dmg, d === net.myId, crit, d !== net.myId);
+    if (foot) hitFx(foot, miss, crit, undefined, null);
   }
 };
 net.onMobDie = (id) => { mobDebuffs.delete(id); view.moverMgr.setExternalState(id, 'dead'); if (view.target && view.target === view.moverMgr.externalInfo(id)?.inst) view.setTargetHp(0); };

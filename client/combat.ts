@@ -1,6 +1,7 @@
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import type { WorldView } from '../shared/world';
 import type { MoverInstance } from '../shared/movers';
+import { resImage } from '../shared/tga';
 
 /**
  * Combate no cliente (quem decide tudo é o servidor — server/combat.ts e server/realtime.ts):
@@ -16,6 +17,10 @@ const ATTACK_RANGE = 2.4;
 
 /** skill a lançar: id, movimento do personagem e se é buff (vale em quem lança) */
 export interface QueuedSkill { id: number; motion: string; buff?: boolean; /** lança uma vez e para de atacar (debuff como o Sneaker não vira golpe automático) */ once?: boolean; /** alcance da skill (magia/debuff lançam de longe); sem isso vale o da arma */ range?: number }
+
+/** a imagem dos números (DmgEffect.dds), decodificada uma vez */
+let atlasP: Promise<string | null> | null = null;
+const atlas = () => (atlasP ??= resImage('Data/SFX/DmgEffect.dds'));
 
 export class Combat {
   /** mob (id do servidor) sendo atacado */
@@ -95,6 +100,45 @@ export class Combat {
         this.sendAttack(id);
       }
     }
+  }
+
+  /**
+   * Número de dano com as imagens do cliente (DmgEffect.dds: dígitos vermelhos = quem apanhou é você, azuis = o resto), animado como
+   * o CDamageNum do original: sobe rápido, treme, espera e some crescendo. `big` = crítico.
+   */
+  damage(pos: [number, number, number], n: number, mine: boolean, big = false, small = false) {
+    void atlas();
+    const cell = (big ? 40 : small ? 24 : 32), k = cell / 50, adv = cell * 0.72, row = mine ? 0 : 128;
+    const el = document.createElement('div');
+    el.className = 'dmgnum';
+    const inner = document.createElement('div');
+    inner.className = 'dmgnum-in';
+    inner.style.height = `${cell}px`;
+    for (const ch of String(Math.max(0, Math.round(n)))) {
+      const d = document.createElement('i');
+      d.style.cssText = `width:${cell}px;height:${cell}px;margin-right:${adv - cell}px;background-size:${1024 * k}px ${256 * k}px;background-position:${-Number(ch) * 50 * k}px ${-row * k}px`;
+      inner.append(d);
+    }
+    inner.style.width = `${adv * (String(Math.round(n)).length - 1) + cell}px`;
+    el.append(inner);
+    void atlas().then((u) => { if (u) inner.style.setProperty('--atlas', `url(${u})`); });
+    const obj = new CSS2DObject(el);
+    obj.position.set(pos[0] + (Math.random() - 0.5) * 0.4, pos[1], pos[2]);
+    this.view.playerGroup.add(obj);
+    const t0 = performance.now();
+    const tick = () => {
+      const t = (performance.now() - t0) / 1000;
+      if (t >= 1.2) { obj.removeFromParent(); el.remove(); return; }
+      let y: number, jx = 0, s = 1, a = 1;
+      if (t < 0.13) y = (t / 0.13) * 80; // sobe depressa
+      else if (t < 0.3) { y = 80; jx = Math.floor(t * 60) & 1 ? 3 : -3; } // treme
+      else if (t < 0.55) y = 80; // espera
+      else { y = 80 + (t - 0.55) * 120; s = 1.5 + (t - 0.55) * 0.6; a = Math.max(0, 0.3 - (t - 0.55) * 0.5); } // some crescendo
+      inner.style.transform = `translate(${jx}px, ${-y}px) scale(${s})`;
+      inner.style.opacity = String(a);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
   }
 
   /** número de dano subindo de um ponto (FlyFF x, y, z) */

@@ -861,3 +861,8 @@ html, body, body *:not(canvas), canvas.inv-model, canvas.char-model { cursor: ur
 #langPick button[aria-pressed="true"] { background: #f2c14e; color: #1b2133; }
 #langPick button:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
 body.ingame #langPick { display: none; }
+
+/* número de dano com as imagens do cliente (client/combat.ts damage) */
+.dmgnum { pointer-events: none; }
+.dmgnum-in { display: flex; will-change: transform, opacity; }
+.dmgnum-in i { display: block; flex: none; background-image: var(--atlas); background-repeat: no-repeat; image-rendering: auto; }

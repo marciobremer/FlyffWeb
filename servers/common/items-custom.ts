@@ -62,7 +62,7 @@ export function blankItem(id: number, symbol: string): ItemDef {
   return {
     id, symbol, name: symbol, icon: '', packMax: 1, parts: -1, sex: -1, level: 1, kind1: 0, kind2: 0, kind3: 0, cost: 0,
     abilityMin: 0, abilityMax: 0, weaponType: 0, attackSpeed: 0, rare: 0, shopAble: -1, dest: [-1, -1, -1, -1, -1, -1], adj: [0, 0, 0, 0, 0, 0],
-    ready: 0, adjHit: 0, parry: 0, snd1: -1, snd2: -1, attackRange: 0, job: -1, handed: 1, ignorePart: -1, grade: 100, element: 0,
+    ready: 0, adjHit: 0, parry: 0, snd1: -1, snd2: -1, sfx3: -1, sfx5: -1, attackRange: 0, job: -1, handed: 1, ignorePart: -1, grade: 100, element: 0,
     referStat1: -1, referStat2: -1, referTarget1: -1, referTarget2: -1,
   };
 }

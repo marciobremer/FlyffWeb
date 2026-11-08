@@ -1604,7 +1604,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     cb.nextAtk = now + rules.attackInterval(cb.f, p.mt);
     const r = rules.playerHitsMob(cb.f, m.prop);
     const died = r.hit && mobWorld.damage(m, p.id, r.dmg, rules.peaceful(m.prop), now);
-    sendNear(p.w, m.x, m.z, { t: 'hit', k: 'p', a: p.id, d: m.id, dmg: r.dmg, f: (r.hit ? 0 : 1) | (r.crit ? 2 : 0), hp: mobHp(m), sn: [cb.f.weapon?.snd1 ?? -1, cb.f.weapon?.snd2 ?? -1] });
+    sendNear(p.w, m.x, m.z, { t: 'hit', k: 'p', a: p.id, d: m.id, dmg: r.dmg, f: (r.hit ? 0 : 1) | (r.crit ? 2 : 0), hp: mobHp(m), sn: [cb.f.weapon?.snd1 ?? -1, cb.f.weapon?.snd2 ?? -1],
+      ...(cb.f.weapon && (cb.f.weapon.sfx3 >= 0 || cb.f.weapon.sfx5 >= 0) ? { hx: [cb.f.weapon.sfx3, cb.f.weapon.sfx5] } : {}) });
     if (!died) return;
     // exp para quem causou mais dano (como o líder do dano no original, sem grupo ainda)
     let best = p.id, bestDmg = -1;

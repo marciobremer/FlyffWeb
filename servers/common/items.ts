@@ -34,6 +34,8 @@ export interface ItemDef {
   adjHit: number; parry: number;
   /** dwSndAttack1 (ao golpear) e dwSndAttack2 (ao acertar): ids SND_* (-1 = nenhum) */
   snd1: number; snd2: number;
+  /** efeito do golpe normal: no alvo (dwSfxObj3, ex.: XI_HIT_SWORD01) e em quem golpeia (dwSfxObj5); -1 = nenhum */
+  sfx3: number; sfx5: number;
   /** dwAttackRange (AR_*): alcance do golpe da arma — ver attackRangeOf */
   attackRange: number;
   /** dwItemJob (JOB_*): classe que pode usar (-1 = qualquer) — ver jobCanUse; dwHanded: 1 uma mão, 2 duas mãos */
@@ -176,7 +178,7 @@ export class ItemCatalog {
       amin: col('dwAbilityMin'), amax: col('dwAbilityMax'), wt: col('dwWeaponType'), aspd: col('dwAttackSpeed'), rare: col('dwItemRare'), shop: col('dwShopAble'),
       d1: col('dwDestParam1'), d2: col('dwDestParam2'), d3: col('dwDestParam3'), d4: col('dwDestParam4'), d5: col('dwDestParam5'), d6: col('dwDestParam6'),
       a1: col('nAdjParamVal1'), a2: col('nAdjParamVal2'), a3: col('nAdjParamVal3'), a4: col('nAdjParamVal4'), a5: col('nAdjParamVal5'), a6: col('nAdjParamVal6'),
-      ready: col('dwSkillReady'), range: col('dwAttackRange'), job: col('dwItemJob'), hand: col('dwHanded'), hit: col('nAdjHitRate'), parry: col('dwParry'), sa1: col('dwSndAttack1'), sa2: col('dwSndAttack2'),
+      ready: col('dwSkillReady'), range: col('dwAttackRange'), job: col('dwItemJob'), hand: col('dwHanded'), hit: col('nAdjHitRate'), parry: col('dwParry'), sa1: col('dwSndAttack1'), sa2: col('dwSndAttack2'), x3: col('dwSfxObj3'), x5: col('dwSfxObj5'),
       ignore: col('dwBasePartsIgnore'), grade: col('dwItemGrade'), elem: col('eItemType'),
       cm: col('szComment'), link: col('dwLinkKind'), rs1: col('dwReferStat1'), rs2: col('dwReferStat2'), rt1: col('dwReferTarget1'), rt2: col('dwReferTarget2'), fs: col('fFlightSpeed'), flr: col('fFlightLRAngle'), ftb: col('fFlightTBAngle'),
     };
@@ -207,6 +209,7 @@ export class ItemCatalog {
         dest: [C.d1, C.d2, C.d3, C.d4, C.d5, C.d6].map((k) => (k < 0 ? -1 : num(c[k], -1))), adj: [C.a1, C.a2, C.a3, C.a4, C.a5, C.a6].map((k) => (k < 0 ? 0 : num(c[k], 0))), ready: Math.max(0, num(c[C.ready], 0)),
         adjHit: C.hit < 0 ? 0 : num(c[C.hit], 0), parry: C.parry < 0 ? 0 : num(c[C.parry], 0),
         snd1: C.sa1 < 0 ? -1 : num(c[C.sa1], -1), snd2: C.sa2 < 0 ? -1 : num(c[C.sa2], -1),
+        sfx3: C.x3 < 0 ? -1 : num(c[C.x3], -1), sfx5: C.x5 < 0 ? -1 : num(c[C.x5], -1),
         attackRange: C.range < 0 ? 0 : num(c[C.range], 0),
         job: C.job < 0 ? -1 : num(c[C.job], -1), handed: C.hand < 0 ? 1 : num(c[C.hand], 1),
         ignorePart: C.ignore < 0 ? -1 : num(c[C.ignore], -1),
