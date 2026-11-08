@@ -135,6 +135,10 @@ export class GameWindow {
     handle.addEventListener('pointercancel', end);
   }
 
+  /** move a janela para (x, y), dentro da tela */
+  placeAt(x: number, y: number) { this.apply({ ...this.rect, x, y }); }
+  get box() { return this.rect; }
+
   front() { if (Number(this.el.style.zIndex) !== topZ) this.el.style.zIndex = String(++topZ); }
   get visible() { return !this.el.hidden; }
   show() { this.el.hidden = false; this.front(); this.apply(this.rect); }
@@ -167,6 +171,8 @@ export const ELEMENT_NAMES = ['', 'Fogo', 'Água', 'Elétrico', 'Vento', 'Terra'
 export interface InvDef extends ItemView {}
 
 const BAG = 0, EQUIPPED = 1;
+/** limite de espaços da caixa de apagar */
+export const STAGE_MAX = 60;
 
 /**
  * Pergunta no visual do jogo (a caixinha da lixeira, no lugar do confirm() do navegador) dentro de `host`: texto e os botões
@@ -249,6 +255,7 @@ export class InventoryWindow extends GameWindow {
   stage(slot: number) {
     const it = this.items.get(keyOf(BAG, slot));
     if (!it) return;
+    if (!this.staged.has(slot) && this.staged.size >= STAGE_MAX) { this.onNotice(`A caixa de apagar comporta até ${STAGE_MAX} itens.`); return; }
     this.staged.set(slot, it.id);
     hideItemTip();
     this.renderBag();
