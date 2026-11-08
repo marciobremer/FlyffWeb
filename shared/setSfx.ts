@@ -76,9 +76,9 @@ export function attachSetSfx(mgr: SfxManager, fileOf: (id: number) => string, in
 }
 
 /** escala dos pilares de luz dos ombros/cotovelos (largura, altura, profundidade) */
-const SLIM_SCALE: [number, number, number] = [1.25, 1.1, 1.25];
+const SLIM_SCALE: [number, number, number] = [0.9, 0.85, 0.9];
 /** os pilares ficam no ombro (SLIM_DROP > 0 desce) e desenham duas vezes: o aditivo dobra o brilho e a cor fica mais viva */
-const SLIM_DROP = 0, SLIM_LAYERS = 2;
+const SLIM_DROP = -0.3, SLIM_LAYERS = 2; // negativo = sobe
 
 /** peças do brilho dos ombros que viram neblina larga: disco no plano do ombro, manchas de luz grandes e o cone alto que some */
 const SLIM_HIDE = (p: SfxPart) =>
