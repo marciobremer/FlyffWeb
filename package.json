@@ -17,7 +17,8 @@
     "world": "tsx servers/world/main.ts",
     "test:persist": "tsx tools/test-persist.ts",
     "account": "tsx tools/accounts-cli.ts",
-    "admin": "tsx admin/index.ts"
+    "admin": "tsx admin/index.ts",
+    "i18n:check": "tsx tools/i18n-check.ts"
   },
   "dependencies": {
     "fflate": "^0.8.3",

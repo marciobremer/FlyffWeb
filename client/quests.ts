@@ -1,3 +1,4 @@
+import { gameConfirm } from './dialog';
 import { GameWindow } from './ui';
 
 /**
@@ -93,7 +94,7 @@ export class QuestLogWindow extends GameWindow {
       del.type = 'button';
       del.className = 'quest-abandon';
       del.textContent = 'Abandonar';
-      del.addEventListener('click', () => { if (confirm(`Abandonar "${q.name}"? O progresso se perde.`)) this.onAbandon(q.id); });
+      del.addEventListener('click', () => { void gameConfirm(`Abandonar "${q.name}"? O progresso se perde.`, 'Abandonar').then((ok) => { if (ok) this.onAbandon(q.id); }); });
       const sub = document.createElement('div');
       sub.className = 'quest-sub';
       sub.textContent = q.ready ? `Pronta: volte ao NPC ${q.npc}.` : `NPC: ${q.npc}`;

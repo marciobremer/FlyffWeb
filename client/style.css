@@ -851,3 +851,11 @@ html, body, body *:not(canvas), canvas.inv-model, canvas.char-model { cursor: ur
 .quest-abandon { align-self: flex-start; font-size: 11px !important; padding: 1px 8px !important; }
 
 .quest-blocked { margin: 4px 0; color: #ff9a9a; font-weight: 700; }
+
+/* seletor de idioma (client/lang.ts): PT-BR | EN em texto puro (bandeiras em emoji não aparecem no Windows); some dentro do jogo */
+#langPick { position: fixed; top: 12px; right: 14px; z-index: 60; display: flex; border: 1px solid rgb(255 255 255 / .35); border-radius: 6px; overflow: hidden; background: rgb(10 14 28 / .6); font: 700 12px/1 Tahoma, Verdana, system-ui, sans-serif; }
+#langPick button { padding: 7px 11px; border: 0; background: transparent; color: #cfd8ee; cursor: pointer; }
+#langPick button:hover { background: rgb(255 255 255 / .12); color: #fff; }
+#langPick button[aria-pressed="true"] { background: #f2c14e; color: #1b2133; }
+#langPick button:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+body.ingame #langPick { display: none; }

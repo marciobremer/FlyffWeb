@@ -1,4 +1,5 @@
 import { JOBS } from './jobs';
+import { gameConfirm } from './dialog';
 import { GameWindow } from './ui';
 import { keyedImage, skillIcon, themeImage, themeTiles } from '../shared/tga';
 
@@ -263,7 +264,7 @@ export class FriendsWindow extends GameWindow {
         del.textContent = '×';
         del.title = `Remover ${f.name} dos amigos`;
         del.setAttribute('aria-label', del.title);
-        del.addEventListener('click', (e) => { e.stopPropagation(); if (confirm(`Remover ${f.name} da sua lista de amigos?`)) this.onRemove(f.id); });
+        del.addEventListener('click', (e) => { e.stopPropagation(); void gameConfirm(`Remover ${f.name} da sua lista de amigos?`, 'Remover').then((ok) => { if (ok) this.onRemove(f.id); }); });
         li.append(del);
         li.addEventListener('dblclick', () => this.open(f.id));
         li.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.open(f.id); });

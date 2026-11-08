@@ -4,6 +4,7 @@ import { hideItemTip, moveItemTip, setTipContext, setTipLookup, showItemTip } fr
 import { InventoryPreview } from './invpreview';
 import { loadAniCursor, type AniCursor } from './anicursor';
 import { hideBit, type LookPiece } from '../shared/look';
+import { t, tr, trAttr } from './lang';
 
 /**
  * Janelas do jogo (inventário, chat) e barra de atalhos, com as imagens de Data/Theme/Default:
@@ -51,17 +52,17 @@ export class GameWindow {
     el.className = 'gwnd';
     el.hidden = true;
     el.setAttribute('role', 'dialog');
-    el.setAttribute('aria-label', o.title);
+    trAttr(el, 'aria-label', o.title);
     this.titleEl.className = 'gwnd-title';
     const label = document.createElement('span');
-    label.textContent = o.title;
+    tr(label, o.title);
     this.titleText = label;
     this.titleEl.appendChild(label);
     if (o.closable !== false) {
       const x = document.createElement('button');
       x.type = 'button';
       x.className = 'gwnd-close';
-      x.setAttribute('aria-label', `Fechar ${o.title}`);
+      trAttr(x, 'aria-label', 'Fechar janela');
       x.textContent = '×';
       x.addEventListener('pointerdown', (e) => e.stopPropagation());
       x.addEventListener('click', () => { this.hide(); this.onClose(); });
@@ -305,7 +306,7 @@ export class InventoryWindow extends GameWindow {
 
     this.search.className = 'inv-search';
     this.search.type = 'search';
-    this.search.placeholder = 'Buscar';
+    trAttr(this.search, 'placeholder', 'Buscar');
     this.search.setAttribute('aria-label', 'Buscar item no inventário');
     this.search.maxLength = 40;
     this.search.addEventListener('input', () => this.applySearch());
@@ -1030,7 +1031,7 @@ export class ChatWindow extends GameWindow {
     void themeImage('WndChatEdit00.tga').then((u) => { if (u) form.style.setProperty('--edit', `url(${u})`); });
     this.input.className = 'fedit';
     this.input.maxLength = 200;
-    this.input.placeholder = 'Enter para conversar';
+    trAttr(this.input, 'placeholder', 'Enter para conversar');
     this.input.setAttribute('aria-label', 'Mensagem');
     this.input.autocomplete = 'off';
     this.input.spellcheck = false;
@@ -1083,7 +1084,7 @@ export class ChatWindow extends GameWindow {
   /** manda uma mensagem (digitada ou de macro); na aba Shout, texto normal vira grito */
   send(typed: string) {
     const text = this.shoutTab && typed && !typed.startsWith('/') ? `/shout ${typed}` : typed;
-    if (text && !this.onSend(text)) this.system('Sem conexão com o servidor — mensagem não enviada.');
+    if (text && !this.onSend(text)) this.system(t('Sem conexão com o servidor — mensagem não enviada.'));
   }
 
   private push(li: HTMLLIElement) {

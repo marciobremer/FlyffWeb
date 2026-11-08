@@ -1,4 +1,5 @@
 import { iconImage, themeImage } from '../shared/tga';
+import { onLang, t } from './lang';
 
 /**
  * Interface do jogo (HTML sobre o canvas, imagens do cliente):
@@ -41,32 +42,32 @@ export class GameHud {
   // ---------- menu ----------
   private items(): MenuItem[] {
     return [
-      { label: 'Status', key: 'T', icon: 'icon_MenuStatus.dds' },
-      { label: 'Navegador', key: 'N', icon: 'Icon_MenuNavigator.dds' },
-      { label: 'Personagem', key: 'H', icon: 'icon_MenuCharacter.dds', action: () => this.onCharacter() },
-      { label: 'Inventário', key: 'I', icon: 'icon_MenuInventory.dds', action: () => this.onInventory() },
-      { label: 'Party', key: 'P', icon: 'icon_MenuParty.dds', action: () => this.onParty() },
-      { label: 'Partys', key: 'L', icon: 'icon_MenuParty.dds', action: () => this.onPartyList() },
-      { label: 'Life Skills', icon: 'icon_MenuFarmCounter.dds' },
-      { label: 'Conquistas', key: 'R', icon: 'icon_MenuAchievement.png' },
-      { label: 'Passe de Batalha', key: 'V', icon: 'icon_MenuSP.png' },
-      { label: 'Switch Equip', icon: 'icon_MenuGlowchange.dds' },
-      { label: 'Search Shop', icon: 'icon_MenuPrivateShop.dds' },
-      { label: 'Loja pessoal', icon: 'icon_MenuPrivateShop.dds' },
-      { label: 'Quests', key: 'Q', icon: 'icon_MenuQuest.dds', action: () => this.onQuests() },
-      { label: 'Habilidades', key: 'K', icon: 'icon_MenuSkill.dds', action: () => this.onSkills() },
-      { label: 'Movimento', key: 'O', icon: 'icon_MenuMotion.dds', action: () => this.onMotion() },
-      { label: 'Mapa do Mundo', key: 'M', icon: 'icon_MenuWorldmap.dds' },
-      { label: 'Itens especiais', icon: 'Icon_Folder.dds', sub: ['Loja de itens', 'Itens com tempo', 'Lootbox'] },
-      { label: 'Mensageiro', key: 'E', icon: 'icon_MenuMessenger.dds', action: () => this.onMessenger() },
-      { label: 'Comunicação', icon: 'icon_MenuMessenger.dds', sub: ['Chat', 'Correio'] },
-      { label: 'Guilda', key: 'G', icon: 'icon_MenuGuild.dds', action: () => this.onGuild() },
-      { label: 'Comunidade', icon: 'icon_MenuGuild.dds', sub: ['Casal', 'Ranking PvP'] },
-      { label: 'Eventos', key: 'U', icon: 'icon_MenuNotice.dds' },
-      { label: 'Ajuda', icon: 'icon_MenuHelp.dds', sub: ['Ajuda', 'Dicas', 'FAQ'] },
-      { label: 'Opções', icon: 'icon_MenuOption.dds' },
-      { label: 'Desconectar', icon: 'icon_MenuLogout.dds', action: () => this.onDisconnect() },
-      { label: 'Sair', icon: 'icon_MenuQuit.dds' },
+      { label: t('Status'), key: 'T', icon: 'icon_MenuStatus.dds' },
+      { label: t('Navegador'), key: 'N', icon: 'Icon_MenuNavigator.dds' },
+      { label: t('Personagem'), key: 'H', icon: 'icon_MenuCharacter.dds', action: () => this.onCharacter() },
+      { label: t('Inventário'), key: 'I', icon: 'icon_MenuInventory.dds', action: () => this.onInventory() },
+      { label: t('Party'), key: 'P', icon: 'icon_MenuParty.dds', action: () => this.onParty() },
+      { label: t('Partys'), key: 'L', icon: 'icon_MenuParty.dds', action: () => this.onPartyList() },
+      { label: t('Life Skills'), icon: 'icon_MenuFarmCounter.dds' },
+      { label: t('Conquistas'), key: 'R', icon: 'icon_MenuAchievement.png' },
+      { label: t('Passe de Batalha'), key: 'V', icon: 'icon_MenuSP.png' },
+      { label: t('Switch Equip'), icon: 'icon_MenuGlowchange.dds' },
+      { label: t('Search Shop'), icon: 'icon_MenuPrivateShop.dds' },
+      { label: t('Loja pessoal'), icon: 'icon_MenuPrivateShop.dds' },
+      { label: t('Quests'), key: 'Q', icon: 'icon_MenuQuest.dds', action: () => this.onQuests() },
+      { label: t('Habilidades'), key: 'K', icon: 'icon_MenuSkill.dds', action: () => this.onSkills() },
+      { label: t('Movimento'), key: 'O', icon: 'icon_MenuMotion.dds', action: () => this.onMotion() },
+      { label: t('Mapa do Mundo'), key: 'M', icon: 'icon_MenuWorldmap.dds' },
+      { label: t('Itens especiais'), icon: 'Icon_Folder.dds', sub: [t('Loja de itens'), t('Itens com tempo'), t('Lootbox')] },
+      { label: t('Mensageiro'), key: 'E', icon: 'icon_MenuMessenger.dds', action: () => this.onMessenger() },
+      { label: t('Comunicação'), icon: 'icon_MenuMessenger.dds', sub: [t('Chat'), t('Correio')] },
+      { label: t('Guilda'), key: 'G', icon: 'icon_MenuGuild.dds', action: () => this.onGuild() },
+      { label: t('Comunidade'), icon: 'icon_MenuGuild.dds', sub: [t('Casal'), t('Ranking PvP')] },
+      { label: t('Eventos'), key: 'U', icon: 'icon_MenuNotice.dds' },
+      { label: t('Ajuda'), icon: 'icon_MenuHelp.dds', sub: [t('Ajuda'), t('Dicas'), t('FAQ')] },
+      { label: t('Opções'), icon: 'icon_MenuOption.dds' },
+      { label: t('Desconectar'), icon: 'icon_MenuLogout.dds', action: () => this.onDisconnect() },
+      { label: t('Sair'), icon: 'icon_MenuQuit.dds' },
     ];
   }
 
@@ -85,13 +86,23 @@ export class GameHud {
     m.hidden = true;
     m.setAttribute('role', 'menu');
     void themeImage('WndTaskMenu.tga').then((u) => { if (u) m.style.borderImageSource = `url(${u})`; });
-    const list = document.createElement('ul');
+    this.menuList = document.createElement('ul');
+    this.fillMenu();
+    onLang(() => this.fillMenu()); // trocou o idioma: refaz os itens do menu
+    m.appendChild(this.menuList);
+    this.parent.append(m, b);
+  }
+
+  private menuList = document.createElement('ul');
+  private fillMenu() {
+    const list = this.menuList;
+    list.replaceChildren();
     for (const it of this.items()) {
       const li = document.createElement('li');
       li.setAttribute('role', 'menuitem');
-      li.setAttribute('aria-label', it.label + (it.action || it.sub ? '' : ' (em breve)'));
+      li.setAttribute('aria-label', it.label + (it.action || it.sub ? '' : ` (${t('em breve')})`));
       const enabled = !!it.action;
-      if (!enabled && !it.sub) { li.setAttribute('aria-disabled', 'true'); li.title = 'Em breve'; }
+      if (!enabled && !it.sub) { li.setAttribute('aria-disabled', 'true'); li.title = t('Em breve'); }
       const img = document.createElement('img');
       img.alt = '';
       void iconImage(it.icon).then((u) => { if (u) img.src = u; else img.remove(); });
@@ -109,9 +120,9 @@ export class GameHud {
           const si = document.createElement('li');
           si.textContent = s;
           si.setAttribute('role', 'menuitem');
-          si.setAttribute('aria-label', `${s} (em breve)`);
+          si.setAttribute('aria-label', `${s} (${t('em breve')})`);
           si.setAttribute('aria-disabled', 'true');
-          si.title = 'Em breve';
+          si.title = t('Em breve');
           sub.appendChild(si);
         }
         li.appendChild(sub);
@@ -119,8 +130,6 @@ export class GameHud {
       if (enabled) li.addEventListener('click', () => { this.toggle(false); it.action!(); });
       list.appendChild(li);
     }
-    m.appendChild(list);
-    this.parent.append(m, b);
   }
 
   private toggle(open: boolean) {
@@ -161,7 +170,7 @@ export class GameHud {
 
   /** Atualiza a janela; só escreve no DOM o que mudou. */
   setStatus(s: StatusInfo) {
-    const title = `${s.name} - Nv. ${s.level}`;
+    const title = t('{name} - Nv. {level}', { name: s.name, level: s.level });
     if (this.title.textContent !== title) this.title.textContent = title;
     if (s.portrait !== undefined) { if (s.portrait) this.face.src = s.portrait; else this.face.removeAttribute('src'); }
     const set = (k: keyof GameHud['bars'], pct: number, label: string) => {

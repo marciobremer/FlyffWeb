@@ -11,6 +11,7 @@ import { objectMatrix } from '../shared/math';
 import { OT, type WorldObject } from '../shared/formats/types';
 import { motionOf, motionsFor, nextHit } from '../shared/motions';
 import type { GroundRow } from './ground';
+import { t } from './lang';
 
 /**
  * Multiplayer (fase 2): conexão WebSocket com `/ws` (protocolo em server/realtime.ts) e os outros jogadores no mundo.
@@ -364,7 +365,7 @@ export class NetClient {
   onEmote: (id: number, motion: string, mode: number) => void = () => {};
   onEmo: (id: number, index: number) => void = () => {};
   /** o que o NPC clicado oferece (abre o menu do NPC) */
-  onNpcMenu: (m: { key: string; name: string; shop: boolean; buff: boolean; smith: string[]; quests: { id: string; name: string; st: 'offer' | 'active' | 'ready' }[] }) => void = () => {};
+  onNpcMenu: (m: { key: string; name: string; shop: boolean; buff: boolean; craft: boolean; smith: string[]; quests: { id: string; name: string; st: 'offer' | 'active' | 'ready' }[] }) => void = () => {};
   onQuestDialog: (d: QuestDialog) => void = () => {};
   onQuests: (list: QuestEntry[]) => void = () => {};
   /** clima do mapa onde está: chovendo ou não */
@@ -390,6 +391,9 @@ export class NetClient {
   /** Wikipedia de itens: uma página da lista e a dica completa de um item */
   onWiki: (m: { req: number; off: number; total: number; rows: (number | string)[][] }) => void = () => {};
   onWikiTip: (item: ItemView) => void = () => {};
+  onCraft: (m: Record<string, unknown>) => void = () => {};
+  onCool: (list: { name: string; left: number }[]) => void = () => {};
+  onCraftResult: (m: Record<string, unknown>) => void = () => {};
   onTeleport: (p: [number, number, number], revive: boolean) => void = () => {};
   /** o próprio nível mudou (comando de GM) */
   onLevel: (level: number) => void = () => {};
@@ -420,7 +424,7 @@ export class NetClient {
     const url = this.directPort && this.directFails < 2 ? `${proto}://${location.hostname}:${this.directPort}/ws` : `${proto}://${location.host}/ws`;
     const ws = new WebSocket(url);
     this.ws = ws;
-    this.onStatus('Conectando ao servidor…');
+    this.onStatus(t('Conectando ao servidor…'));
     ws.onopen = () => { this.retry = 0; this.last = ''; this.startPing(); ws.send(JSON.stringify({ t: 'join', token: this.join!.token, characterId: this.join!.characterId, p: this.join!.pos(), hide: this.hide })); };
     ws.onmessage = (ev) => {
       let m: { t: string; [k: string]: unknown };
@@ -466,6 +470,12 @@ export class NetClient {
         this.onWiki(m as never);
       } else if (m.t === 'wikiTip') {
         this.onWikiTip(m.item as ItemView);
+      } else if (m.t === 'cool') {
+        this.onCool((m.list ?? []) as { name: string; left: number }[]);
+      } else if (m.t === 'craft') {
+        this.onCraft(m);
+      } else if (m.t === 'craftResult') {
+        this.onCraftResult(m);
       } else if (m.t === 'gmItems') {
         this.onGmItems((m.list ?? []) as ItemView[]);
       } else if (m.t === 'teleport') {
@@ -549,7 +559,7 @@ export class NetClient {
       } else if (m.t === 'emo') {
         this.onEmo(Number(m.id), Number(m.i));
       } else if (m.t === 'npcMenu') {
-        this.onNpcMenu({ key: String(m.key), name: String(m.name ?? ''), shop: !!m.shop, buff: !!m.buff, smith: Array.isArray(m.smith) ? (m.smith as string[]) : [], quests: Array.isArray(m.quests) ? (m.quests as { id: string; name: string; st: 'offer' | 'active' | 'ready' }[]) : [] });
+        this.onNpcMenu({ key: String(m.key), name: String(m.name ?? ''), shop: !!m.shop, buff: !!m.buff, craft: !!m.craft, smith: Array.isArray(m.smith) ? (m.smith as string[]) : [], quests: Array.isArray(m.quests) ? (m.quests as { id: string; name: string; st: 'offer' | 'active' | 'ready' }[]) : [] });
       } else if (m.t === 'questDlg') {
         this.onQuestDialog(m as unknown as QuestDialog);
       } else if (m.t === 'weather') {
@@ -596,7 +606,7 @@ export class NetClient {
       if (this.closing) return;
       // queda de rede: tenta de novo com espera crescente (1 s, 2 s, 4 s… até 10 s)
       const wait = Math.min(10000, 1000 * 2 ** this.retry++);
-      this.onStatus(`Sem conexão com o servidor — tentando de novo em ${Math.round(wait / 1000)} s…`, true);
+      this.onStatus(t('Sem conexão com o servidor — tentando de novo em {s} s…', { s: Math.round(wait / 1000) }), true);
       setTimeout(() => { if (!this.closing && this.ws === ws) this.open(); }, wait);
     };
   }
@@ -638,7 +648,7 @@ export class NetClient {
   /** quest: abrir o diálogo, aceitar, entregar (perto do NPC `key`) ou abandonar */
   quest(op: 'open' | 'accept' | 'turnIn' | 'abandon', id: string, key = '') { return this.raw({ t: 'quest', op, id, key }); }
   /** guild: criar, convidar, responder, sair, expulsar, desfazer, ver */
-  guild(t: 'guildCreate' | 'guildInvite' | 'guildAnswer' | 'guildLeave' | 'guildKick' | 'guildDisband' | 'guildInfo', extra: Record<string, unknown> = {}) { return this.raw({ t, ...extra }); }
+  guild(t: 'guildCreate' | 'guildInvite' | 'guildAnswer' | 'guildLeave' | 'guildKick' | 'guildDisband' | 'guildInfo' | 'guildNotice', extra: Record<string, unknown> = {}) { return this.raw({ t, ...extra }); }
   /** party: convidar, responder convite, sair, expulsar, passar liderança, buff de party, lista */
   party(t: 'partyInvite' | 'partyAnswer' | 'partyLeave' | 'partyKick' | 'partyLead' | 'partySkill' | 'partyList', extra: Record<string, unknown> = {}) { return this.raw({ t, ...extra }); }
   /** Mensageiro: pedir amizade, responder pedido, desfazer, mensagem privada */
@@ -684,6 +694,11 @@ export class NetClient {
   /** painel de GM: busca no catálogo de itens (nome/símbolo, categoria) */
   wiki(p: { req: number; q: string; cat: string; job: number; sex: number; lo: number; hi: number; sort: string; desc: boolean; off: number; n: number }) { return this.raw({ t: 'wiki', ...p }); }
   wikiTip(id: number) { return this.raw({ t: 'wikiTip', id }); }
+  /** craft: pede receitas e estado / pede fabricar a receita */
+  craftOpen() { return this.raw({ t: 'craftOpen' }); }
+  /** espera das masmorras (janela Duração do Item) */
+  coolOpen() { return this.raw({ t: 'coolOpen' }); }
+  craftDo(id: number) { return this.raw({ t: 'craftDo', id }); }
   gmItems(q: string, k: string, g = 0) { return this.raw({ t: 'gmItems', q, k, g }); }
   /** a cada 2 s manda o carimbo do relógio; o pong volta com ele e dá o ping */
   private startPing() {

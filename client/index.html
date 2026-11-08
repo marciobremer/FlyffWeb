@@ -14,15 +14,18 @@
 <body>
   <canvas id="view"></canvas>
 
+  <!-- idioma: PT-BR | EN (client/lang.ts monta os botões) -->
+  <div id="langPick" role="group" aria-label="Idioma / Language"></div>
+
   <!-- tela de carregamento: baixa tabelas, o tile de Flaris e os modelos/texturas em volta ANTES de mostrar o login -->
-  <div id="bootScreen" role="progressbar" aria-label="Carregando o jogo" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+  <div id="bootScreen" role="progressbar" aria-label="Carregando o jogo" data-i18n-attrs="aria-label" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
     <div id="bootLogo">
       <img src="./logo-reaction.webp" alt="ReactioN" width="760" height="299" />
       <div class="logo-sub">MMO</div>
     </div>
     <div id="bootBox">
       <div id="bootBar"><i id="bootFill"></i></div>
-      <div id="bootInfo"><span id="bootStep">Preparando…</span><span id="bootPct">0%</span></div>
+      <div id="bootInfo"><span id="bootStep" data-i18n>Preparando…</span><span id="bootPct">0%</span></div>
       <div id="bootBytes"></div>
     </div>
   </div>
@@ -38,27 +41,27 @@
       <div class="fwnd-title">Login</div>
       <div class="fwnd-body">
         <div class="fcol">
-          <label class="pill" for="username">Conta</label>
+          <label class="pill" for="username" data-i18n>Conta</label>
           <input id="username" name="username" class="fedit" maxlength="32" autocomplete="username" spellcheck="false" />
-          <label class="pill" for="password">Senha</label>
+          <label class="pill" for="password" data-i18n>Senha</label>
           <input id="password" name="password" class="fedit" type="password" maxlength="128" autocomplete="current-password" />
-          <label class="fcheck"><input type="checkbox" id="saveAccount" /><span></span>Salvar conta</label>
-          <label class="fcheck fsel">Qualidade
-            <select id="quality"><option value="high">Alta</option><option value="medium">Média</option><option value="low">Baixa</option></select>
+          <label class="fcheck" data-i18n><input type="checkbox" id="saveAccount" /><span></span>Salvar conta</label>
+          <label class="fcheck fsel" data-i18n>Qualidade
+            <select id="quality"><option value="high" data-i18n>Alta</option><option value="medium" data-i18n>Média</option><option value="low" data-i18n>Baixa</option></select>
           </label>
           <label class="fcheck fsel">FPS
-            <select id="fps"><option value="60">60</option><option value="30">30</option><option value="0">Sem limite</option></select>
+            <select id="fps"><option value="60">60</option><option value="30">30</option><option value="0" data-i18n>Sem limite</option></select>
           </label>
           <button type="submit" id="loginBtn" class="fbtn" data-img="ButtLogin.bmp" data-frames="4" aria-label="Login"><span>Login</span></button>
-          <button type="button" id="quitBtn" class="fbtn" data-img="ButtQuit.bmp" data-frames="4" aria-label="Sair"><span>Sair</span></button>
+          <button type="button" id="quitBtn" class="fbtn" data-img="ButtQuit.bmp" data-frames="4" aria-label="Sair" data-i18n-attrs="aria-label"><span data-i18n>Sair</span></button>
         </div>
         <div class="fcol">
-          <div class="pill">Contas salvas</div>
-          <ul id="savedList" class="fedit flist" role="listbox" aria-label="Contas salvas"></ul>
-          <button type="button" id="saveLogin" class="fbtn" data-img="ButtSaveLogin.bmp" data-frames="4" aria-label="Salvar conta"><span>Salvar conta</span></button>
+          <div class="pill" data-i18n>Contas salvas</div>
+          <ul id="savedList" class="fedit flist" role="listbox" aria-label="Contas salvas" data-i18n-attrs="aria-label"></ul>
+          <button type="button" id="saveLogin" class="fbtn" data-img="ButtSaveLogin.bmp" data-frames="4" aria-label="Salvar conta" data-i18n-attrs="aria-label"><span data-i18n>Salvar conta</span></button>
           <div class="frow">
-            <button type="button" id="loadLogin" class="fbtn" data-img="ButtLoad.bmp" data-frames="4" aria-label="Carregar"><span>Carregar</span></button>
-            <button type="button" id="deleteLogin" class="fbtn" data-img="ButtDelete.bmp" data-frames="4" aria-label="Apagar"><span>Apagar</span></button>
+            <button type="button" id="loadLogin" class="fbtn" data-img="ButtLoad.bmp" data-frames="4" aria-label="Carregar" data-i18n-attrs="aria-label"><span data-i18n>Carregar</span></button>
+            <button type="button" id="deleteLogin" class="fbtn" data-img="ButtDelete.bmp" data-frames="4" aria-label="Apagar" data-i18n-attrs="aria-label"><span data-i18n>Apagar</span></button>
           </div>
         </div>
       </div>
@@ -69,61 +72,61 @@
   <!-- seleção de personagem (CWndSelectChar: 3 quadros com o personagem em 3D) e criação (CWndCreateChar), no centro da tela -->
   <div id="charScreen" class="charscreen" hidden>
     <div id="charSelect" class="cwnd sel" role="dialog" aria-labelledby="selTitle">
-      <div class="cwnd-title" id="selTitle">Selecionar personagem</div>
-      <div id="slotList" class="cards" role="listbox" aria-label="Personagens da conta"></div>
+      <div class="cwnd-title" id="selTitle" data-i18n>Selecionar personagem</div>
+      <div id="slotList" class="cards" role="listbox" aria-label="Personagens da conta" data-i18n-attrs="aria-label"></div>
       <div class="cbtns">
-        <button type="button" id="logoutBtn" class="fbtn txt" data-img="Button72x20.tga"><span>Voltar</span></button>
-        <button type="button" id="newCharBtn" class="fbtn txt" data-img="Button72x20.tga"><span>Criar</span></button>
-        <button type="button" id="deleteCharBtn" class="fbtn txt" data-img="Button72x20.tga"><span>Apagar</span></button>
-        <button type="button" id="enterBtn" class="fbtn txt" data-img="Button72x20.tga"><span>Entrar</span></button>
+        <button type="button" id="logoutBtn" class="fbtn txt" data-img="Button72x20.tga"><span data-i18n>Voltar</span></button>
+        <button type="button" id="newCharBtn" class="fbtn txt" data-img="Button72x20.tga"><span data-i18n>Criar</span></button>
+        <button type="button" id="deleteCharBtn" class="fbtn txt" data-img="Button72x20.tga"><span data-i18n>Apagar</span></button>
+        <button type="button" id="enterBtn" class="fbtn txt" data-img="Button72x20.tga"><span data-i18n>Entrar</span></button>
       </div>
     </div>
 
     <form id="charCreate" class="cwnd cre" hidden autocomplete="off" aria-labelledby="creTitle">
-      <div class="cwnd-title" id="creTitle">Novo personagem</div>
+      <div class="cwnd-title" id="creTitle" data-i18n>Novo personagem</div>
       <div class="cre-in">
-        <label class="clabel cname-l" for="newName">Nome do personagem</label>
+        <label class="clabel cname-l" for="newName" data-i18n>Nome do personagem</label>
         <input id="newName" class="fedit cname-e" maxlength="16" spellcheck="false" />
-        <span class="clabel" style="top:90px">Sexo</span>
-        <button type="button" id="maleBtn" class="fbtn txt sexbtn" data-img="Button72x20.tga" style="left:118px;top:90px" aria-pressed="true"><span>Masculino</span></button>
-        <button type="button" id="femaleBtn" class="fbtn txt sexbtn" data-img="Button72x20.tga" style="left:200px;top:90px" aria-pressed="false"><span>Feminino</span></button>
-        <span class="clabel" style="top:115px">Cabelo</span>
-        <button type="button" class="fbtn arrow2" data-img="ButtLeft.tga" data-key="hair" data-step="-1" style="left:118px;top:115px" aria-label="Cabelo anterior"><span>‹</span></button>
+        <span class="clabel" style="top:90px" data-i18n>Sexo</span>
+        <button type="button" id="maleBtn" class="fbtn txt sexbtn" data-img="Button72x20.tga" style="left:118px;top:90px" aria-pressed="true"><span data-i18n>Masculino</span></button>
+        <button type="button" id="femaleBtn" class="fbtn txt sexbtn" data-img="Button72x20.tga" style="left:200px;top:90px" aria-pressed="false"><span data-i18n>Feminino</span></button>
+        <span class="clabel" style="top:115px" data-i18n>Cabelo</span>
+        <button type="button" class="fbtn arrow2" data-img="ButtLeft.tga" data-key="hair" data-step="-1" style="left:118px;top:115px" aria-label="Cabelo anterior" data-i18n-attrs="aria-label"><span>‹</span></button>
         <output class="cval" id="hairVal" style="top:115px"></output>
-        <button type="button" class="fbtn arrow2" data-img="ButtRight.tga" data-key="hair" data-step="1" style="left:200px;top:115px" aria-label="Próximo cabelo"><span>›</span></button>
-        <span class="clabel" style="top:140px">Cor do cabelo</span>
-        <div id="hairColor" class="colorbars" role="group" aria-label="Cor do cabelo (vermelho, verde, azul)">
-          <input type="range" min="0" max="255" aria-label="Vermelho" data-c="0" />
-          <input type="range" min="0" max="255" aria-label="Verde" data-c="1" />
-          <input type="range" min="0" max="255" aria-label="Azul" data-c="2" />
+        <button type="button" class="fbtn arrow2" data-img="ButtRight.tga" data-key="hair" data-step="1" style="left:200px;top:115px" aria-label="Próximo cabelo" data-i18n-attrs="aria-label"><span>›</span></button>
+        <span class="clabel" style="top:140px" data-i18n>Cor do cabelo</span>
+        <div id="hairColor" class="colorbars" role="group" aria-label="Cor do cabelo (vermelho, verde, azul)" data-i18n-attrs="aria-label">
+          <input type="range" min="0" max="255" aria-label="Vermelho" data-i18n-attrs="aria-label" data-c="0" />
+          <input type="range" min="0" max="255" aria-label="Verde" data-i18n-attrs="aria-label" data-c="1" />
+          <input type="range" min="0" max="255" aria-label="Azul" data-i18n-attrs="aria-label" data-c="2" />
         </div>
-        <span class="clabel" style="top:220px">Rosto</span>
-        <button type="button" class="fbtn arrow2" data-img="ButtLeft.tga" data-key="head" data-step="-1" style="left:118px;top:220px" aria-label="Rosto anterior"><span>‹</span></button>
+        <span class="clabel" style="top:220px" data-i18n>Rosto</span>
+        <button type="button" class="fbtn arrow2" data-img="ButtLeft.tga" data-key="head" data-step="-1" style="left:118px;top:220px" aria-label="Rosto anterior" data-i18n-attrs="aria-label"><span>‹</span></button>
         <output class="cval" id="headVal" style="top:220px"></output>
-        <button type="button" class="fbtn arrow2" data-img="ButtRight.tga" data-key="head" data-step="1" style="left:200px;top:220px" aria-label="Próximo rosto"><span>›</span></button>
+        <button type="button" class="fbtn arrow2" data-img="ButtRight.tga" data-key="head" data-step="1" style="left:200px;top:220px" aria-label="Próximo rosto" data-i18n-attrs="aria-label"><span>›</span></button>
         <p class="cmsg" id="createMsg" role="status"></p>
         <div id="createModel" class="cre-model"></div>
         <button type="submit" id="createBtn" class="fbtn txt" data-img="Button72x20.tga" style="left:170px;top:320px"><span>OK</span></button>
-        <button type="button" id="createBackBtn" class="fbtn txt" data-img="Button72x20.tga" style="left:280px;top:320px"><span>Cancelar</span></button>
+        <button type="button" id="createBackBtn" class="fbtn txt" data-img="Button72x20.tga" style="left:280px;top:320px"><span data-i18n>Cancelar</span></button>
       </div>
     </form>
 
     <form id="charDelete" class="fwnd cdel" hidden autocomplete="off" aria-labelledby="delTitle">
-      <div class="fwnd-title" id="delTitle">Apagar personagem</div>
+      <div class="fwnd-title" id="delTitle" data-i18n>Apagar personagem</div>
       <div class="fwnd-body one">
         <p class="cdel-q" id="deleteQ"></p>
-        <label class="pill" for="deletePass">Senha da conta</label>
+        <label class="pill" for="deletePass" data-i18n>Senha da conta</label>
         <input id="deletePass" class="fedit" type="password" maxlength="128" autocomplete="current-password" />
         <div class="frow">
-          <button type="submit" id="deleteOk" class="fbtn txt" data-img="Button72x20.tga"><span>Apagar</span></button>
-          <button type="button" id="deleteCancel" class="fbtn txt" data-img="Button72x20.tga"><span>Cancelar</span></button>
+          <button type="submit" id="deleteOk" class="fbtn txt" data-img="Button72x20.tga"><span data-i18n>Apagar</span></button>
+          <button type="button" id="deleteCancel" class="fbtn txt" data-img="Button72x20.tga"><span data-i18n>Cancelar</span></button>
         </div>
       </div>
     </form>
     <p class="fmsg cscreen-msg" id="selectMsg" role="status"></p>
   </div>
 
-  <div id="help" hidden>WASD anda · Espaço pula · X anda/corre · clique no chão para andar · clique no mob para selecionar · Esc desmarca · I inventário · H personagem · K skills · Enter chat</div>
+  <div id="help" hidden data-i18n>WASD anda · Espaço pula · X anda/corre · clique no chão para andar · clique no mob para selecionar · Esc desmarca · I inventário · H personagem · K skills · Enter chat</div>
   <div id="netStatus" role="status" hidden></div>
   <div id="hud"></div>
   <script type="module" src="./main.ts"></script>

@@ -1,4 +1,5 @@
 import { itemIcon } from '../shared/tga';
+import { gameConfirm } from './dialog';
 import { ELEMENT_NAMES, GameWindow } from './ui';
 import type { ItemView } from './net';
 import { maxPiercing, maxUpgrade } from '../shared/upgrade';
@@ -216,7 +217,7 @@ export class GmPanel extends GameWindow {
       el('div', { className: 'gm-row' }, field('Penya', penya), btn('Dar', () => this.send(this.withTarget('give-penya', penya.value)))),
       el('div', { className: 'gm-row' }, btn('Resetar pontos de status', () => {
         const who = this.nick() || 'você';
-        if (confirm(`Devolver os pontos de atributo de ${who}? STR, STA, DEX e INT voltam a 15.`)) this.send(this.withTarget('reset-stats', ''));
+        void gameConfirm(`Devolver os pontos de atributo de ${who}? STR, STA, DEX e INT voltam a 15.`, 'Devolver').then((ok) => { if (ok) this.send(this.withTarget('reset-stats', '')); });
       })),
       el('h4', { textContent: 'GM' }),
       el('div', { className: 'gm-row' }, this.invisBtn, el('span', { className: 'gm-hint', textContent: 'invisível para os jogadores; GMs e admins veem' })),

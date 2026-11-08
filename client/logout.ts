@@ -1,4 +1,5 @@
 import { GameWindow } from './ui';
+import { t } from './lang';
 
 /**
  * Contagem para sair do jogo (como o "Logout" do cliente oficial): ao escolher Desconectar abre uma janelinha "Saindo em N seg(s)."
@@ -13,7 +14,7 @@ export class LogoutCountdown extends GameWindow {
   private left = 0;
 
   constructor(parent: HTMLElement, private onDone: () => void) {
-    super(parent, { id: 'logoutWnd', title: 'Sair', store: 'flyff.wnd.logout', initial: { x: Math.max(0, Math.round((innerWidth - 250) / 2)), y: 60, w: 250, h: 84 }, min: { w: 200, h: 70 }, resizable: false });
+    super(parent, { id: 'logoutWnd', title: 'Desconectar', store: 'flyff.wnd.logout', initial: { x: Math.max(0, Math.round((innerWidth - 250) / 2)), y: 60, w: 250, h: 84 }, min: { w: 200, h: 70 }, resizable: false });
     this.text.className = 'logout-text';
     this.text.setAttribute('role', 'status');
     this.body.appendChild(this.text);
@@ -37,5 +38,5 @@ export class LogoutCountdown extends GameWindow {
   cancel() { this.stop(); }
 
   private stop() { clearInterval(this.timer); this.timer = 0; this.hide(); }
-  private paintText() { this.text.textContent = `Saindo em ${this.left} seg(s).`; }
+  private paintText() { this.text.textContent = t('Saindo em {n} seg(s).', { n: this.left }); }
 }

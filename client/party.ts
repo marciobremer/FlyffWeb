@@ -1,4 +1,5 @@
 import { skillIcon } from '../shared/tga';
+import { gameConfirm } from './dialog';
 import { JOBS } from './jobs';
 import { GameWindow } from './ui';
 
@@ -98,7 +99,7 @@ export class PartyWindow extends GameWindow {
         const lead = document.createElement('button'); lead.type = 'button'; lead.textContent = 'Líder'; lead.title = `Passar a liderança para ${m.name}`;
         lead.addEventListener('click', () => this.onLead(m.id));
         const kick = document.createElement('button'); kick.type = 'button'; kick.textContent = 'Expulsar'; kick.title = `Tirar ${m.name} da party`;
-        kick.addEventListener('click', () => { if (confirm(`Tirar ${m.name} da party?`)) this.onKick(m.id); });
+        kick.addEventListener('click', () => { void gameConfirm(`Tirar ${m.name} da party?`, 'Tirar').then((ok) => { if (ok) this.onKick(m.id); }); });
         row.append(lead, kick);
         li.append(row);
       }
@@ -133,7 +134,7 @@ export class PartyWindow extends GameWindow {
     leave.type = 'button';
     leave.className = 'cw-btn pt-leave';
     leave.textContent = 'Sair da party';
-    leave.addEventListener('click', () => { if (confirm('Sair da party?')) this.onLeave(); });
+    leave.addEventListener('click', () => { void gameConfirm('Sair da party?', 'Sair').then((ok) => { if (ok) this.onLeave(); }); });
     b.append(leave);
   }
 }

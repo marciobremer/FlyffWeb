@@ -1,5 +1,6 @@
 import { LogoutCountdown } from './logout';
 import { WorldView } from '../shared/world';
+import { initLang, t, tr } from './lang';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { keyedImage, themeImage, themeTiles } from '../shared/tga';
 import { hairColorOf, hairRgb, type Sex } from '../shared/humans';
@@ -8,6 +9,8 @@ import { fmtGameHour, gameHour } from '../shared/gameclock';
 import { GameHud, provisionalMax } from './hud';
 import { type SkillFx, NetClient, RemotePlayers } from './net';
 import { ActionBar, ChatWindow, InventoryWindow, type BarItem } from './ui';
+import { CraftWindow } from './craft';
+import { ItemTimeWindow } from './itemtime';
 import { setFailStack, setRarities, setTipPlayer } from './itemtip';
 import { Announcer } from './announce';
 import { VersionWatcher } from './version';
@@ -43,12 +46,16 @@ import { PLAYER_LABEL_LIFT, rankOf } from '../shared/rank';
 import { lookList, type LookPiece } from '../shared/look';
 import { netStats } from '../shared/netstats';
 
+initLang(); // idioma do jogador (client/lang.ts): traduz o HTML da página e liga o seletor PT-BR | EN
+
 /**
  * Cliente do jogo: login (janela no estilo do cliente, imagens de Data/Theme/Default) → seleção de personagem (3 vagas) ou
  * criação (nome, sexo, cabelo, rosto, com prévia 3D) → mundo. Contas e personagens vêm do servidor (PostgreSQL `flyffweb`).
  */
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const WORLD = 'WdMadrigal';
+// sem o menu do navegador (voltar, salvar como, inspecionar…) ao apertar o botão direito: o jogo usa esse botão; só os campos de texto o mantêm (colar)
+addEventListener('contextmenu', (e) => { const t = e.target as HTMLElement | null; if (!t?.closest('input, textarea, [contenteditable="true"]')) e.preventDefault(); }, true);
 /** mundo aberto agora (WdMadrigal; WdKebaras = Azria) e o mundo de cada world_id do banco */
 let curWorld = WORLD;
 const WORLD_BY_ID: Record<number, string> = { 1: 'WdMadrigal', 2: 'WdKebaras', 3: 'WdCisland', 4: 'WdRartesia', 5: 'WdDarkRartesia' };
@@ -78,7 +85,7 @@ const mapLoading = (() => {
     show(world: string) {
       const info = WORLD_LOADING[world] ?? { img: 'MapLoading_Default.png', name: world };
       el.style.backgroundImage = `url('/res/Data/Theme/Default/${info.img}')`;
-      label.textContent = `Carregando ${info.name}…`;
+      label.textContent = t('Carregando {name}…', { name: info.name });
       el.hidden = false; el.classList.remove('done');
       t0 = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(step);
     },
@@ -128,7 +135,7 @@ questDlg.onAccept = (d) => { net.quest('accept', d.id, d.key); };
 questDlg.onTurnIn = (d) => { net.quest('turnIn', d.id, d.key); };
 questLog.onAbandon = (id) => { net.quest('abandon', id); };
 hud.onQuests = () => questLog.toggle();
-teleportWnd.onTeleport = (k) => { if (!net.zckTeleport(k)) chat.system('Sem conexão com o servidor.'); };
+teleportWnd.onTeleport = (k) => { if (!net.zckTeleport(k)) chat.system(t('Sem conexão com o servidor.')); };
 teleportWnd.onLoad = () => net.teleports();
 /** janela de movimentos (tecla O): movimento no personagem (os outros veem pelo servidor) e emoticon acima da cabeça */
 const motionWnd = new MotionWindow(document.body);
@@ -137,12 +144,12 @@ motionWnd.onMotion = (m) => {
   const p = view.player;
   if (!p?.active) return;
   // modo de batalha: troca a postura de combate ↔ normal (o servidor avisa todos com 'look')
-  if (m.id === 'MOT_BASE_BATTLE') { if (!net.toggleStance()) chat.system('Sem conexão com o servidor.'); return; }
+  if (m.id === 'MOT_BASE_BATTLE') { if (!net.toggleStance()) chat.system(t('Sem conexão com o servidor.')); return; }
   combat.stop();
-  if (!p.emote(m.motion, m.play)) { chat.system('Pare de pular ou de andar para fazer um movimento.'); return; }
+  if (!p.emote(m.motion, m.play)) { chat.system(t('Pare de pular ou de andar para fazer um movimento.')); return; }
   net.emote(m.motion, m.play);
 };
-motionWnd.onEmoticon = (i) => { if (!net.emoticon(i)) chat.system('Sem conexão com o servidor.'); };
+motionWnd.onEmoticon = (i) => { if (!net.emoticon(i)) chat.system(t('Sem conexão com o servidor.')); };
 const actionBar = new ActionBar(document.body);
 actionBar.onUseItem = (id) => { if (!rideToggle(id)) net.useItem(id); };
 actionBar.onChange = (slots) => { net.saveBar(slots); };
@@ -159,14 +166,14 @@ const buffBar = new BuffBar(document.body);
 const partyBuffs = new PartyBuffs(document.body);
 const audio = new GameAudio();
 audio.listener = () => view.player?.pos ?? null;
-jobWnd.onChoose = (job) => { if (!net.jobChange(job)) chat.system('Sem conexão com o servidor.'); };
-skillWnd.onApply = (levels) => { if (!net.skillUp(levels)) chat.system('Sem conexão com o servidor.'); };
-shopWnd.onBuy = (k, id, n) => { if (!net.shopBuy(k, id, n)) chat.system('Sem conexão com o servidor.'); };
-shopWnd.onSell = (k, s, n) => { if (!net.shopSell(k, s, n)) chat.system('Sem conexão com o servidor.'); };
+jobWnd.onChoose = (job) => { if (!net.jobChange(job)) chat.system(t('Sem conexão com o servidor.')); };
+skillWnd.onApply = (levels) => { if (!net.skillUp(levels)) chat.system(t('Sem conexão com o servidor.')); };
+shopWnd.onBuy = (k, id, n) => { if (!net.shopBuy(k, id, n)) chat.system(t('Sem conexão com o servidor.')); };
+shopWnd.onSell = (k, s, n) => { if (!net.shopSell(k, s, n)) chat.system(t('Sem conexão com o servidor.')); };
 /** NPC que o personagem está indo falar e onde está o NPC da loja aberta */
 let npcGoing: { inst: MoverInstance; key: string; next: number; best?: number; since?: number } | null = null;
 let shopNpc: [number, number] | null = null;
-charWnd.onApply = (add) => { if (!net.statUp(add)) chat.system('Sem conexão com o servidor.'); };
+charWnd.onApply = (add) => { if (!net.statUp(add)) chat.system(t('Sem conexão com o servidor.')); };
 charWnd.onPreview = (add) => { net.statPreview(add); };
 /** painel de GM (//gm no chat; o servidor só abre para contas GM/admin) */
 const gmPanel = new GmPanel(document.body);
@@ -221,7 +228,7 @@ net.onSkillUsed = (id, cd) => {
   if (s?.kind === 'buff' && s.mo) view.player?.cast(s.mo); // o servidor aceitou: toca o movimento de lançar o buff
   // Dark Illusion: o aviso vermelho na altura da cintura, como o "You use Dark Illusion." do original
   const p = view.player?.pos;
-  if (s?.sym === 'SI_ACR_SUP_DARKILLUSION' && p) combat.popup([p[0], p[1] + 0.9, p[2]], 'Você usou Dark Illusion.', 'notice');
+  if (s?.sym === 'SI_ACR_SUP_DARKILLUSION' && p) combat.popup([p[0], p[1] + 0.9, p[2]], t('Você usou Dark Illusion.'), 'notice');
 };
 /** alcance de lançar: magia 22 u (o servidor aceita 24), debuff 14 (15); golpe corpo a corpo = o da arma */
 const skillRange = (s: { kind?: string; hostile?: boolean }) => (s.kind === 'magic' ? 22 : s.hostile ? 14 : undefined);
@@ -229,13 +236,13 @@ const skillRange = (s: { kind?: string; hostile?: boolean }) => (s.kind === 'mag
 actionBar.onUseSkill = (id) => {
   const s = skillWnd.get(id);
   if (!s) return;
-  if (skillWnd.levelOf(id) <= 0) { chat.system(`Você ainda não aprendeu ${s.name}.`); return; }
-  if (!s.melee) { chat.system(`${s.name} ainda não pode ser lançada.`); return; }
+  if (skillWnd.levelOf(id) <= 0) { chat.system(t('Você ainda não aprendeu {name}.', { name: s.name })); return; }
+  if (!s.melee) { chat.system(t('{name} ainda não pode ser lançada.', { name: s.name })); return; }
   if (s.sym === 'SI_ASS_HEAL_RESURRECTION') { // Resurrection: no jogador derrotado selecionado
-    const t = view.target, rid = t && t.owner === 'players' ? remotes.idOf(t) : null;
-    if (rid === null || !remotes.isDead(rid)) { chat.system('Selecione um jogador derrotado (clique nele) para usar Resurrection.'); return; }
+    const tgt = view.target, rid = tgt && tgt.owner === 'players' ? remotes.idOf(tgt) : null;
+    if (rid === null || !remotes.isDead(rid)) { chat.system(t('Selecione um jogador derrotado (clique nele) para usar Resurrection.')); return; }
     if (s.mo) view.player?.cast(s.mo);
-    if (!net.resurrect(id, rid)) chat.system('Sem conexão com o servidor.');
+    if (!net.resurrect(id, rid)) chat.system(t('Sem conexão com o servidor.'));
     return;
   }
   if (s.kind === 'buff' && !s.hostile) { // buff/cura: vale em você, sem alvo
@@ -245,9 +252,9 @@ actionBar.onUseSkill = (id) => {
   const why = combat.skillBlock(id);
   if (why) { chat.system(why); return; } // sem MP/FP: só avisa, não anda nem ataca
   if (!combat.attacking) {
-    const t = view.target;
-    if (!t || t.owner !== 'spawns') { chat.system('Selecione um monstro primeiro.'); return; }
-    combat.start(t);
+    const tgt = view.target;
+    if (!tgt || tgt.owner !== 'spawns') { chat.system(t('Selecione um monstro primeiro.')); return; }
+    combat.start(tgt);
     if (!combat.attacking) return;
   }
   combat.queueSkill(id, s.mo || s.sym.replace(/^SI_/, 'MTI_'), false, skillRange(s), !!s.hostile);
@@ -258,10 +265,10 @@ actionBar.onUseSkill = (id) => {
  */
 function runActionSlot(inst: MoverInstance | null = view.target) {
   if (!inGame) return;
-  if (!inst || inst.owner !== 'spawns') { chat.system('Selecione um monstro primeiro.'); return; }
+  if (!inst || inst.owner !== 'spawns') { chat.system(t('Selecione um monstro primeiro.')); return; }
   const list = actionBar.queueSkills.map((it) => skillWnd.get(it.id)).filter((s): s is NonNullable<typeof s> => !!s && s.melee && skillWnd.levelOf(s.id) > 0)
     .map((s) => ({ id: s.id, motion: s.mo || s.sym.replace(/^SI_/, 'MTI_'), buff: s.kind === 'buff' && !s.hostile, range: skillRange(s) }));
-  if (!list.length) { chat.system('A Action Slot está vazia: arraste skills aprendidas da janela de skills (K) para ela.'); return; }
+  if (!list.length) { chat.system(t('A Action Slot está vazia: arraste skills aprendidas da janela de skills (K) para ela.')); return; }
   if (view.target !== inst) view.selectTarget(inst);
   combat.start(inst);
   if (combat.attacking) combat.queueChain(list);
@@ -299,7 +306,7 @@ function npcFrame(now: number) {
       // sem chegar mais perto por 2 s (cerca, degrau, parede no caminho): desiste e avisa
       const d = Math.hypot(nx - p.pos[0], nz - p.pos[2]);
       if (npcGoing.best === undefined || d < npcGoing.best - 0.3) { npcGoing.best = d; npcGoing.since = now; }
-      if (now - (npcGoing.since ?? now) > 2000) { p.stop(); npcGoing = null; chat.system('Não consigo chegar até esse NPC por aqui.'); return; }
+      if (now - (npcGoing.since ?? now) > 2000) { p.stop(); npcGoing = null; chat.system(t('Não consigo chegar até esse NPC por aqui.')); return; }
       if (now >= npcGoing.next) { p.moveTo(nx, nz); npcGoing.next = now + 250; }
     }
     else { p.stop(); p.face(nx, nz); menuNpc = npcGoing; net.npcMenu(npcGoing.key); shopNpc = [nx, nz]; npcGoing = null; }
@@ -315,8 +322,9 @@ const npcMenu = new NpcMenu(document.body);
 let menuNpc: { inst: MoverInstance; key: string } | null = null;
 net.onNpcMenu = (m) => {
   const opts: NpcMenuOption[] = [];
-  if (m.shop) opts.push({ label: 'Comércio', run: () => net.shopOpen(m.key) });
-  if (m.buff) opts.push({ label: 'Receber Buffs!', run: () => net.npcBuff(m.key) });
+  if (m.shop) opts.push({ label: t('Comércio'), run: () => net.shopOpen(m.key) });
+  if (m.buff) opts.push({ label: t('Receber Buffs!'), run: () => net.npcBuff(m.key) });
+  if (m.craft) opts.push({ label: t('Craft'), run: () => craftWnd.show() }); // o servidor só deixa fabricar perto do NPC de craft
   // quests do NPC: ❗ oferece, … em andamento, ✔ pronta para entregar
   for (const q of m.quests) opts.push({ label: `${q.st === 'offer' ? '❗' : q.st === 'ready' ? '✔' : '…'} ${q.name}`, run: () => net.quest('open', q.id, m.key) });
   // ferreiro (Bobochan, Peach…): as opções do character.inc abrem a janela no modo certo
@@ -340,7 +348,7 @@ view.pickFirst = (ev) => {
  * Clique (esquerdo) em outro jogador: seleciona (setas + janela do alvo) e abre o menu dele, como no cliente original.
  * As opções ainda sem sistema no servidor só avisam no chat.
  */
-const PLAYER_MENU = ['Negociar', 'Adicionar como amigo', 'Convidar para grupo', 'Convidar para guild', 'Seguir', 'Ver equipamentos', 'Animar', 'Couple proposal', 'Reportar'];
+const PLAYER_MENU = () => [t('Negociar'), t('Adicionar como amigo'), t('Convidar para grupo'), t('Convidar para guild'), t('Seguir'), t('Ver equipamentos'), t('Animar'), t('Couple proposal'), t('Reportar')];
 function playerClick(ev: { clientX: number; clientY: number }) {
   if (!inGame) return false;
   const hit = remotes.at(ev);
@@ -349,11 +357,11 @@ function playerClick(ev: { clientX: number; clientY: number }) {
   combat.stop();
   npcGoing = null;
   view.selectTarget(hit.inst);
-  const opts: NpcMenuOption[] = PLAYER_MENU.map((label) => ({ label, run: () => chat.system(`"${label}": função ainda não implementada.`) }));
-  opts[0].run = () => { if (!net.trade('tradeReq', { id: hit.id })) chat.system('Sem conexão com o servidor.'); };
-  opts[1].run = () => { if (!net.friendAdd(hit.id)) chat.system('Sem conexão com o servidor.'); };
-  opts[2].run = () => { if (!net.party('partyInvite', { id: hit.id })) chat.system('Sem conexão com o servidor.'); };
-  opts[3].run = () => { if (!net.guild('guildInvite', { id: hit.id })) chat.system('Sem conexão com o servidor.'); };
+  const opts: NpcMenuOption[] = PLAYER_MENU().map((label) => ({ label, run: () => chat.system(t('"{label}": função ainda não implementada.', { label })) }));
+  opts[0].run = () => { if (!net.trade('tradeReq', { id: hit.id })) chat.system(t('Sem conexão com o servidor.')); };
+  opts[1].run = () => { if (!net.friendAdd(hit.id)) chat.system(t('Sem conexão com o servidor.')); };
+  opts[2].run = () => { if (!net.party('partyInvite', { id: hit.id })) chat.system(t('Sem conexão com o servidor.')); };
+  opts[3].run = () => { if (!net.guild('guildInvite', { id: hit.id })) chat.system(t('Sem conexão com o servidor.')); };
   const at = view.screenOf(hit.inst);
   npcMenu.show(hit.name, opts, at ? at[0] + 30 : ev.clientX + 20, at ? at[1] : ev.clientY);
   shopNpc = null;
@@ -384,7 +392,7 @@ net.onChangeWorld = (w, p) => {
     view.playerControl = true;
     net.resume();
     mapLoading.hide();
-    chat.system(`Você chegou em ${WORLD_LOADING[w]?.name ?? w}.`);
+    chat.system(t('Você chegou em {name}.', { name: WORLD_LOADING[w]?.name ?? w }));
     changingWorld = false;
   })();
 };
@@ -497,11 +505,11 @@ const deathBox = (() => {
   box.className = 'death-box';
   box.hidden = true;
   box.setAttribute('role', 'alertdialog');
-  box.setAttribute('aria-label', 'Você morreu');
-  const h = document.createElement('b'); h.textContent = 'Você morreu';
-  const p = document.createElement('p'); p.textContent = 'Renasça na cidade ou espere um Assist usar Resurrection para voltar aqui mesmo.';
-  const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'cw-btn'; btn.textContent = 'Reviver na cidade';
-  btn.addEventListener('click', () => { if (!net.revive()) chat.system('Sem conexão com o servidor.'); });
+  box.setAttribute('aria-label', t('Você morreu'));
+  const h = document.createElement('b'); h.textContent = t('Você morreu');
+  const p = document.createElement('p'); p.textContent = t('Renasça na cidade ou espere um Assist usar Resurrection para voltar aqui mesmo.');
+  const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'cw-btn'; btn.textContent = t('Reviver na cidade');
+  btn.addEventListener('click', () => { if (!net.revive()) chat.system(t('Sem conexão com o servidor.')); });
   box.append(h, p, btn);
   document.body.append(box);
   return box;
@@ -550,6 +558,7 @@ guildWnd.onCreate = (name) => net.guild('guildCreate', { name });
 guildWnd.onLeave = () => net.guild('guildLeave');
 guildWnd.onKick = (id) => net.guild('guildKick', { id });
 guildWnd.onDisband = () => net.guild('guildDisband');
+guildWnd.onNotice = (text) => net.guild('guildNotice', { text });
 net.onGuildView = (g) => { guildWnd.set(g, net.myId); friendsWnd.setGuild((g?.members ?? []).map((m) => ({ id: m.id, name: m.name, level: m.level, job: m.job, on: m.on }))); net.onMyGuildTag(g?.name ?? null, !!g && g.master === net.myId); };
 net.onMyGuildTag = (g, master) => { myGuild = g; myGuildMaster = master; view.player?.inst?.setGuildTag(g, master); };
 net.onGuildReq = (id, name, guild) => friendRequestPrompt(document.body, name, (ok) => net.guild('guildAnswer', { id, ok }), `${name} convidou você para a guild ${guild}.`);
@@ -562,7 +571,7 @@ const worldMap = new WorldMap(document.body);
 miniMap.onClose = () => navOpen(false);
 // GM/admin: duplo clique no mini mapa teleporta na hora para o ponto (//tp; o servidor confere a autoridade)
 miniMap.canTeleport = () => !!rankOf(account?.authority);
-miniMap.onTeleport = (x, z) => { if (!net.sendChat(`//tp ${x} ${z}`)) chat.system('Sem conexão com o servidor.'); };
+miniMap.onTeleport = (x, z) => { if (!net.sendChat(`//tp ${x} ${z}`)) chat.system(t('Sem conexão com o servidor.')); };
 /** o mini mapa começa aberto; fechar (N ou ×) fica lembrado neste navegador */
 function navOpen(set?: boolean): boolean {
   try { if (set !== undefined) localStorage.setItem('flyff.nav.open', set ? '1' : '0'); return localStorage.getItem('flyff.nav.open') !== '0'; } catch { return set ?? true; }
@@ -613,10 +622,20 @@ net.onPartyList = (list) => partyListWnd.set(list);
 const friendsWnd = new FriendsWindow(document.body);
 hud.onMessenger = () => friendsWnd.toggle();
 friendsWnd.onRemove = (id) => net.friendDel(id);
-friendsWnd.onSend = (id, text) => { if (!net.pm(id, text)) chat.system('Sem conexão com o servidor.'); };
+friendsWnd.onSend = (id, text) => { if (!net.pm(id, text)) chat.system(t('Sem conexão com o servidor.')); };
 friendsWnd.onNotice = (text) => chat.system(text);
-friendsWnd.onAddByName = (name) => { if (!net.friendAddName(name)) chat.system('Sem conexão com o servidor.'); };
+friendsWnd.onAddByName = (name) => { if (!net.friendAddName(name)) chat.system(t('Sem conexão com o servidor.')); };
 // Wikipedia de itens (tecla Y ou /wiki) e o painel de GM, que escolhe o item por ela
+const itemTimeWnd = new ItemTimeWindow(document.body);
+itemTimeWnd.items = () => [...inventory.all.values()].filter((i) => i.x).map((i) => { const d = inventory.def(i.id); return { name: d?.name ?? '?', icon: d?.icon ?? '', left: (i.x ?? 0) - Date.now(), where: i.c === 1 ? 'Equipado' : 'Bolsa' }; });
+itemTimeWnd.askDungeons = () => { net.coolOpen(); };
+net.onCool = (list) => itemTimeWnd.setDungeons(list);
+const craftWnd = new CraftWindow(document.body);
+craftWnd.request = () => net.craftOpen();
+craftWnd.doCraft = (id) => net.craftDo(id);
+craftWnd.notify = (text) => chat.system(text);
+net.onCraft = (m) => craftWnd.setAll((m.recipes ?? []) as never, m as never);
+net.onCraftResult = (m) => { if (m.denied) { craftWnd.hide(); chat.system(String(m.text ?? '')); return; } craftWnd.setStatus(m as never); craftWnd.result(!!m.ok, String(m.text ?? '')); };
 const wikiWnd = new WikiWindow(document.body);
 wikiWnd.query = (p) => net.wiki(p);
 wikiWnd.tipFor = (id) => { net.wikiTip(id); };
@@ -651,9 +670,10 @@ chat.onSend = (text) => {
   // comando de emoticon (/laugh, /sad…): mostra a carinha em vez de mandar o texto
   // /say Nome mensagem (ou /s): mensagem privada — se a pessoa está online abre a janela de conversa
   if (/^\/wiki\s*$/i.test(text.trim())) { wikiWnd.show(); return true; }
+  if (/^\/craft\s*$/i.test(text.trim())) { craftWnd.show(); return true; }
   const say = /^\/(?:say|s)\s+(\S+)\s+(.+)$/i.exec(text.trim());
   if (say) return net.pmName(say[1], say[2]);
-  if (/^\/(?:say|s)(\s|$)/i.test(text.trim())) { chat.system('Uso: /say NomeDoJogador mensagem (ou /s NomeDoJogador mensagem)'); return true; }
+  if (/^\/(?:say|s)(\s|$)/i.test(text.trim())) { chat.system(t('Uso: /say NomeDoJogador mensagem (ou /s NomeDoJogador mensagem)')); return true; }
   const emo = motionWnd.emoticonOf(text);
   return emo >= 0 ? net.emoticon(emo) : net.sendChat(text);
 };
@@ -667,7 +687,7 @@ inventory.onMove = (from, to) => {
   // arrastar a prancha para o espaço de montaria também passa pelo preparo
   const it = from[0] === 0 && to[0] === 1 && to[1] === 13 ? inventory.all.get(`0:${from[1]}`) : undefined;
   if (it && rideToggle(it.id)) return;
-  if (!net.invMove(from, to)) chat.system('Sem conexão com o servidor.');
+  if (!net.invMove(from, to)) chat.system(t('Sem conexão com o servidor.'));
 };
 inventory.onUse = (c, s) => {
   const it = inventory.all.get(`${c}:${s}`);
@@ -678,7 +698,7 @@ inventory.onUse = (c, s) => {
   if (it && c === 0 && inventory.def(it.id)?.card) { inventory.startPierce(s); pierceFx(); return; }
   // material de upgrade (Sunstone, orichalcum brilhante, moonstone, carta de elemento): o mesmo martelo, para escolher o item
   if (it && c === 0 && isUpgradeMaterial(inventory.def(it.id)?.sym)) { inventory.startPierce(s, true); pierceFx(); return; }
-  if (!net.invUse(c, s)) chat.system('Sem conexão com o servidor.');
+  if (!net.invUse(c, s)) chat.system(t('Sem conexão com o servidor.'));
 };
 /**
  * Martelo de upgrade (sem pergaminho de proteção, como o duplo clique do original): se falhar a partir do +3 — e sempre na
@@ -688,7 +708,7 @@ inventory.onUpgrade = (m, s) => {
   const it = inventory.all.get(`0:${s}`), d = it && inventory.def(it.id), sym = inventory.def(inventory.all.get(`0:${m}`)?.id ?? -1)?.sym ?? '';
   const ultimate = sym === 'II_GEN_MAT_ORICHALCUM02', element = sym.startsWith('II_GEN_MAT_ELE_');
   const risk = it && d && (ultimate || (element ? it.el >= 3 : it.u >= 3));
-  const send = () => { if (!net.upgrade(s, m)) { chat.system('Sem conexão com o servidor.'); inventory.cancelPierce(); } };
+  const send = () => { if (!net.upgrade(s, m)) { chat.system(t('Sem conexão com o servidor.')); inventory.cancelPierce(); } };
   if (!risk) { send(); return; }
   void inventory.confirm(`Sem pergaminho de proteção, se falhar ${d.name}${it.u ? ` +${it.u}` : ''} é destruído. Para não perder o item, use o "Upgrade seguro" do BoBoChan (Flaris).`, 'Melhorar')
     .then((yes) => { if (yes) send(); else inventory.cancelPierce(); });
@@ -707,10 +727,10 @@ net.onSmith = (ok, fx, s, text) => {
   const id = view.data?.defines.get(fx === 'success' ? 'XI_INT_SUCCESS' : 'XI_INT_FAIL');
   if (id !== undefined) view.playSfx(id, [me[0], me[1], me[2]]);
 };
-inventory.onPierce = (card, target) => { if (!net.pierce(card, target)) { chat.system('Sem conexão com o servidor.'); inventory.cancelPierce(); } };
+inventory.onPierce = (card, target) => { if (!net.pierce(card, target)) { chat.system(t('Sem conexão com o servidor.')); inventory.cancelPierce(); } };
 inventory.onNotice = (text) => chat.system(text);
-inventory.onDiscard = (s, n) => { if (!net.invDrop(s, n)) chat.system('Sem conexão com o servidor.'); };
-inventory.onSort = () => { if (!net.invSort()) chat.system('Sem conexão com o servidor.'); };
+inventory.onDiscard = (s, n) => { if (!net.invDrop(s, n)) chat.system(t('Sem conexão com o servidor.')); };
+inventory.onSort = () => { if (!net.invSort()) chat.system(t('Sem conexão com o servidor.')); };
 net.onPierced = (ok, s) => {
   inventory.pierced(ok, s);
   // deu certo: som e efeito de sucesso no personagem (CItemUpgrade::OnPiercing: SND_INF_UPGRADESUCCESS e XI_INT_SUCCESS)
@@ -741,14 +761,14 @@ function rideToggle(id: number): boolean {
   const equipped = [...inventory.all.values()].find((i) => i.c === 1 && i.s === 13);
   if (equipped?.id === id) { rideCast?.cancel(); net.invUse(1, 13); return true; } // desmonta
   if (rideCast) { rideCast.cancel(); return true; } // apertar de novo durante o preparo cancela
-  if (combat.attacking || performance.now() - lastBattleAt < 5000) { chat.system('Você está em batalha. Afaste-se da luta para poder voar.'); return true; }
+  if (combat.attacking || performance.now() - lastBattleAt < 5000) { chat.system(t('Você está em batalha. Afaste-se da luta para poder voar.')); return true; }
   const bag = [...inventory.all.values()].find((i) => i.c === 0 && i.id === id);
   if (!bag || !p.inst) return true;
   const start = [...p.pos];
   const el = document.createElement('div');
   el.className = 'cast-bar';
   el.setAttribute('role', 'progressbar');
-  el.setAttribute('aria-label', 'Preparando a montaria');
+  el.setAttribute('aria-label', t('Preparando a montaria'));
   const fill = document.createElement('i');
   el.append(fill);
   const obj = new CSS2DObject(el);
@@ -761,14 +781,14 @@ function rideToggle(id: number): boolean {
   rideCast = { id, cancel: end };
   const tick = () => {
     if (done) return;
-    const t = (performance.now() - t0) / RIDE_CAST_MS;
+    const prog = (performance.now() - t0) / RIDE_CAST_MS;
     const moved = Math.hypot(p.pos[0] - start[0], p.pos[2] - start[2]) > 0.3 || Math.abs(p.pos[1] - start[1]) > 0.5;
-    if (!p.active || p.dead || moved || performance.now() - lastBattleAt < 5000) { end(); if (moved) chat.system('Preparo da montaria cancelado.'); return; }
-    fill.style.width = `${Math.min(100, t * 100)}%`;
-    if (t >= 1) {
+    if (!p.active || p.dead || moved || performance.now() - lastBattleAt < 5000) { end(); if (moved) chat.system(t('Preparo da montaria cancelado.')); return; }
+    fill.style.width = `${Math.min(100, prog * 100)}%`;
+    if (prog >= 1) {
       end();
       const now = [...inventory.all.values()].find((i) => i.c === 0 && i.id === id);
-      if (now && !net.invUse(0, now.s)) chat.system('Sem conexão com o servidor.');
+      if (now && !net.invUse(0, now.s)) chat.system(t('Sem conexão com o servidor.'));
       return;
     }
     requestAnimationFrame(tick);
@@ -811,7 +831,7 @@ net.onLevel = (level) => {
   // subiu de nível (CMover::SetLevel/AddExperience no cliente): a faixa "Level Up!", o pilar de luz e o movimento
   caption.show('Level Up!');
   levelUpFx(net.myId);
-  chat.system(`Parabéns! Você chegou ao nível ${level}.`);
+  chat.system(t('Parabéns! Você chegou ao nível {level}.', { level }));
 };
 /** XI_GEN_LEVEL_UP01 (o pilar de luz) no personagem e MTI_LEVELUP se estiver parado */
 function levelUpFx(id: number) {
@@ -835,14 +855,14 @@ net.onGmFly = (on) => { if (view.player) view.player.gmFly = on; gmPanel.setFly(
 let clockOffset = 0, clockFixed: number | null = null;
 net.onTeleports = (list) => teleportWnd.set(list);
 const rain = new Rain(view);
-net.onWeather = (on) => { if (on !== rain.raining) chat.system(on ? 'Começou a chover.' : 'A chuva parou.'); rain.set(on); };
+net.onWeather = (on) => { if (on !== rain.raining) chat.system(on ? t('Começou a chover.') : t('A chuva parou.')); rain.set(on); };
 net.onQuestDialog = (d) => questDlg.open(d);
 net.onQuests = (list) => questLog.set(list);
 net.onPet = (a, m) => pets.set(a, m);
 net.onPetGo = (a, x, z, ms) => pets.go(a, x, z, ms);
 net.onPetFilter = (f, n) => petFilterWnd.set(f, n);
 net.onPetFind = (list) => petFilterWnd.found(list);
-petFilterWnd.onSave = (f) => { if (!net.petFilter(f)) chat.system('Sem conexão com o servidor.'); };
+petFilterWnd.onSave = (f) => { if (!net.petFilter(f)) chat.system(t('Sem conexão com o servidor.')); };
 petFilterWnd.onFind = (q) => { net.petFind(q); };
 net.onClock = (now, fixed) => { clockOffset = now - Date.now(); clockFixed = fixed; tickClock(); };
 /** a cada minuto do jogo (1,2 s) muda a hora do mundo: céu (dia/entardecer/noite), nuvens, sol/lua, luz, névoa e lampiões */
@@ -877,13 +897,14 @@ addEventListener('keydown', (e) => {
   else if (e.code === 'KeyH' && !e.repeat) charWnd.toggle();
   else if (e.code === 'KeyK' && !e.repeat) skillWnd.toggle();
   else if (e.code === 'KeyU' && !e.repeat) petFilterWnd.toggle(); // filtro do pet coletor
-  else if (e.code === 'KeyJ' && !e.repeat) jobWnd.toggle(); // reabre a escolha de classe, se ainda há
+  else if (e.code === 'KeyJ' && !e.repeat) itemTimeWnd.toggle(); // Duração do Item (a troca de classe abre sozinha no nível certo)
   else if (e.code === 'KeyC' && !e.repeat) runActionSlot();
   else if (e.code === 'KeyV' && !e.repeat) teleportWnd.toggle();
   else if (e.code === 'KeyQ' && !e.repeat) { if (!view.player?.gmFly) questLog.toggle(); } // voando (//fly), o Q desce
   else if (e.code === 'KeyO' && !e.repeat) motionWnd.toggle();
   else if (e.code === 'KeyE' && !e.repeat) { if (!view.player?.gmFly) friendsWnd.toggle(); } // voando (//fly), o E sobe
   else if (e.code === 'KeyY' && !e.repeat) wikiWnd.toggle();
+  else if (e.code === 'KeyB' && !e.repeat) craftWnd.toggle();
   else if (e.code === 'KeyP' && !e.repeat) partyWnd.toggle();
   else if (e.code === 'KeyG' && !e.repeat) guildWnd.toggle();
   else if (e.code === 'KeyL' && !e.repeat) partyListWnd.toggle();
@@ -908,7 +929,8 @@ document.querySelectorAll<HTMLElement>('.fbtn[data-img]').forEach((b) => {
   if (/\.tga$/i.test(file)) { void themeImage(file).then((u) => { if (u) b.style.backgroundImage = `url(${u})`; }); return; }
   void keyedImage(file).then((u) => { if (u) b.style.backgroundImage = `url(${u})`; });
 });
-const message = (el: HTMLElement) => (t: string, error = false) => { el.textContent = t; el.classList.toggle('error', error); };
+/** mensagem de status de uma tela: `key` é o texto em português (ver client/lang.ts) e é retraduzida se o idioma mudar com ela na tela */
+const message = (el: HTMLElement) => (key: string, error = false, params?: Record<string, string | number>) => { tr(el, key, params); el.classList.toggle('error', error); };
 const sayLogin = message($('loginMsg')), saySelect = message($('selectMsg')), sayCreate = message($('createMsg'));
 
 // ---------- preferências locais (contas salvas: nome + token de lembrar do servidor, NUNCA a senha) ----------
@@ -1005,11 +1027,11 @@ flyEl.setAttribute('aria-live', 'off');
 document.body.append(flyEl);
 let flyText = '';
 function flyHud(p: { flySpeed: number; flyAcc: boolean; flyTurbo: boolean } | null) {
-  const t = p ? `Voo · ${Math.round(p.flySpeed * 3.6)} km/h${p.flyAcc ? ' · acelerando' : ''}${p.flyTurbo ? ' · TURBO' : ''}\nEspaço acelera/para · W/S desce/sobe · A/D vira · X turbo · desequipe a prancha para pousar` : '';
-  if (t === flyText) return;
-  flyText = t;
+  const txt = p ? t('Voo · {kmh} km/h', { kmh: Math.round(p.flySpeed * 3.6) }) + (p.flyAcc ? t(' · acelerando') : '') + (p.flyTurbo ? ' · TURBO' : '') + '\n' + t('Espaço acelera/para · W/S desce/sobe · A/D vira · X turbo · desequipe a prancha para pousar') : '';
+  if (txt === flyText) return;
+  flyText = txt;
   flyEl.hidden = !p;
-  flyEl.textContent = t;
+  flyEl.textContent = txt;
 }
 
 // ---------- qualidade ----------
@@ -1043,7 +1065,7 @@ view.onFrame = (dt) => {
   // mostra a porta do servidor: cada servidor (ex.: 8080 do painel e 5173 de desenvolvimento) é um mundo separado
   // rodapé: fps, hora do jogo (relógio do servidor, dia e noite), ping, quem está online e a porta do servidor
   $('hud').textContent = inGame
-    ? `${view.fps.toFixed(0)} fps · ${fmtGameHour(clockFixed ?? gameHour(Date.now() + clockOffset))} · ping ${net.ping === null ? '—' : Math.round(net.ping) + ' ms'} · ${net.online} online · servidor :${location.port || (location.protocol === 'https:' ? 443 : 80)}`
+    ? `${view.fps.toFixed(0)} fps · ${fmtGameHour(clockFixed ?? gameHour(Date.now() + clockOffset))} · ping ${net.ping === null ? '—' : Math.round(net.ping) + ' ms'} · ${t('{n} online', { n: net.online })} · ${t('servidor')} :${location.port || (location.protocol === 'https:' ? 443 : 80)}`
     : `${view.fps.toFixed(0)} fps`;
   if (previewing) view.player?.preview(dt, 0);
   if (inGame) {
@@ -1091,7 +1113,7 @@ function bootPaint(force?: number) {
     bootEl.fill.style.width = `${pct}%`;
     bootEl.pct.textContent = `${pct}%`;
     bootEl.screen.setAttribute('aria-valuenow', String(pct));
-    bootEl.bytes.textContent = `${Math.min(netStats.done, bootTotal.files)} / ${bootTotal.files} arquivos · ${mb(Math.min(netStats.bytes, bootTotal.bytes || netStats.bytes))} de ${mb(bootTotal.bytes)} MB`;
+    bootEl.bytes.textContent = t('{done} / {files} arquivos · {mb} de {total} MB', { done: Math.min(netStats.done, bootTotal.files), files: bootTotal.files, mb: mb(Math.min(netStats.bytes, bootTotal.bytes || netStats.bytes)), total: mb(bootTotal.bytes) });
     return;
   }
   const started = netStats.started - boot.started, done = netStats.done - boot.done;
@@ -1105,8 +1127,8 @@ function bootPaint(force?: number) {
   bootEl.pct.textContent = `${pct}%`;
   bootEl.screen.setAttribute('aria-valuenow', String(pct));
   bootEl.bytes.textContent = bootTotal && force !== undefined
-    ? `${bootTotal.files} / ${bootTotal.files} arquivos · ${mb(bootTotal.bytes)} de ${mb(bootTotal.bytes)} MB`
-    : `${mb(netStats.bytes)} MB baixados · ${netStats.done} arquivos (primeiro carregamento: contando o total…)`;
+    ? t('{done} / {files} arquivos · {mb} de {total} MB', { done: bootTotal.files, files: bootTotal.files, mb: mb(bootTotal.bytes), total: mb(bootTotal.bytes) })
+    : t('{mb} MB baixados · {done} arquivos (primeiro carregamento: contando o total…)', { mb: mb(netStats.bytes), done: netStats.done });
 }
 const bootTimer = setInterval(() => bootPaint(), 150);
 /** espera a rede ficar parada (nenhum download pendente por `quiet` ms) ou o tempo limite */
@@ -1125,16 +1147,16 @@ function networkIdle(quiet = 900, limit = 120_000) {
 }
 
 const worldReady = (async () => {
-  bootPhase('Lendo os dados do jogo…', 0, 0.35);
+  bootPhase(t('Lendo os dados do jogo…'), 0, 0.35);
   await view.open(WORLD);
   view.lookAt(FLARIS.x, FLARIS.z, 60);
-  bootPhase('Carregando Flaris…', 0.35, 0.2);
+  bootPhase(t('Carregando Flaris…'), 0.35, 0.2);
   await view.loadTile(Math.floor(FLARIS.x / 512), Math.floor(FLARIS.z / 512));
   view.lookAt(FLARIS.x, FLARIS.z, 60);
   view.camera.position.y -= 25; // vista mais baixa, de cena
   view.controls.update();
   // os modelos, texturas e NPCs em volta são pedidos pelos quadros seguintes: espera tudo chegar
-  bootPhase('Carregando modelos e texturas…', 0.55, 0.45);
+  bootPhase(t('Carregando modelos e texturas…'), 0.55, 0.45);
   await networkIdle();
 })();
 worldReady.then(() => {
@@ -1144,7 +1166,7 @@ worldReady.then(() => {
     if (bootTotal) return;
     void fetch(`/gapi/boot-manifest?q=${bootQuality}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ urls: netStats.urls, bytes: netStats.bytes, count: netStats.done }) }).catch(() => {});
   });
-  bootStep('Pronto!');
+  bootStep(t('Pronto!'));
   bootPaint(1);
   setTimeout(() => { bootEl.screen.classList.add('done'); setTimeout(() => { bootEl.screen.hidden = true; }, 700); }, 250);
   sayLogin('Digite sua conta e senha.');
@@ -1155,9 +1177,9 @@ worldReady.then(() => {
   view.controls.autoRotateSpeed = 0.35;
 }, (e) => {
   clearInterval(bootTimer);
-  bootStep('Erro ao carregar o mundo: ' + (e as Error).message);
+  bootStep(t('Erro ao carregar o mundo: {msg}', { msg: (e as Error).message }));
   bootEl.step.style.color = '#ff8a8a';
-  sayLogin('Erro ao carregar o mundo: ' + (e as Error).message, true);
+  sayLogin('Erro ao carregar o mundo: {msg}', true, { msg: (e as Error).message });
 });
 
 // ---------- sessão ----------
@@ -1194,6 +1216,9 @@ async function doLogin(cred: { username: string; password?: string; remember?: s
     token = reply.token; account = reply.account; characters = reply.characters;
     try { sessionStorage.setItem('flyff.token', token); } catch { /* sem armazenamento */ }
     await worldReady;
+    sayLogin('Carregando personagens…');
+    // os bonecos dos 3 quadros carregam ANTES de trocar de tela (com limite de tempo): a seleção já abre com todos preenchidos
+    await Promise.race([preloadSlotPreviews(), new Promise((r) => setTimeout(r, 8000))]);
     $('loginScreen').classList.add('leaving');
     setTimeout(() => { $('loginScreen').hidden = true; }, 450);
     $('charScreen').hidden = false;
@@ -1245,6 +1270,13 @@ function showSelect() {
  * Os 3 quadros (WIDC_CUSTOM1–3 em x 46/218/390) e os nomes embaixo (WIDC_ST_CHARNAME01–03): o escolhido anima e fica com o
  * nome em azul, os outros parados e em cinza; vaga vazia mostra "- Vazio -".
  */
+/** o visual de um personagem para o quadro da seleção */
+const slotLook = (ch: (typeof characters)[number]) => ({ sex: ch.sex, hair: ch.hairMesh, head: ch.headMesh, hairColor: ch.hairColor ?? 0, equip: lookList(ch.equip ?? [], hideMaskOf(ch.id)), mt: ch.mt });
+/** monta de antemão os bonecos dos quadros (pose e visual iguais aos de renderSlots, que depois só reaproveita) */
+async function preloadSlotPreviews() {
+  if (selectedSlot === null || selectedSlot < 0 || selectedSlot > 2) selectedSlot = characters[0]?.slot ?? 0;
+  await Promise.all(characters.map((ch) => { const v = cardViews[ch.slot]; if (!v) return null; v.setPose(ch.slot === selectedSlot ? 'battle' : 'normal'); return v.set(slotLook(ch)).catch(() => {}); }));
+}
 function renderSlots() {
   $('slotList').replaceChildren(...[0, 1, 2].flatMap((slot) => {
     const ch = characters.find((c) => c.slot === slot);
@@ -1260,14 +1292,14 @@ function renderSlots() {
     if (ch) {
       card.setAttribute('role', 'option');
       card.setAttribute('aria-selected', String(on));
-      card.setAttribute('aria-label', `${ch.name}, nível ${ch.level}`);
+      card.setAttribute('aria-label', t('{name}, nível {level}', { name: ch.name, level: ch.level }));
       card.tabIndex = 0;
       card.appendChild(v.canvas);
       v.setPose(on ? 'battle' : 'normal'); // não escolhido: em pé normal; escolhido: modo de batalha
-      void v.set({ sex: ch.sex, hair: ch.hairMesh, head: ch.headMesh, hairColor: ch.hairColor ?? 0, equip: lookList(ch.equip ?? [], hideMaskOf(ch.id)), mt: ch.mt });
+      void v.set(slotLook(ch));
       name.textContent = ch.name;
       const small = document.createElement('small');
-      small.textContent = `Nv ${ch.level}`;
+      small.textContent = t('Nv {level}', { level: ch.level });
       name.appendChild(small);
       name.classList.toggle('on', on);
       const pick = () => { if (selectedSlot !== slot) { selectedSlot = slot; showSelect(); } };
@@ -1277,10 +1309,10 @@ function renderSlots() {
     } else {
       card.classList.add('empty');
       name.classList.add('empty');
-      name.textContent = '- Vazio -';
+      name.textContent = t('- Vazio -');
       void v.set(null);
       card.setAttribute('aria-selected', String(sel));
-      card.setAttribute('aria-label', 'Vaga vazia');
+      card.setAttribute('aria-label', t('Vaga vazia'));
       card.tabIndex = 0;
       const pickEmpty = () => { if (selectedSlot !== slot) { selectedSlot = slot; showSelect(); } };
       card.addEventListener('click', pickEmpty);
@@ -1298,7 +1330,7 @@ $('logoutBtn').addEventListener('click', () => void backToLogin());
 $('deleteCharBtn').addEventListener('click', () => {
   const ch = characters.find((c) => c.slot === selectedSlot);
   if (!ch) return;
-  $('deleteQ').textContent = `Apagar ${ch.name} (Nv ${ch.level})? Não tem como desfazer.`;
+  $('deleteQ').textContent = t('Apagar {name} (Nv {level})? Não tem como desfazer.', { name: ch.name, level: ch.level });
   $<HTMLInputElement>('deletePass').value = '';
   $('charDelete').hidden = false;
   $('deletePass').focus();
@@ -1316,7 +1348,7 @@ $('charDelete').addEventListener('submit', async (ev) => {
     characters = r.characters;
     selectedSlot = null;
     showSelect();
-    saySelect(`${ch.name} foi apagado.`);
+    saySelect('{name} foi apagado.', false, { name: ch.name });
   } catch (e) {
     saySelect((e as Error).message, true);
     $<HTMLInputElement>('deletePass').select();
@@ -1328,6 +1360,7 @@ async function backToLogin() {
   // sai do mundo primeiro (o servidor salva a posição ao fechar o WebSocket), depois encerra a sessão
   logout.cancel();
   inGame = false;
+  document.body.classList.remove('ingame');
   net.close();
   try { await api('/gapi/logout', { method: 'POST' }); } catch { /* sessão já expirada */ }
   token = ''; account = null; characters = []; selectedSlot = null; previewing = false;
@@ -1417,7 +1450,7 @@ $('charCreate').addEventListener('submit', async (ev) => {
     characters = r.characters;
     selectedSlot = r.character.slot;
     showSelect();
-    saySelect(`${r.character.name} criado! Clique em Entrar.`);
+    saySelect('{name} criado! Clique em Entrar.', false, { name: r.character.name });
   } catch (e) {
     sayCreate((e as Error).message, true);
   } finally { btn.disabled = false; }
@@ -1428,7 +1461,7 @@ async function enter() {
   const ch = characters.find((c) => c.slot === selectedSlot);
   if (!ch || !account) return;
   $<HTMLButtonElement>('enterBtn').disabled = true;
-  saySelect(`Entrando como ${ch.name}…`);
+  saySelect('Entrando como {name}…', false, { name: ch.name });
   previewing = false;
   stage.stop();
   view.controls.enabled = true; // no jogo a câmera volta a girar/dar zoom
@@ -1471,11 +1504,12 @@ async function enter() {
   hud.show();
   actionBar.show();
   chat.show();
-  chat.system(`Bem-vindo, ${ch.name}! Enter para conversar · I abre o inventário.`);
+  chat.system(t('Bem-vindo, {name}! Enter para conversar · I abre o inventário.', { name: ch.name }));
   // retrato: renderiza o rosto uma vez, depois que o personagem já foi posado na tela
   requestAnimationFrame(() => requestAnimationFrame(() => hud.setPortrait(view.portrait())));
   // multiplayer: entra no mundo compartilhado com este personagem
   inGame = true;
+  document.body.classList.add('ingame');
   if (navOpen()) miniMap.show();
   void motionWnd.loadTables(); // comandos de emoticon no chat
   net.connect(token, ch.id, () => view.player?.pos ?? [x, 100, z]);
