@@ -391,7 +391,7 @@ net.onChangeWorld = (w, p) => {
     net.pause();
     mapLoading.show(w);
     if (w !== curWorld) { await openWorld(w, p[0], p[2]); mapLoading.show(w); }
-    await view.spawnPlayer(p[0], p[2], p[1], sex, look);
+    await view.spawnPlayer(p[0], p[2], p[1], sex, look, true);
     if (view.player) view.player.runSpeed = moveSpeed;
     const ch = characters.find((c) => c.slot === selectedSlot);
     if (ch) { view.player?.inst?.setLabel(ch.name, rankOf(account?.authority), PLAYER_LABEL_LIFT); view.player?.inst?.setGuildTag(myGuild, myGuildMaster); }
@@ -1545,7 +1545,7 @@ async function enter() {
   // o inventário chegar do servidor; o restyle do `welcome` não refaz o modelo se o visual for o mesmo
   const hide = hideMaskOf(ch.id);
   const equip = lookList(ch.equip ?? [], hide);
-  await view.spawnPlayer(x, z, inMap ? ch.pos[1] : 100, sex, { hair: ch.hairMesh, head: ch.headMesh, hairColor: ch.hairColor ?? 0, equip });
+  await view.spawnPlayer(x, z, inMap ? ch.pos[1] : 100, sex, { hair: ch.hairMesh, head: ch.headMesh, hairColor: ch.hairColor ?? 0, equip }, inMap);
   if (view.player) view.player.runSpeed = moveSpeed;
   if (curWorld !== WORLD) mapLoading.hide();
   combatMt = ch.mt ?? 0;

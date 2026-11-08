@@ -188,7 +188,7 @@ export class Player {
   /** visual atual (para montar de novo ao trocar de mundo) */
   get currentLook() { return { ...this.look, equip: [...(this.look.equip ?? [])] }; }
 
-  async spawn(sex: Sex, x: number, y: number, z: number, look: { hair?: number; head?: number; equip?: string[]; hairColor?: number } = {}) {
+  async spawn(sex: Sex, x: number, y: number, z: number, look: { hair?: number; head?: number; equip?: string[]; hairColor?: number } = {}, exact = false) {
     // só o último pedido vale: dois spawns cruzados (ex.: Entrar clicado com a prévia ainda carregando) deixavam o 1º boneco
     // órfão na cena, parado e sem nome
     const seq = ++this.spawnSeq;
@@ -205,7 +205,10 @@ export class Player {
     this.look = { ...look };
     // no spawn aceita chão de objeto até 20 unidades acima do terreno (ex.: praça de Flaris acima do chão)
     const terrain = this.world.heightAt(x, z) ?? y;
-    this.pos = [x, this.groundAt(x, z, terrain + 20), z];
+    const hi = this.groundAt(x, z, terrain + 20);
+    // `exact`: o y pedido é o do chão (teleporte de mapa, posição salva): escolhe o chão mais perto dele, sem pousar no teto de cima (torre)
+    const lo = exact ? this.groundAt(x, z, y + 2) : hi;
+    this.pos = [x, exact && Math.abs(lo - y) <= Math.abs(hi - y) ? lo : hi, z];
     this.source = { type: OT.MOVER, modelId: miId!, rot: [0, this.heading, 0], pos: this.pos, scale: [1, 1, 1], motion: 0, ai: 0, ai2: 0, name: 'Jogador' };
     this.inst = new MoverInstance(tpl, this.source, new Matrix4());
     this.inst.blendTime = 0.08; // resposta rápida ao comando (mobs/NPCs mantêm 0,15 s)
