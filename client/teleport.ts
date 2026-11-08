@@ -13,6 +13,10 @@ export interface TeleportView { k: number; name: string; header: string; image: 
 
 const TYPE_NAME: Record<TeleportView['type'], string> = { city: 'Cidade', collect: 'Coleta', dungeon: 'Dungeon', zone: 'Zona' };
 
+/** aparência da janela: a do Teleporter (padrão) ou a da Heaven Tower */
+export interface TeleportOptions { id: string; title: string; store: string; go: string; filter: boolean; label?: (d: TeleportView) => string; head: string }
+const TELEPORTER: TeleportOptions = { id: 'tpWnd', title: 'Teleporter', store: 'flyff.wnd.teleport2', go: 'Teletransportar', filter: true, head: 'Destinos' };
+
 export class TeleportWindow extends GameWindow {
   onTeleport: (key: number) => void = () => {};
   /** pede a lista ao servidor (a primeira vez que abre) */
@@ -29,8 +33,9 @@ export class TeleportWindow extends GameWindow {
   private requested = false;
   private loaded = false;
 
-  constructor(parent: HTMLElement) {
-    super(parent, { id: 'tpWnd', title: 'Teleporter', store: 'flyff.wnd.teleport2', initial: { x: 200, y: 90, w: 720, h: 400 }, min: { w: 640, h: 360 } });
+  constructor(parent: HTMLElement, private opt: TeleportOptions = TELEPORTER) {
+    const o = opt;
+    super(parent, { id: o.id, title: o.title, store: o.store, initial: { x: 200, y: 90, w: 720, h: 400 }, min: { w: 640, h: 360 } });
     const b = this.body;
     b.classList.add('tp');
     const col = (cls: string, title: string) => {
@@ -42,7 +47,7 @@ export class TeleportWindow extends GameWindow {
       c.append(h);
       return { c, h };
     };
-    const left = col('tp-left', 'Destinos');
+    const left = col('tp-left', o.head);
     this.filter.className = 'tp-filter';
     this.filter.setAttribute('aria-label', 'Filtrar destinos');
     for (const [v, t] of [['', 'Todos'], ['city', 'Cidade'], ['collect', 'Coleta'], ['dungeon', 'Dungeon']]) { const o = document.createElement('option'); o.value = v; o.textContent = t; this.filter.append(o); }
@@ -50,6 +55,7 @@ export class TeleportWindow extends GameWindow {
     this.list.className = 'tp-list';
     this.list.setAttribute('role', 'listbox');
     this.list.setAttribute('aria-label', 'Destinos');
+    this.filter.hidden = !o.filter;
     left.c.append(this.filter, this.list);
 
     const mid = col('tp-mid', '');
@@ -59,7 +65,7 @@ export class TeleportWindow extends GameWindow {
     this.descEl.className = 'tp-desc';
     this.goBtn.type = 'button';
     this.goBtn.className = 'cw-btn tp-go';
-    this.goBtn.textContent = 'Teletransportar';
+    this.goBtn.textContent = o.go;
     this.goBtn.disabled = true;
     this.goBtn.addEventListener('click', () => { if (this.selected) { this.onTeleport(this.selected.k); this.hide(); } });
     mid.c.append(this.img, this.descEl, this.goBtn);
@@ -91,7 +97,7 @@ export class TeleportWindow extends GameWindow {
   /** lista vinda do servidor */
   set(list: TeleportView[]) { this.dests = list; this.loaded = true; this.render(); }
 
-  private label = (d: TeleportView) => `[${TYPE_NAME[d.type]}] ${d.name}`;
+  private label = (d: TeleportView) => (this.opt.label ? this.opt.label(d) : `[${TYPE_NAME[d.type]}] ${d.name}`);
 
   private render() {
     const f = this.filter.value;

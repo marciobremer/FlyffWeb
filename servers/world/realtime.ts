@@ -67,6 +67,7 @@ import { setRateBoost } from '../common/rates';
  *   { t: 'quest', op: 'open'|'accept'|'turnIn'|'abandon', id, key } / { t: 'quests' }   quests do NPC `key` (perto dele) → `questDlg` / `quests` (servers/world/questflow.ts)
  *   { t: 'teleports' } → { t: 'teleports', list }   destinos da janela Teleporter (tecla V): nome, imagem, descrição, drops
  *   { t: 'zckTeleport', k }                         teleporte da janela Teleporter: destino `k` da lista
+ *   { t: 'tower' } → { t: 'tower', list } / { t: 'towerGo', k }   Heaven Tower (perto do Forsaken Tower Manager): andares com preço / entrar no andar `k`
  *   { t: 'buffOff', id }                            tira o buff da skill `id` (botão direito no ícone)
  *   { t: 'hide', m }                                partes escondidas do visual (bits de shared/look.ts HIDEABLE; também vai no 'join')
  *   { t: 'friendAdd', id } / { t: 'friendAnswer', id, ok } / { t: 'friendDel', id }   Mensageiro (tecla E): pedir amizade a
@@ -271,22 +272,26 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
    * Destinos do teleporte (janela Teleporter, tecla V): o AegonTeleporter.inc do Titanium (imagem, descrição com o nível
    * aconselhado e o que dropa); sem ele, o ZckTeleporteur.inc. O cliente pede a lista pronta ('teleports') e manda o índice.
    */
-  interface Teleport { name: string; header: string; image: string; type: 'city' | 'collect' | 'dungeon' | 'zone'; desc: string; world: string; pos: [number, number, number]; items: string[]; /** criado no painel admin (data/teleports-custom.json): `world` é o nome da pasta do mapa */ custom?: boolean }
-  const teleports: Teleport[] = (() => {
+  interface Teleport { name: string; header: string; image: string; type: 'city' | 'collect' | 'dungeon' | 'zone'; desc: string; world: string; pos: [number, number, number]; items: string[]; /** Heaven Tower: preço em penya */ cost?: number; /** criado no painel admin (data/teleports-custom.json): `world` é o nome da pasta do mapa */ custom?: boolean }
+  const loadTeleports = (wnd: number): Teleport[] => {
     if (!inventory) return [];
     const dir = inventory.catalog.resDir;
     const read = (f: string, enc = 'windows-1252') => { const b = fs.readFileSync(path.join(dir, f)); return decodeText(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer, enc); };
     try {
-      const list = parseAegonTeleports(read('AegonTeleporter.inc'));
+      const list = parseAegonTeleports(read('AegonTeleporter.inc'), wnd);
       // TID_TELEPORTER_DESC_n → IDS_TEXTCLIENT_INC_… (textClient.inc) → texto (textClient.txt.txt; "\n" vira quebra de linha)
       let tids = new Map<string, string>(), ids = new Map<string, string>();
       // o texto vem separado da chave por tab ou espaços
       try { tids = new Map([...read('textClient.inc').matchAll(/^\s*(TID_\w+)\s+\S+\s*\{\s*(IDS_\w+)\s*\}/gm)].map((m) => [m[1], m[2]])); ids = new Map([...read('textClient.txt.txt').matchAll(/^(IDS_\w+)[ 	]+(.+?)\s*$/gm)].map((m) => [m[1], m[2]])); } catch { /* sem textos */ }
       const text = (tid: string) => (ids.get(tids.get(tid) ?? '') ?? '').replace(/\\n/g, '\n').trim();
-      if (list.length) return list.map((t) => ({ name: t.name, header: t.header || t.name, image: t.image ? `Teleporter/${t.image}` : '', type: t.type === 1 ? 'collect' as const : t.type === 2 ? 'dungeon' as const : 'city' as const, desc: text(t.desc), world: t.world, pos: t.pos, items: t.items }));
+      if (list.length) return list.map((t) => ({ name: t.name, header: t.header || t.name, image: t.image ? `Teleporter/${t.image}` : '', type: t.type === 1 ? 'collect' as const : t.type === 2 ? 'dungeon' as const : 'city' as const, desc: text(t.desc), world: t.world, pos: t.pos, items: t.items, cost: t.cost }));
     } catch { /* sem o AegonTeleporter.inc */ }
+    if (wnd) return [];
     try { return parseTeleports(read('ZckTeleporteur.inc')).map((d) => ({ name: d.name, header: d.name, image: d.image, type: d.type, desc: d.desc, world: d.world, pos: d.pos, items: d.items })); } catch { return []; }
-  })();
+  };
+  const teleports = loadTeleports(0);
+  /** andares da Heaven Tower (teleporterWnd 1 do AegonTeleporter.inc) */
+  const towerFloors = loadTeleports(1);
   /** lista para a janela: nome, imagem, descrição e os itens que dropam ali (ItemView, para a dica do item) */
   /** os do jogo mais os criados no painel admin (World → Teleportes), na ordem em que a janela os mostra */
   const allTeleports = (): Teleport[] => [...teleports, ...customTeleports().map((t) => ({ name: t.name, header: t.name, image: '', type: t.type, desc: t.desc, world: t.world, pos: t.pos, items: [] as string[], custom: true }))];
@@ -1550,6 +1555,41 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     reply(c, `Teletransportado para ${d.name}.`);
   }
 
+  /**
+   * Heaven Tower (Forsaken Tower): o Forsaken Tower Manager (mafl_heavenman) leva aos andares B1…B6 do AegonTeleporter.inc pagando o
+   * penya do andar (OnTeleportToHeavenTower: só perto do NPC; sem montaria; não exige nível). Só perto do NPC.
+   */
+  const TOWER_NPC = 'mafl_heavenman';
+  const towerNear = (c: Conn) => { const p = c.player, shops = W(c).shops; return !!p && !!shops && shops.near(TOWER_NPC, p.p[0], p.p[2]); };
+  function towerList(c: Conn) {
+    if (!towerNear(c)) { reply(c, 'Chegue perto do Forsaken Tower Manager.'); return; }
+    send(c.ws, { t: 'tower', list: towerFloors.map((d, k) => ({ k, name: d.name, header: `${d.header} — ${d.cost ? `${d.cost.toLocaleString('pt-BR')} Penya` : 'Grátis'}`, image: d.image, type: 'dungeon', desc: d.desc,
+      items: d.items.map((s) => inventory?.catalog.bySymbol.get(s)).filter((x) => !!x).map((x) => inventory!.catalog.viewFull(x!)) })) });
+  }
+  async function towerGo(c: Conn, key: number) {
+    const p = c.player, cb = c.cb, d = towerFloors[key];
+    if (!p || !d || !inventory || c.switching) return;
+    if (!towerNear(c)) { reply(c, 'Chegue perto do Forsaken Tower Manager.'); return; }
+    const now = Date.now();
+    if (cb?.dead) { reply(c, 'Você não pode se teletransportar morto.'); return; }
+    if (cb && (now - cb.lastHurt < 5000 || now < cb.nextAtk + 1500)) { reply(c, 'Você não pode se teletransportar em combate.'); return; }
+    if (p.eq.some((s) => s.startsWith(RIDE_TAG)) || c.gmFly) { reply(c, 'Você não pode se teletransportar montado.'); return; }
+    const define = /^\d+$/.test(d.world) ? opts.worldInfo?.(Number(d.world))?.define : d.world;
+    const wr = define ? ensureWorld(define) : null;
+    if (!wr) { reply(c, `${d.name} ainda não está disponível neste servidor.`); return; }
+    const cost = d.cost ?? 0;
+    c.invQueue = c.invQueue.then(async () => {
+      if (cost > 0) {
+        if ((await inventory.state(p.id)).gold < cost) { reply(c, 'Você não tem penya suficiente.'); return; }
+        await inventory.addGold(p.id, -cost);
+        send(c.ws, inventory.view(await inventory.state(p.id)));
+      }
+      console.log(`[torre] ${p.name} (#${p.id}) → ${d.name} (${cost} penya)`);
+      reply(c, `Indo para ${d.name}…`);
+      await changeWorld(c, wr.name, d.pos);
+    }).catch((e) => console.error('realtime: torre', e));
+  }
+
   /** golpe do jogador no mob (pedido { t: 'atk', id }) */
   function playerAttack(c: Conn, mobId: number) {
     const mobWorld = W(c).mobs;
@@ -2804,7 +2844,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         const key = msg.key.slice(0, 40), k = key.toLowerCase();
         const shops = W(c).shops;
         if (!shops?.near(key, c.player.p[0], c.player.p[2])) return;
-        const base = { t: 'npcMenu', key, name: shops.npcNames.get(k) ?? key, shop: shops.shops.has(k) || shops.tokenShops.has(k), buff: shops.npcBuffs.has(k), craft: craftNpcs.has(k), smith: [...(shops.npcMenus.get(k) ?? [])] };
+        const base = { t: 'npcMenu', key, name: shops.npcNames.get(k) ?? key, shop: shops.shops.has(k) || shops.tokenShops.has(k), buff: shops.npcBuffs.has(k), craft: craftNpcs.has(k), tower: k === TOWER_NPC, smith: [...(shops.npcMenus.get(k) ?? [])] };
         void (quests ? quests.menuFor(c, key) : Promise.resolve([])).then((q) => send(ws, { ...base, quests: q })).catch((e) => console.error('realtime: menu do NPC', e));
       } else if (msg.t === 'quest' && c.player && typeof msg.id === 'string' && typeof msg.key === 'string' && quests) {
         const id = msg.id.slice(0, 64), key = msg.key.slice(0, 40), op = msg.op, q = quests;
@@ -2816,6 +2856,10 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         npcBuff(c, msg.key.slice(0, 40));
       } else if (msg.t === 'buffOff' && c.player && Number.isInteger(msg.id)) {
         removeBuff(c, msg.id as number);
+      } else if (msg.t === 'tower' && c.player) {
+        towerList(c);
+      } else if (msg.t === 'towerGo' && c.player && Number.isInteger(msg.k)) {
+        void towerGo(c, msg.k as number);
       } else if (msg.t === 'teleports') {
         send(ws, { t: 'teleports', list: teleportView() });
       } else if (msg.t === 'zckTeleport' && c.player && Number.isInteger(msg.k)) {

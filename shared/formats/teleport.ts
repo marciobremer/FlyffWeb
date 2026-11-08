@@ -29,10 +29,10 @@ export function parseTeleports(text: string): TeleportDest[] {
 /**
  * `AegonTeleporter.inc` (Titanium, janela Teleporter): blocos `Teleport { nameList "…" nameHeader "…" nameImage "…" type 0|1|2
  * teleporterWnd 0|1 descrTID TID_… cost N worldID WI_… pos x y z item II_… … }`. type: 0 cidade, 1 coleta, 2 dungeon;
- * teleporterWnd 1 é a janela da Heaven Tower (fica de fora). `desc` aqui é o TID; quem resolve o texto é o servidor.
+ * teleporterWnd 1 é a janela da Heaven Tower (`want` = 1 devolve só essas; o padrão 0 deixa elas de fora). `desc` aqui é o TID; quem resolve o texto é o servidor.
  */
 export interface AegonTeleport { name: string; header: string; image: string; type: number; desc: string; cost: number; world: string; pos: [number, number, number]; items: string[] }
-export function parseAegonTeleports(text: string): AegonTeleport[] {
+export function parseAegonTeleports(text: string, want = 0): AegonTeleport[] {
   const src = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
   const tok = src.match(/"[^"]*"|[{}]|[^\s{}"]+/g) ?? [];
   const str = (t: string | undefined) => (t ?? '').replace(/^"|"$/g, '');
@@ -55,7 +55,7 @@ export function parseAegonTeleports(text: string): AegonTeleport[] {
       else if (k === 'item') t.items.push(tok[++i]);
       else if (k === 'fAngle' || k === 'worldDungeon' || k === 'shortcutTex') i++;
     }
-    if (wnd === 0 && t.world && t.pos.every(Number.isFinite)) out.push(t);
+    if (wnd === want && t.world && t.pos.every(Number.isFinite)) out.push(t);
   }
   return out;
 }

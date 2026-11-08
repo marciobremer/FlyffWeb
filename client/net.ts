@@ -342,6 +342,8 @@ export class NetClient {
   onPetFind: (list: [number, string, string][]) => void = () => {};
   /** destinos da janela Teleporter (pedidos com teleports()) */
   onTeleports: (list: import('./teleport').TeleportView[]) => void = () => {};
+  /** andares da Heaven Tower (pedidos com tower()) */
+  onTower: (list: import('./teleport').TeleportView[]) => void = () => {};
   /** relógio do servidor (dia e noite) e a hora fixada pelo GM (null = andando) */
   onClock: (now: number, fixed: number | null) => void = () => {};
   /** o servidor mandou trocar de mundo (ticket de Azria, teleporte para outro mapa) */
@@ -365,7 +367,7 @@ export class NetClient {
   onEmote: (id: number, motion: string, mode: number) => void = () => {};
   onEmo: (id: number, index: number) => void = () => {};
   /** o que o NPC clicado oferece (abre o menu do NPC) */
-  onNpcMenu: (m: { key: string; name: string; shop: boolean; buff: boolean; craft: boolean; smith: string[]; quests: { id: string; name: string; st: 'offer' | 'active' | 'ready' }[] }) => void = () => {};
+  onNpcMenu: (m: { key: string; name: string; shop: boolean; buff: boolean; craft: boolean; tower: boolean; smith: string[]; quests: { id: string; name: string; st: 'offer' | 'active' | 'ready' }[] }) => void = () => {};
   onQuestDialog: (d: QuestDialog) => void = () => {};
   onQuests: (list: QuestEntry[]) => void = () => {};
   /** clima do mapa onde está: chovendo ou não */
@@ -521,6 +523,8 @@ export class NetClient {
         this.onPetGo(Number(m.a), Number(m.x), Number(m.z), Number(m.ms) || 0);
       } else if (m.t === 'petFilter') {
         this.onPetFilter(m.f as import('../shared/petfilter').PetFilter, (m.n ?? {}) as Record<number, [string, string]>);
+      } else if (m.t === 'tower') {
+        this.onTower((m.list ?? []) as import('./teleport').TeleportView[]);
       } else if (m.t === 'teleports') {
         this.onTeleports((m.list ?? []) as import('./teleport').TeleportView[]);
       } else if (m.t === 'petFind') {
@@ -559,7 +563,7 @@ export class NetClient {
       } else if (m.t === 'emo') {
         this.onEmo(Number(m.id), Number(m.i));
       } else if (m.t === 'npcMenu') {
-        this.onNpcMenu({ key: String(m.key), name: String(m.name ?? ''), shop: !!m.shop, buff: !!m.buff, craft: !!m.craft, smith: Array.isArray(m.smith) ? (m.smith as string[]) : [], quests: Array.isArray(m.quests) ? (m.quests as { id: string; name: string; st: 'offer' | 'active' | 'ready' }[]) : [] });
+        this.onNpcMenu({ key: String(m.key), name: String(m.name ?? ''), shop: !!m.shop, buff: !!m.buff, craft: !!m.craft, tower: !!m.tower, smith: Array.isArray(m.smith) ? (m.smith as string[]) : [], quests: Array.isArray(m.quests) ? (m.quests as { id: string; name: string; st: 'offer' | 'active' | 'ready' }[]) : [] });
       } else if (m.t === 'questDlg') {
         this.onQuestDialog(m as unknown as QuestDialog);
       } else if (m.t === 'weather') {
@@ -691,6 +695,8 @@ export class NetClient {
   petFind(q: string) { return this.raw({ t: 'petFind', q }); }
   /** pede a lista de destinos do teleporte */
   teleports() { return this.raw({ t: 'teleports' }); }
+  tower() { return this.raw({ t: 'tower' }); }
+  towerGo(k: number) { return this.raw({ t: 'towerGo', k }); }
   /** painel de GM: busca no catálogo de itens (nome/símbolo, categoria) */
   wiki(p: { req: number; q: string; cat: string; job: number; sex: number; lo: number; hi: number; sort: string; desc: boolean; off: number; n: number }) { return this.raw({ t: 'wiki', ...p }); }
   wikiTip(id: number) { return this.raw({ t: 'wikiTip', id }); }

@@ -139,6 +139,10 @@ questLog.onAbandon = (id) => { net.quest('abandon', id); };
 hud.onQuests = () => questLog.toggle();
 teleportWnd.onTeleport = (k) => { if (!net.zckTeleport(k)) chat.system(t('Sem conexão com o servidor.')); };
 teleportWnd.onLoad = () => net.teleports();
+/** Heaven Tower (Forsaken Tower Manager): os andares B1…B6 com o preço; o servidor confere a distância do NPC, o penya e o combate */
+const towerWnd = new TeleportWindow(document.body, { id: 'towerWnd', title: 'Heaven Tower', store: 'flyff.wnd.tower', go: 'Entrar', filter: false, head: 'Andares', label: (d) => d.name });
+towerWnd.onTeleport = (k) => { if (!net.towerGo(k)) chat.system(t('Sem conexão com o servidor.')); };
+towerWnd.onLoad = () => net.tower();
 /** janela de movimentos (tecla O): movimento no personagem (os outros veem pelo servidor) e emoticon acima da cabeça */
 const motionWnd = new MotionWindow(document.body);
 hud.onMotion = () => motionWnd.toggle();
@@ -326,6 +330,7 @@ net.onNpcMenu = (m) => {
   const opts: NpcMenuOption[] = [];
   if (m.shop) opts.push({ label: t('Comércio'), run: () => net.shopOpen(m.key) });
   if (m.buff) opts.push({ label: t('Receber Buffs!'), run: () => net.npcBuff(m.key) });
+  if (m.tower) opts.push({ label: t('Heaven Tower'), run: () => towerWnd.show() });
   if (m.craft) opts.push({ label: t('Craft'), run: () => craftWnd.show() }); // o servidor só deixa fabricar perto do NPC de craft
   // quests do NPC: ❗ oferece, … em andamento, ✔ pronta para entregar
   for (const q of m.quests) opts.push({ label: `${q.st === 'offer' ? '❗' : q.st === 'ready' ? '✔' : '…'} ${q.name}`, run: () => net.quest('open', q.id, m.key) });
@@ -859,6 +864,7 @@ net.onGmFly = (on) => { if (view.player) view.player.gmFly = on; gmPanel.setFly(
 /** diferença entre o relógio do servidor e o deste computador; hora fixada pelo GM (//time) */
 let clockOffset = 0, clockFixed: number | null = null;
 net.onTeleports = (list) => teleportWnd.set(list);
+net.onTower = (list) => towerWnd.set(list);
 const rain = new Rain(view);
 net.onWeather = (on) => { if (on !== rain.raining) chat.system(on ? t('Começou a chover.') : t('A chuva parou.')); rain.set(on); };
 net.onQuestDialog = (d) => questDlg.open(d);
@@ -1417,7 +1423,7 @@ async function backToLogin() {
   view.player?.remove();
   view.labelRenderer.domElement.hidden = false;
   hud.hide();
-  inventory.hide(); inventory.clear(); delBox.hide(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); miniMap.hide(); worldMap.hide(); smithWnd.hide(); shopWnd.hide(); skillWnd.hide(); teleportWnd.hide(); questDlg.hide(); questLog.hide(); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
+  inventory.hide(); inventory.clear(); delBox.hide(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); miniMap.hide(); worldMap.hide(); smithWnd.hide(); shopWnd.hide(); skillWnd.hide(); teleportWnd.hide(); towerWnd.hide(); questDlg.hide(); questLog.hide(); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
   $('help').hidden = true;
   $('charScreen').hidden = true;
   $('loginScreen').hidden = false;
