@@ -111,6 +111,11 @@ export class SfxInstance {
   once = false;
   /** altura (u) acima da qual as partes do efeito são rebaixadas para o chão (null = como no arquivo) */
   flattenAbove: number | null = null;
+  /**
+   * Efeito preso numa arma (brilho do enchant/elemento): a orientação inteira vem da matriz da arma e os quadros "normais" ficam como
+   * no original — o quad nasce no plano XY (sem deitar em X 90°) e as peças de malha também giram com a arma.
+   */
+  fullPose = false;
   done = false;
   private age = 0;
   maxAge = 4;
@@ -318,7 +323,7 @@ export class SfxInstance {
       default: {
         const r = key.rotate.map(rad) as V3;
         // SFXPARTBILLTYPE_NORMAL: o quad do original fica deitado (plano XZ) — círculos mágicos e anéis de skill ficam no chão; a rotação da chave vem depois
-        const m = rowScale(...s).multiply(rowRotX(rad(90))).multiply(rowYPR(r[1], r[0], r[2])).multiply(this.matRot).multiply(rowTrans(...trans));
+        const m = rowScale(...s).multiply(this.fullPose ? new Matrix4() : rowRotX(rad(90))).multiply(rowYPR(r[1], r[0], r[2])).multiply(this.matRot).multiply(rowTrans(...trans));
         mesh.matrix.copy(this.rowToLocal(m));
       }
     }
@@ -330,11 +335,11 @@ export class SfxInstance {
     if (!node.extra) return;
     if (!key) { node.extra.forEach((m) => (m.visible = false)); return; }
     const s: V3 = [this.scale[0] * key.scale[0], this.scale[1] * key.scale[1], this.scale[2] * key.scale[2]];
-    const yaw = rad(this.source.rot[1]);
+    const yaw = this.fullPose ? 0 : rad(this.source.rot[1]);
     const rot = [rad(key.rotate[0]), rad(key.rotate[1]) + yaw, rad(key.rotate[2])];
     const pr = [rad(key.posRotate[0]), rad(key.posRotate[1]) + yaw, rad(key.posRotate[2])];
-    const t = transformCoord(key.pos, rowYPR(pr[1], pr[0], pr[2]));
-    const m = rowScale(...s).multiply(rowYPR(rot[1], rot[0], rot[2])).multiply(rowTrans(this.pos[0] + t[0] * this.scale[0], this.pos[1] + t[1] * this.scale[1], this.pos[2] + t[2] * this.scale[2]));
+    const t = transformCoord(key.pos, this.fullPose ? this.matRot.clone().multiply(rowYPR(pr[1], pr[0], pr[2])) : rowYPR(pr[1], pr[0], pr[2]));
+    const m = rowScale(...s).multiply(rowYPR(rot[1], rot[0], rot[2])).multiply(this.fullPose ? this.matRot : new Matrix4()).multiply(rowTrans(this.pos[0] + t[0] * this.scale[0], this.pos[1] + t[1] * this.scale[1], this.pos[2] + t[2] * this.scale[2]));
     const local = this.rowToLocal(m);
     for (const mesh of node.extra) {
       mesh.visible = true;
@@ -501,6 +506,7 @@ export class SfxManager {
   /** efeito preso numa matriz do mundo Three enquanto `alive()` (repete sem parar); null = escondido (brilho de arma: posição e giro da arma) */
   playAttachedPose(file: string, scale: V3, alive: () => boolean, getMatrix: () => Matrix4 | null) {
     this.spawn(file, [0, 0, 0], 0, (inst) => {
+      inst.fullPose = true;
       if (!alive()) return true;
       const m = getMatrix();
       inst.group.visible = !!m;
