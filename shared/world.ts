@@ -17,7 +17,7 @@ import { MoverManager, setMoverNight, type MoverInstance } from './movers';
 import { CollisionWorld } from './collision';
 import { TargetWindow } from './target';
 import { Player } from './player';
-import { humanKey, isHumanEntry, loadHumanTemplate, type HumanSpec, type Sex } from './humans';
+import { handAttachment, humanKey, isHumanEntry, loadHumanTemplate, type HumanSpec, type Sex } from './humans';
 import { SfxLibrary, SfxManager } from './sfxRuntime';
 import { WaterSystem } from './water';
 import { Sky } from './sky';
@@ -684,7 +684,7 @@ export class WorldView {
   }
   /** efeito do conjunto +3…+10 (shared/setSfx.ts) preso no personagem; chamar de novo troca/desliga o anterior */
   attachSetSfx(inst: MoverInstance, equip: string[]) {
-    attachSetSfx(this.sfxMgr, (id) => this.sfxFile(id), inst, equip, () => this.layers.sfx);
+    attachSetSfx(this.sfxMgr, (id) => this.sfxFile(id), inst, equip, () => this.layers.sfx, (sym) => (this.data ? handAttachment(this.data, sym) : null));
   }
 
   sfxFile(id: number) {

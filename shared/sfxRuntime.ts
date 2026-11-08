@@ -17,6 +17,7 @@ import { rowRotX, rowRotZ, rowScale, rowTrans, rowYPR, TICKS_PER_SEC, transformC
 const rad = (d: number) => (d * Math.PI) / 180;
 // ritmo do Neuz (62,5 tiques/s): shared/math.ts
 const flip = new Matrix4().makeScale(1, 1, -1);
+const poseP = new Vector3(), poseS = new Vector3(), poseQ = new Quaternion(), poseR = new Matrix4();
 
 // ---------------------------------------------------------------- biblioteca
 export class SfxLibrary {
@@ -235,6 +236,17 @@ export class SfxInstance {
 
   /** muda a posição (efeitos que se movem) */
   place(x: number, y: number, z: number) { this.pos = [x, y + 0.2, z]; }
+
+  /**
+   * Prende o efeito a uma matriz do mundo Three (posição e orientação — o brilho de arma gira com a arma): a posição vira FlyFF
+   * (z invertido) e a rotação vai para `matRot`, em matriz linha do D3D = transposta de F·R·F (F espelha o Z).
+   */
+  placeMatrix(world: Matrix4) {
+    world.decompose(poseP, poseQ, poseS);
+    this.pos = [poseP.x, poseP.y, -poseP.z];
+    const r = poseR.makeRotationFromQuaternion(poseQ);
+    this.matRot = flip.clone().multiply(r).multiply(flip).transpose();
+  }
 
   /** translação D3D: pos + TransformCoord(key.pos, matRot·YPR(posRotate))·scale */
   private anchor(key: SfxKey, withKeyRotate: boolean): V3 {
@@ -481,6 +493,16 @@ export class SfxManager {
       if (k >= 1) { onEnd(); return true; }
       return false;
     });
+  }
+  /** efeito preso numa matriz do mundo Three enquanto `alive()` (repete sem parar); null = escondido (brilho de arma: posição e giro da arma) */
+  playAttachedPose(file: string, scale: V3, alive: () => boolean, getMatrix: () => Matrix4 | null) {
+    this.spawn(file, [0, 0, 0], 0, (inst) => {
+      if (!alive()) return true;
+      const m = getMatrix();
+      inst.group.visible = !!m;
+      if (m) inst.placeMatrix(m);
+      return false;
+    }, scale);
   }
   /** efeito de uma vez só que acompanha `getPos()` até acabar (level up, buff de NPC: anda junto com o personagem) */
   playFollowOnce(file: string, getPos: () => V3 | null, rotY = 0, flattenAbove: number | null = null) {

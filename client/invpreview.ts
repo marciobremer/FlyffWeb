@@ -3,7 +3,7 @@ import { MoverInstance, type MoverTemplate } from '../shared/movers';
 import { motionOf } from '../shared/motions';
 import { applyEnchantGlow } from '../shared/enchantGlow';
 import type { WorldData } from '../shared/data';
-import type { Sex } from '../shared/humans';
+import { handAttachment, type Sex } from '../shared/humans';
 import type { WorldObject } from '../shared/formats/types';
 import { SfxManager, type SfxLibrary } from '../shared/sfxRuntime';
 import { attachSetSfx } from '../shared/setSfx';
@@ -69,7 +69,7 @@ export class InventoryPreview {
     this.inst = inst;
     if (sfx) {
       this.sfxMgr ??= new SfxManager(this.sfxGroup, sfx.lib);
-      attachSetSfx(this.sfxMgr, sfx.fileOf, inst, equip);
+      attachSetSfx(this.sfxMgr, sfx.fileOf, inst, equip, () => true, data ? (sym) => handAttachment(data, sym) : undefined);
     }
     // enquadra pela altura do modelo
     const h = Math.max(1.2, tpl.height + (tpl.lift ?? 0));

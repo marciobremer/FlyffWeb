@@ -1,5 +1,5 @@
-import { Vector3 } from 'three';
-import { GLOW_TAG } from './look';
+import { Matrix4, Vector3 } from 'three';
+import { GLOW_TAG, parseLook } from './look';
 import type { MoverInstance } from './movers';
 import type { SfxManager } from './sfxRuntime';
 
@@ -33,11 +33,13 @@ const SET_SFX_LAYOUT: Record<number, SetSfxSpot[]> = {
  * Prende os efeitos do nível do conjunto (`~glow:N` na lista do visual) em `inst`. `fileOf` dá o arquivo .sfx de um id
  * XI_*; `enabled` desliga sem desmontar (camada de efeitos). Chamar de novo (troca de equipamento) desliga os anteriores.
  */
-export function attachSetSfx(mgr: SfxManager, fileOf: (id: number) => string, inst: MoverInstance, equip: string[], enabled: () => boolean = () => true) {
+export function attachSetSfx(mgr: SfxManager, fileOf: (id: number) => string, inst: MoverInstance, equip: string[], enabled: () => boolean = () => true,
+  hand?: (sym: string) => { file: string } | null) {
   const tag = equip.find((s) => s.startsWith(GLOW_TAG));
   const level = tag ? Number(tag.slice(GLOW_TAG.length)) : 0;
   const token = {};
   inst.setSfxToken = token;
+  if (hand) attachWeaponSfx(mgr, fileOf, inst, equip, enabled, hand, token);
   const layout = SET_SFX_LAYOUT[level];
   if (!layout) return;
   const body = fileOf(1716 + level), hands = fileOf(1735);
@@ -64,5 +66,51 @@ export function attachSetSfx(mgr: SfxManager, fileOf: (id: number) => string, in
       // posição FlyFF (z invertido); o original desce 0,05 + o deslocamento; place() soma 0,2 de volta
       return [a.x, a.y - 0.05 - offY - 0.2, -a.z];
     });
+  }
+}
+
+/**
+ * Brilho da arma (CModelObject::CreateWeaponEffect do original, __NEW_WEAPON_GLOW): dois .sfx presos na arma, que giram com ela —
+ * o do enchant (XI_WEA_<TIPO>01 + nível−1) e o do elemento (a mesma base + 5 fogo / 10 água / 15 vento / 20 elétrico / 25 terra +
+ * nível−1). Nível do enchant: +3 → 1, +5 → 2, +7 → 3, +9 → 4, +10 → 5. Nível do elemento: 3 → 1, 6 → 2, 11 → 3, 16 → 4, 20 → 5 (o brilho
+ * máximo). Vale para a arma da mão direita, a 2ª da Blade e o escudo (que usa o sfx do ioiô, como no original).
+ */
+const WEAPON_SFX: [RegExp, number, number][] = [
+  [/^II_WEA_SWO_/, 1955, 0.1], [/^II_WEA_SWT_/, 1985, 0], [/^II_WEA_AXE_/, 2015, 0.1], [/^II_WEA_AXT_/, 2045, 0.1], [/^II_WEA_YOY_/, 2075, 0],
+  [/^II_WEA_KNU_/, 2105, 0.1], [/^II_WEA_CHEE?_/, 2135, 0], [/^II_WEA_STA_/, 2165, 0], [/^II_WEA_BOW_/, 2225, 0], [/^II_WEA_WAN_/, 2315, 0.1],
+  [/^II_ARM_ARM_SHI_/, 2075, 0],
+];
+/** elemento (1 fogo, 2 água, 3 elétrico, 4 vento, 5 terra) → deslocamento do id do sfx */
+const ELEMENT_SFX = [0, 5, 10, 20, 15, 25];
+const enchantTier = (u: number) => (u >= 10 ? 5 : u >= 9 ? 4 : u >= 7 ? 3 : u >= 5 ? 2 : u >= 3 ? 1 : 0);
+const elementTier = (el: number) => (el >= 20 ? 5 : el >= 16 ? 4 : el >= 11 ? 3 : el >= 6 ? 2 : el >= 3 ? 1 : 0);
+
+function attachWeaponSfx(mgr: SfxManager, fileOf: (id: number) => string, inst: MoverInstance, equip: string[], enabled: () => boolean,
+  hand: (sym: string) => { file: string } | null, token: object) {
+  const alive = () => inst.setSfxToken === token && !!inst.group.parent && enabled();
+  const world = new Matrix4(), off = new Matrix4();
+  for (const s of equip) {
+    const { sym, u, e, el } = parseLook(s);
+    const kind = WEAPON_SFX.find(([re]) => re.test(sym));
+    const h = kind && hand(sym);
+    if (!kind || !h) continue;
+    const [, base, shift] = kind;
+    const ids: number[] = [];
+    if (enchantTier(u)) ids.push(base + enchantTier(u) - 1);
+    if (e > 0 && e < ELEMENT_SFX.length && elementTier(el)) ids.push(base + ELEMENT_SFX[e] + elementTier(el) - 1);
+    if (!ids.length) continue;
+    const file = h.file.toLowerCase();
+    // a malha da arma na mão (a matriz dela já tem o osso e o m_mLocalRH/LH/Shield, como o m1 do original)
+    const mesh = () => inst.meshFiles.find((m) => m.file.toLowerCase() === file)?.mesh ?? null;
+    for (const id of ids) {
+      const sfx = fileOf(id);
+      if (!sfx) continue;
+      mgr.playAttachedPose(sfx, [1, 1, 1], alive, () => {
+        const m = mesh();
+        if (!m) return null;
+        inst.modelSpace.updateWorldMatrix(true, false);
+        return world.multiplyMatrices(inst.modelSpace.matrixWorld, m.matrix).multiply(off.makeTranslation(shift, 0, 0));
+      });
+    }
   }
 }

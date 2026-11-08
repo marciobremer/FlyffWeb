@@ -120,6 +120,7 @@ export class EnchantGlow {
         continue;
       }
       const { sym, u, e, el } = parseLook(s);
+      if (!setAura) continue; // com os .sfx do mundo, o brilho da arma também vem deles (shared/setSfx.ts attachWeaponSfx)
       if (u < GLOW_FROM && !e) continue;
       const hand = handAttachment(data, sym);
       const meshes = hand ? byFile(hand.file) : [];
