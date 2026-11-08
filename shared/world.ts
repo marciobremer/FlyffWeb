@@ -74,6 +74,8 @@ export class WorldView {
   /** filtro de tela (painel "Filtro" do editor; o salvo no ambiente do mundo vale no jogo) */
   readonly postfx: PostFx;
   readonly labelRenderer = new CSS2DRenderer();
+  /** conta GM/admin: o nome dos monstros mostra ID e nível */
+  staffLabels = false;
   readonly scene = new Scene();
   readonly skyScene = new Scene();
   readonly camera = new PerspectiveCamera(60, 1, 1, 30000);
@@ -743,7 +745,9 @@ export class WorldView {
     // nome acima da cabeça: mobs = nome do propMover; NPCs = SetName do character.inc, senão o do propMover
     // NPCs e os mobs de cidade que não são monstros (guardas, cidadãos): COLOR_NPC; boss: vermelho
     mm.labelClassOf = (owner, obj) => (owner === 'movers' || (owner === 'spawns' && !d.monsterMovers.has(obj.modelId)) ? 'npc'
-      : owner === 'spawns' && d.bossMovers.has(obj.modelId) ? 'boss' : undefined);
+      : owner === 'spawns' && d.bossMovers.has(obj.modelId) ? 'boss' : owner === 'spawns' ? 'mob' : undefined);
+    // GM/admin veem o ID e o nível do monstro no nome
+    mm.labelDecor = (owner, obj) => this.staffLabels && owner === 'spawns' && d.monsterMovers.has(obj.modelId) ? [`<ID ${obj.modelId}> `, ` <Lvl ${d.moverLevel.get(obj.modelId) ?? 1}>`] : null;
     mm.labelOf = (owner, obj) => owner === 'spawns' ? d.moverNames.get(obj.modelId) ?? null
       : (obj.characterKey ? d.characters.get(obj.characterKey.toLowerCase())?.name : undefined) ?? d.moverNames.get(obj.modelId) ?? null;
     mm.speedOf = (id) => d.moverSpeed.get(id) ?? 0;

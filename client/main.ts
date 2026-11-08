@@ -1246,6 +1246,7 @@ async function doLogin(cred: { username: string; password?: string; remember?: s
     if (keep && cred.password) await rememberLogin(reply.account.username, reply.token);
     token = reply.token; account = reply.account; characters = reply.characters;
     setTipStaff(!!rankOf(account?.authority)); // só GM/admin veem o ID do item na dica
+    view.staffLabels = !!rankOf(account?.authority); // e o ID/nível dos monstros
     try { sessionStorage.setItem('flyff.token', token); } catch { /* sem armazenamento */ }
     await worldReady;
     sayLogin('Carregando personagens…');
@@ -1407,6 +1408,7 @@ async function backToLogin() {
   try { await api('/gapi/logout', { method: 'POST' }); } catch { /* sessão já expirada */ }
   token = ''; account = null; characters = []; selectedSlot = null; previewing = false;
   setTipStaff(false);
+  view.staffLabels = false;
   stage.stop();
   view.controls.enabled = true;
   try { sessionStorage.removeItem('flyff.token'); } catch { /* sem armazenamento */ }

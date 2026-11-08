@@ -412,11 +412,11 @@ export class MoverInstance {
    * `rank` pinta o nome (classes em world.css); admin e GM ganham o prefixo [Admin] / [GM] — `dataset.name` fica só com o
    * nome. `lift` = distância acima da cabeça (jogadores usam menos que NPCs).
    */
-  setLabel(text: string, rank?: string, lift = 0.6) {
+  setLabel(text: string, rank?: string, lift = 0.6, decor?: [string, string]) {
     this.label?.removeFromParent();
     const el = document.createElement('div');
     el.className = rank ? `npc-label ${rank}` : 'npc-label';
-    el.textContent = rank === 'admin' ? `[Admin] ${text}` : rank === 'gm' ? `[GM] ${text}` : text;
+    el.textContent = rank === 'admin' ? `[Admin] ${text}` : rank === 'gm' ? `[GM] ${text}` : decor ? `${decor[0]}${text}${decor[1]}` : text;
     el.dataset.name = text;
     this.labelLift = lift;
     this.label = new CSS2DObject(el);
@@ -533,6 +533,8 @@ export class MoverManager {
   labelOf: (owner: string, obj: WorldObject) => string | null = () => null;
   /** classe extra do nome (ex.: 'boss' = vermelho) */
   labelClassOf: (owner: string, obj: WorldObject) => string | undefined = () => undefined;
+  /** texto antes/depois do nome (só GM/admin: `<ID 607> Nome <Lvl 91>`); null = só o nome */
+  labelDecor: (owner: string, obj: WorldObject) => [string, string] | null = () => null;
   /** nomes só até esta distância da câmera */
   labelDistance = 70;
 
@@ -635,7 +637,7 @@ export class MoverManager {
         const inst = new MoverInstance(tpl, c.obj, objectMatrix(o, new Matrix4()));
         inst.owner = c.owner;
         const label = this.labelOf(c.owner, c.obj);
-        if (label) inst.setLabel(label, this.labelClassOf(c.owner, c.obj));
+        if (label) inst.setLabel(label, this.labelClassOf(c.owner, c.obj), 0.6, this.labelDecor(c.owner, c.obj) ?? undefined);
         this.parent.add(inst.group);
         this.active.set(c.obj, inst);
         if (grounded && h === null) this.needsHeight.set(c.obj, inst);
@@ -700,7 +702,7 @@ export class MoverManager {
       inst.owner = pet ? 'pets' : 'spawns';
       const label = pet ? null : this.labelOf('spawns', obj);
       // mob agressivo (ataca quem chega perto): nome vermelho; o servidor diz qual é (a lista dos agressivos é por respawn)
-      if (label) inst.setLabel(label, aggressive ? 'boss' : this.labelClassOf('spawns', obj));
+      if (label) inst.setLabel(label, aggressive ? 'boss' : this.labelClassOf('spawns', obj), 0.6, this.labelDecor('spawns', obj) ?? undefined);
       inst.play(...mobMotion(e.s));
       this.parent.add(inst.group);
       this.active.set(obj, inst);
