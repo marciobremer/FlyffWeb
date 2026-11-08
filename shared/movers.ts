@@ -407,7 +407,8 @@ export class MoverInstance {
   /** nome acima da cabeça (CSS2D); removido junto com a instância */
   label: CSS2DObject | null = null;
   /** altura do nome acima da cabeça (m); o balão de fala fica logo acima dele */
-  private labelLift = 0.6;
+  private labelLift = 0;
+  private labelGap = 30;
   /**
    * `rank` pinta o nome (classes em world.css); admin e GM ganham o prefixo [Admin] / [GM] — `dataset.name` fica só com o
    * nome. `lift` = distância acima da cabeça (jogadores usam menos que NPCs).
@@ -418,9 +419,12 @@ export class MoverInstance {
     el.className = rank ? `npc-label ${rank}` : 'npc-label';
     el.textContent = rank === 'admin' ? `[Admin] ${text}` : rank === 'gm' ? `[GM] ${text}` : decor ? `${decor[0]}${text}${decor[1]}` : text;
     el.dataset.name = text;
-    this.labelLift = lift;
+    // folga fixa em pixels acima da cabeça (não muda com o zoom da câmera, que aproximava/afastava o nome)
+    this.labelGap = lift <= 0.3 ? 24 : 30;
+    el.style.marginTop = `-${this.labelGap}px`;
+    this.labelLift = 0;
     this.label = new CSS2DObject(el);
-    this.label.position.set(0, this.tpl.height + lift, 0);
+    this.label.position.set(0, this.tpl.height, 0);
     this.group.add(this.label);
   }
 
@@ -446,7 +450,8 @@ export class MoverInstance {
       this.bubble = new CSS2DObject(el);
       // preso pela base: texto de várias linhas ou emoticon crescem para cima, sem cobrir o nome
       this.bubble.center.set(0.5, 1);
-      this.bubble.position.set(0, this.tpl.height + this.labelLift + 0.2, 0);
+      this.bubble.position.set(0, this.tpl.height, 0);
+      this.bubble.element.style.marginTop = `-${this.labelGap + (this.label?.element.offsetHeight ?? 20) + 6}px`;
       this.group.add(this.bubble);
     }
     // texto, ou um elemento pronto (emoticon da janela de movimentos)
