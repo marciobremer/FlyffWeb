@@ -85,6 +85,10 @@ let player: { sex?: number; job?: number; level?: number } = {};
 /** sexo, classe e nível do personagem (para pintar de vermelho o que ele não pode usar) */
 export function setTipPlayer(p: { sex?: number; job?: number; level?: number }) { player = { ...player, ...p }; }
 
+/** conta GM/admin: a dica mostra o ID do item embaixo do nome */
+let showIds = false;
+export function setTipStaff(on: boolean) { showIds = on; }
+
 type Line = { text: string; cls?: string; color?: string; gap?: boolean };
 
 function lines(d: ItemView, it: TipItem, elementNames: string[]): Line[] {
@@ -169,6 +173,7 @@ function box(d: ItemView, it: TipItem, elementNames: string[], header?: string):
   name.textContent = `${rare ? `${rare.name} ` : ''}${d.name}${it.u ? ` +${it.u}` : ''}`;
   if (rare) name.style.color = rare.color;
   el.appendChild(name);
+  if (showIds) { const id = document.createElement('div'); id.className = 'tip-id'; id.textContent = `Item-ID: ${d.id}`; el.appendChild(id); }
   for (const l of lines(d, it, elementNames)) {
     const row = document.createElement('div');
     row.textContent = l.text;

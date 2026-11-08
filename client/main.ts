@@ -11,7 +11,7 @@ import { type SkillFx, NetClient, RemotePlayers } from './net';
 import { ActionBar, ChatWindow, InventoryWindow, type BarItem } from './ui';
 import { CraftWindow } from './craft';
 import { ItemTimeWindow } from './itemtime';
-import { setFailStack, setRarities, setTipPlayer } from './itemtip';
+import { setFailStack, setRarities, setTipPlayer, setTipStaff } from './itemtip';
 import { Announcer } from './announce';
 import { VersionWatcher } from './version';
 import { GmPanel } from './gmpanel';
@@ -1214,6 +1214,7 @@ async function doLogin(cred: { username: string; password?: string; remember?: s
     // "Salvar conta" marcado ao entrar com a senha: guarda já com o token (próxima vez é só dar dois cliques)
     if (keep && cred.password) await rememberLogin(reply.account.username, reply.token);
     token = reply.token; account = reply.account; characters = reply.characters;
+    setTipStaff(!!rankOf(account?.authority)); // só GM/admin veem o ID do item na dica
     try { sessionStorage.setItem('flyff.token', token); } catch { /* sem armazenamento */ }
     await worldReady;
     sayLogin('Carregando personagens…');
@@ -1364,6 +1365,7 @@ async function backToLogin() {
   net.close();
   try { await api('/gapi/logout', { method: 'POST' }); } catch { /* sessão já expirada */ }
   token = ''; account = null; characters = []; selectedSlot = null; previewing = false;
+  setTipStaff(false);
   stage.stop();
   view.controls.enabled = true;
   try { sessionStorage.removeItem('flyff.token'); } catch { /* sem armazenamento */ }

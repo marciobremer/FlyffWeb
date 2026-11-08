@@ -475,6 +475,7 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 .item-tip { min-width: 170px; max-width: 320px; padding: 6px 9px 7px; background: rgb(255 253 249 / .96); border: 2px solid #e2895a; border-radius: 6px; color: #000; font: 12px/1.5 Tahoma, Verdana, system-ui, sans-serif; box-shadow: 0 0 0 1px #fff inset, 0 2px 8px rgb(0 0 0 / .45); }
 .item-tip .tip-head { color: #555; font-weight: 700; border-bottom: 1px solid #e8c8b0; margin-bottom: 3px; }
 .item-tip .tip-name { color: #000; font-weight: 700; }
+.item-tip .tip-id { color: #8a8a8a; font-size: 11px; }
 .item-tip .tip-name.grade-unique { color: #0a7d0a !important; text-shadow: none; }
 .item-tip .tip-name.grade-ultimate { color: #8a2be2 !important; text-shadow: none; }
 .item-tip .tip-name.grade-baruna { color: #d86a00 !important; text-shadow: none; }
