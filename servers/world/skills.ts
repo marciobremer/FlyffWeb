@@ -25,6 +25,8 @@ export interface SkillDef {
   pre: [number, number][]; max: number; icon: string; melee: boolean; kind: SkillKind;
   /** tipos de arma (IK3_*) que a skill exige na mão direita; null = qualquer (ou sem arma) */
   weapon: number[] | null;
+  /** DIS_SHIELD (Protection do Mercenário…): só lança com escudo equipado; depois de lançada vale mesmo sem ele */
+  shield: boolean;
   /** debuff no mob alvo (EXT_ANOTHER com DST_SPEED e chance: Sneaker, Satanology…): para o mob de andar pela duração */
   hostile: boolean;
   refer: { stat: number; target: number; value: number }[];
@@ -112,6 +114,7 @@ export class SkillCatalog {
         id, symbol: sym, name: nt?.skills[sym]?.[0] || names.get((c[C.name] ?? '').trim()) || sym, desc: nt?.skills[sym]?.[1] ?? names.get((c[C.comment] ?? '').trim()) ?? '', jtype, job: num(c[C.k2]),
         reqLevel: Math.max(1, num(c[C.req])), pre, max: Math.min(lv.length, Math.max(1, num(c[C.max]) > 0 ? num(c[C.max]) : lv.length)),
         icon: (c[C.icon] ?? '').replace(/"/g, '').trim(), melee: (c[C.exe] ?? '').trim() === 'EXT_MELEEATK', kind: kindOf((c[C.exe] ?? '').trim()), refer, levels: lv,
+        shield: (c[C.dis] ?? '').trim() === 'DIS_SHIELD',
         weapon: kindOf((c[C.exe] ?? '').trim()) === 'magic' ? MAGIC_WEAPON : DIS_WEAPON[(c[C.dis] ?? '').trim()] ?? null,
         hostile: (c[C.exe] ?? '').trim() === 'EXT_ANOTHER' && lv.some((l) => l.dest[0] === this.D('DST_SPEED') && l.prob > 0),
         sfx: [C.sfx0, C.sfx1, C.sfx2, C.sfx3, C.sfx4].map((k) => (k < 0 ? -1 : num(c[k]))),

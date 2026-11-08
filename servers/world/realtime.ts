@@ -1756,6 +1756,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (!skillCat!.lineage(p.job).has(s.job)) return;
     if (s.kind === 'other') { reply(c, `${s.name} ainda não pode ser lançada.`); return; }
     if (!skillCat!.weaponOk(s, cb.f.weapon)) { reply(c, `${s.name} precisa de ${WEAPON_NAMES[s.weapon![0]] ?? 'outra arma'} equipada.`); return; }
+    if (s.shield && !cb.f.shield) { reply(c, `${s.name} precisa de um escudo equipado.`); return; }
     const now = Date.now();
     if ((cb.skillReady.get(skillId) ?? 0) > now) return;
     const L = s.levels[lv - 1];

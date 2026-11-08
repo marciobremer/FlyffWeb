@@ -52,6 +52,8 @@ export interface Fighter {
   wElem: [number, number]; sElem: [number, number];
   /** fAttackRate da raridade da arma da mão direita (__WEAPON_RARITY; 1 = Common) */
   wRare: number;
+  /** tem escudo equipado (slot 11) */
+  shield: boolean;
 }
 
 /** item equipado: definição, enchant, espaço (PARTS_*), cartas espetadas (piercing, 0 = furo vazio), elemento e joias da ultimate */
@@ -221,7 +223,7 @@ export class CombatRules {
       for (const n of ['STR', 'DEX', 'INT', 'STA']) add(this.D[n], added);
     }
     const f: Fighter = { level: ch.level, job: ch.job, str: ch.str, sta: ch.sta, dex: ch.dex, int: ch.int, base: { str: ch.str, sta: ch.sta, dex: ch.dex, int: ch.int },
-      weapon, weaponUpgrade, weaponMul: weapon ? 1 + this.expUpFor(weapon, weaponUpgrade) / 100 : 1, defMin, defMax, dst, adjHit, parry, wElem, sElem, wRare };
+      weapon, weaponUpgrade, weaponMul: weapon ? 1 + this.expUpFor(weapon, weaponUpgrade) / 100 : 1, defMin, defMax, dst, adjHit, parry, wElem, sElem, wRare, shield: equipped.some((e) => e.s === 11) };
     const all = this.dstOf(f, 'STAT_ALLUP');
     f.str += this.dstOf(f, 'STR') + all; f.sta += this.dstOf(f, 'STA') + all; f.dex += this.dstOf(f, 'DEX') + all; f.int += this.dstOf(f, 'INT') + all;
     return f;
