@@ -1,3 +1,5 @@
+import { gameConfirm } from './dialog';
+import { DeleteBox } from './delbox';
 import { LogoutCountdown } from './logout';
 import { WorldView } from '../shared/world';
 import { initLang, t, tr } from './lang';
@@ -730,6 +732,9 @@ net.onSmith = (ok, fx, s, text) => {
 inventory.onPierce = (card, target) => { if (!net.pierce(card, target)) { chat.system(t('Sem conexão com o servidor.')); inventory.cancelPierce(); } };
 inventory.onNotice = (text) => chat.system(text);
 inventory.onDiscard = (s, n) => { if (!net.invDrop(s, n)) chat.system(t('Sem conexão com o servidor.')); };
+const delBox = new DeleteBox(document.body, inventory);
+delBox.confirm = (text) => gameConfirm(text, 'Apagar');
+delBox.onDelete = (list) => { for (const x of list) if (!net.invDrop(x.s, x.n)) { chat.system(t('Sem conexão com o servidor.')); break; } };
 inventory.onSort = () => { if (!net.invSort()) chat.system(t('Sem conexão com o servidor.')); };
 net.onPierced = (ok, s) => {
   inventory.pierced(ok, s);
@@ -1374,7 +1379,7 @@ async function backToLogin() {
   view.player?.remove();
   view.labelRenderer.domElement.hidden = false;
   hud.hide();
-  inventory.hide(); inventory.clear(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); miniMap.hide(); worldMap.hide(); smithWnd.hide(); shopWnd.hide(); skillWnd.hide(); teleportWnd.hide(); questDlg.hide(); questLog.hide(); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
+  inventory.hide(); inventory.clear(); delBox.hide(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); miniMap.hide(); worldMap.hide(); smithWnd.hide(); shopWnd.hide(); skillWnd.hide(); teleportWnd.hide(); questDlg.hide(); questLog.hide(); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
   $('help').hidden = true;
   $('charScreen').hidden = true;
   $('loginScreen').hidden = false;

@@ -1,0 +1,10 @@
+.db { display: flex; flex-direction: column; gap: 6px; padding: 8px; font: 12px Tahoma, sans-serif; color: #222; background: #f4f0e8; }
+.db-note { margin: 0; color: #555; font-size: 11px; }
+.db-list { flex: 1; min-height: 0; overflow: auto; border: 1px solid #b9ae98; background: #fff; border-radius: 4px; padding: 2px; }
+.db-item { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 3px; cursor: grab; user-select: none; }
+.db-item:hover { background: #fdeceb; }
+.db-item.special span { color: #b9501f; font-weight: 700; }
+.db-item img { width: 32px; height: 32px; image-rendering: pixelated; }
+.db-empty { margin: 8px; color: #999; text-align: center; }
+.db-row { display: flex; gap: 6px; justify-content: flex-end; }
+.db-row .gm-btn:disabled { opacity: .5; cursor: default; }

@@ -240,6 +240,26 @@ export class InventoryWindow extends GameWindow {
   /** lixeira: apagar `n` do item do espaço `s` da bolsa / organizar a bolsa por tipo */
   onDiscard: (s: number, n: number) => void = () => {};
   onSort: () => void = () => {};
+  /** caixa de apagar (Ctrl + botão direito): espaços da bolsa separados para apagar (espaço → item) e aviso de que mudou */
+  readonly staged = new Map<number, number>();
+  onStage: () => void = () => {};
+  /** item raro/especial (unique, ultimate, baruna, upgrade, elemento, carta, joia, raridade): a caixa de apagar pergunta antes */
+  special(it: InvItem) { const d = this.defs.get(it.id); return it.u > 0 || !!it.e || !!it.r || !!it.p?.length || !!it.g?.length || (d?.gr ?? 100) > 100; }
+  /** separa o item do espaço `slot` da bolsa para apagar (só a bolsa; equipado não) */
+  stage(slot: number) {
+    const it = this.items.get(keyOf(BAG, slot));
+    if (!it) return;
+    this.staged.set(slot, it.id);
+    hideItemTip();
+    this.renderBag();
+    this.onStage();
+  }
+  /** devolve o item à bolsa (tira da caixa de apagar); sem espaço = tudo */
+  unstage(slot?: number) {
+    if (slot === undefined) this.staged.clear(); else if (!this.staged.delete(slot)) return;
+    this.renderBag();
+    this.onStage();
+  }
   /** piercing: espetar a carta do espaço `card` da bolsa na suit do espaço `target` / aviso para o chat */
   onPierce: (card: number, target: number) => void = () => {};
   /** martelo de upgrade: material do espaço `material` no item do espaço `target` (bolsa) */
@@ -327,7 +347,7 @@ export class InventoryWindow extends GameWindow {
     };
     tool(this.trash, 'inv-trash', 'Lixeira: arraste um item da bolsa até aqui para apagar', 'WndInventoryGarbage.dds');
     tool(this.sortBtn, 'inv-sort', 'Organizar a bolsa por tipo', 'WndInventoryAlign.dds');
-    this.sortBtn.addEventListener('click', () => { this.closeAsk(); this.onSort(); });
+    this.sortBtn.addEventListener('click', () => { this.closeAsk(); this.unstage(); this.onSort(); });
     const field = (out: HTMLOutputElement, label: string, icon: Promise<string | null>, cls: string) => {
       const row = document.createElement('div');
       row.className = `inv-money ${cls}`;
@@ -356,6 +376,10 @@ export class InventoryWindow extends GameWindow {
     for (const d of Object.values(defs)) this.defs.set(d.id, d);
     this.items.clear();
     for (const [c, s, id, n, u = 0, e = 0, el = 0, p, x, g, r, t] of items) this.items.set(keyOf(c, s), { c, s, id, n, u, e, el, ...(p?.length ? { p } : {}), ...(x ? { x } : {}), ...(g?.length ? { g } : {}), ...(r ? { r } : {}), ...(t ? { t } : {}) });
+    // o item separado para apagar sumiu ou mudou: sai da caixa de apagar
+    let dropped = false;
+    for (const [s, id] of [...this.staged]) if (this.items.get(keyOf(BAG, s))?.id !== id) { this.staged.delete(s); dropped = true; }
+    if (dropped) this.onStage();
     // a carta/o material escolhido sumiu (gasto, movido, trocado): sai do modo martelo
     if (this.pierceCard !== null && !this.pierceWaiting) { const it = this.items.get(keyOf(BAG, this.pierceCard)); if (!it || (!this.hammerUpgrade && !this.defs.get(it.id)?.card)) this.cancelPierce(); }
     // itens de tempo: repinta de minuto em minuto (o visto some e o item fica cinza quando acaba)
@@ -438,7 +462,7 @@ export class InventoryWindow extends GameWindow {
     if (el && this.el.contains(el)) this.tipShow.get(el)?.({ clientX: mouse.x, clientY: mouse.y });
   }
 
-  clear() { this.items.clear(); this.penya.value = '0'; this.renderBag(); this.renderEquip(); }
+  clear() { this.items.clear(); this.staged.clear(); this.penya.value = '0'; this.renderBag(); this.renderEquip(); }
 
   /** partes escondidas (bits de shared/look.ts) */
   get hidden() { return this.hideMask; }
@@ -555,7 +579,7 @@ export class InventoryWindow extends GameWindow {
   private renderBag() {
     for (const el of this.grid.querySelectorAll<HTMLElement>('.inv-slot:not(.locked)')) {
       const s = Number(el.dataset.s);
-      this.paint(el, this.items.get(keyOf(BAG, s)), `Slot ${s + 1} (vazio)`);
+      this.paint(el, this.staged.has(s) ? undefined : this.items.get(keyOf(BAG, s)), `Slot ${s + 1} (vazio)`);
     }
     this.applySearch();
   }
@@ -719,6 +743,7 @@ export class InventoryWindow extends GameWindow {
     root.addEventListener('dragend', (e) => { at(e.target)?.classList.remove('dragging'); from = null; clearDrop(); });
     const trashAt = (t: EventTarget | null) => (t as HTMLElement | null)?.closest('.inv-trash') ?? null;
     root.addEventListener('dragover', (e) => {
+      if (e.dataTransfer?.types.includes('application/x-flyff-staged')) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; return; }
       // lixeira: aceita item da bolsa (o equipado precisa sair antes)
       if (from && trashAt(e.target)) {
         e.preventDefault();
@@ -732,10 +757,19 @@ export class InventoryWindow extends GameWindow {
       e.dataTransfer!.dropEffect = 'move';
       if (!el.classList.contains('drop')) { clearDrop(); el.classList.add('drop'); }
     });
+    // Ctrl + botão direito num item da bolsa: separa para a caixa de apagar
+    root.addEventListener('contextmenu', (e) => {
+      if (!e.ctrlKey || this.piercing) return;
+      const el = at(e.target);
+      if (el?.classList.contains('has') && Number(el.dataset.c) === BAG) { e.preventDefault(); this.stage(Number(el.dataset.s)); }
+    });
     root.addEventListener('drop', (e) => {
       const el = at(e.target);
       e.preventDefault();
       clearDrop();
+      // item arrastado da caixa de apagar para o inventário: volta
+      const back = e.dataTransfer?.getData('application/x-flyff-staged');
+      if (back) { this.unstage(Number(back)); return; }
       if (from && trashAt(e.target)) {
         if (from[0] === BAG) this.askDiscard(from[1]);
         else this.onNotice('Tire o item antes de apagar: só itens da bolsa vão para a lixeira.');
@@ -743,7 +777,7 @@ export class InventoryWindow extends GameWindow {
       }
       if (!from || !el) return;
       const to: [number, number] = [Number(el.dataset.c), Number(el.dataset.s)];
-      if (to[0] !== from[0] || to[1] !== from[1]) this.onMove(from, to);
+      if (to[0] !== from[0] || to[1] !== from[1]) { this.staged.delete(from[1]); this.staged.delete(to[1]); this.renderBag(); this.onStage(); this.onMove(from, to); }
     });
     // janela do ferreiro aberta: um clique escolhe o item para ela
     root.addEventListener('click', (e) => {
