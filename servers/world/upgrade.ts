@@ -3,7 +3,7 @@ import path from 'node:path';
 import { decodeText } from '../../shared/formats/rgn';
 import { maxPiercing } from '../../shared/upgrade';
 import type { ItemCatalog, ItemDef } from '../common/items';
-import { BAG, BAG_SLOTS, type InvEdit, type InvItem } from '../character/inventory';
+import { BAG, type InvEdit, type InvItem } from '../character/inventory';
 
 /**
  * Ferreiro: upgrade de equipamento, joias, elemento e piercing (CItemUpgrade, WORLDSERVER/ItemUpgrade.cpp) e a linha das armas
@@ -190,7 +190,7 @@ export class UpgradeRules {
     let room = 0;
     for (const i of x.state.items) if (i.c === BAG && i.id === id && !i.u && !i.p?.length && !i.x && i.n < d.packMax) room += d.packMax - i.n;
     const used = new Set(x.state.items.filter((i) => i.c === BAG).map((i) => i.s));
-    for (let s = 0; s < BAG_SLOTS; s++) if (!used.has(s)) room += d.packMax;
+    for (let s = 0; s < x.state.bag; s++) if (!used.has(s)) room += d.packMax;
     return room >= n;
   }
   private give(x: InvEdit, id: number, n: number) {
@@ -202,7 +202,7 @@ export class UpgradeRules {
       i.n += k; n -= k; x.touch(BAG, i.s);
     }
     const used = new Set(x.state.items.filter((i) => i.c === BAG).map((i) => i.s));
-    for (let s = 0; s < BAG_SLOTS && n > 0; s++) {
+    for (let s = 0; s < x.state.bag && n > 0; s++) {
       if (used.has(s)) continue;
       const k = Math.min(n, d.packMax);
       x.state.items.push({ c: BAG, s, id, n: k, u: 0, e: 0, el: 0 });

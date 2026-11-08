@@ -6,7 +6,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { pool, query } from '../common/db/index';
 import { sessionFrom, type Session } from '../auth/sessions';
 import type { MobWorld } from './mobs';
-import { BAG_SLOTS, INVENTORY_CHANNEL, type Inventory, type InvState } from '../character/inventory';
+import { INVENTORY_CHANNEL, type Inventory, type InvState } from '../character/inventory';
 import { applyCraft, CraftingRules } from './crafting';
 import { gmAuthority, runGmCommand } from './gm';
 import { loadEdits, saveEdits } from '../common/worldedits';
@@ -1454,8 +1454,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       const pk = (itemId: number) => inventory.catalog.byId.get(itemId)?.packMax ?? 1;
       const st = await inventory.edit(p.id, (x) => {
         const trial = x.state.items.map((i) => ({ ...i, ...(i.p ? { p: [...i.p] } : {}), ...(i.g ? { g: [...i.g] } : {}) }));
-        if (!applyCraft(trial, r, BAG_SLOTS, pk)) return null;
-        applyCraft(x.state.items, r, BAG_SLOTS, pk, (s) => x.touch(0, s));
+        if (!applyCraft(trial, r, x.state.bag, pk)) return null;
+        applyCraft(x.state.items, r, x.state.bag, pk, (s) => x.touch(0, s));
         return x.state;
       });
       if (!st) return fail('Faltam componentes ou espaço na bolsa.');
@@ -1921,6 +1921,14 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         if ('error' in r) { send(c.ws, { t: 'invError', error: r.error }); return; }
         send(c.ws, inventory.view(r.state));
         for (const n of r.names) reply(c, `Você recebeu ${n}.`);
+        return;
+      }
+      // caixa sorteada (propGiftbox.inc): sorteia um item pela chance e entrega
+      if (inventory.catalog.gifts.has(d.id)) {
+        const r = await inventory.openGift(p.id, slot);
+        if ('error' in r) { send(c.ws, { t: 'invError', error: r.error }); return; }
+        send(c.ws, inventory.view(r.state));
+        reply(c, `Você recebeu ${r.name}${r.n > 1 ? ` x${r.n}` : ''}.`);
         return;
       }
       // pergaminho de buff (Upcut Stone…): gasta o item e vira um buff com tempo, que aparece na barra de buffs junto com os das skills

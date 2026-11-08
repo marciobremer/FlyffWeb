@@ -1,5 +1,5 @@
 import { query } from '../common/db/index';
-import { notifyInventory, type Inventory } from '../character/inventory';
+import { BAG_MAX, BAG_SLOTS, notifyInventory, type Inventory } from '../character/inventory';
 import { maxPiercing, maxUpgrade } from '../../shared/upgrade';
 
 /**
@@ -91,6 +91,7 @@ const HELP = [
   '//quest   lista as quests e o seu andamento · //quest reset [id]   zera o andamento (de uma ou de todas)',
   '//reset-stats [personagem]   devolve os pontos de atributo (STR/STA/DEX/INT voltam a 15)',
   '//give-penya [personagem] <quantia>',
+  '//bag [personagem] <42-168>',
   '//mob <MI_…|id> [quantidade] [x z]   invoca monstros perto de você ou no ponto x z (não renascem; boss já vem agressivo)',
   '//mob-clear   apaga os monstros invocados deste mapa',
   '//invis [on|off]   modo invisível: os jogadores não veem você (GMs/admins ainda veem; mobs largam você)',
@@ -365,6 +366,20 @@ export async function runGmCommand(ctx: GmContext, text: string): Promise<void> 
     if (!ctx.resetStatsLive(t.id)) await query('UPDATE characters SET str = 15, sta = 15, dex = 15, "int" = 15, updated_at = now() WHERE id = $1', [t.id]);
     log(`reset-stats ${t.name}`);
     ctx.reply(`Pontos de atributo de ${t.name} devolvidos (STR/STA/DEX/INT = 15).`);
+    return;
+  }
+
+  if (name === 'bag' || name === 'bolsa') {
+    // //bag [personagem] <42–168>: desbloqueia espaços da bolsa (nunca acima do máximo)
+    const t = await target(isInt);
+    if (!t) return;
+    if (!ctx.inventory) { ctx.reply('Inventário indisponível neste servidor.'); return; }
+    const n = Number(args[0]);
+    if (!isInt(args[0])) { ctx.reply(`Uso: //bag [personagem] <${BAG_SLOTS}-${BAG_MAX}>  (espaços abertos da bolsa)`); return; }
+    const r = await ctx.inventory.setBag(t.id, n);
+    if ('error' in r) { ctx.reply(r.error); return; }
+    log(`bag ${t.name} → ${r.bag}`);
+    ctx.reply(`${t.name} agora tem ${r.bag} espaços abertos na bolsa (máximo ${BAG_MAX}).`);
     return;
   }
 

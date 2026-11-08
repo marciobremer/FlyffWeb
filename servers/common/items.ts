@@ -238,6 +238,7 @@ export class ItemCatalog {
     this.loadAccessory();
     this.loadRarity();
     this.loadPacks();
+    this.loadGifts();
     this.suitCardKind = defines.get('IK3_SOCKETCARD') ?? -1;
     const table = this.useNames ? nameTable() : null;
     if (table) {
@@ -318,6 +319,38 @@ export class ItemCatalog {
         if (id !== undefined && this.byId.has(id)) items.push({ id, u: Number(tok[k + 1]) || 0, n: Math.max(1, Number(tok[k + 2]) || 1) });
       }
       if (box !== undefined && items.length) this.packs.set(box, { span, items });
+      i = k;
+    }
+  }
+
+  /**
+   * Caixas sorteadas (CGiftboxMan, propGiftbox.inc): `GiftBox<N> II_CAIXA { II_ITEM probabilidade quantidade [flag [minutos [enchant]]] … }`.
+   * Abrir dá UM item sorteado: a chance é sobre 1.000.000 (a probabilidade do arquivo × 1 / 100 / 10 conforme a versão — GiftBox,
+   * GiftBox3, GiftBox4, GiftBox5, GiftBox6) e o último item leva a sobra até 1.000.000 (CGiftboxMan::Verify).
+   */
+  readonly gifts = new Map<number, { entries: { id: number; n: number; span: number; u: number; low: number; high: number }[] }>();
+  private loadGifts() {
+    const text = this.read('propGiftbox.inc');
+    if (!text) return;
+    const tok: string[] = text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ').match(/[{}]|[^\s{}]+/g) ?? [];
+    const D = (s: string) => (/^-?\d+$/.test(s) ? Number(s) : this.defines.get(s));
+    // GiftBox (prob n) · 3 (×100, n, flag) · 4 (×100, n, flag, span) · 5 (×10, n, flag, span) · 6 (×10, n, flag, span, enchant)
+    const FORMAT: Record<string, { mul: number; cols: number }> = { GiftBox: { mul: 1, cols: 2 }, GiftBox3: { mul: 100, cols: 3 }, GiftBox4: { mul: 100, cols: 4 }, GiftBox5: { mul: 10, cols: 4 }, GiftBox6: { mul: 10, cols: 5 } };
+    for (let i = 0; i < tok.length; i++) {
+      const fmt = FORMAT[tok[i]];
+      if (!fmt || tok[i + 2] !== '{') continue;
+      const box = D(tok[i + 1]);
+      const list: { id: number; n: number; span: number; u: number; w: number }[] = [];
+      let k = i + 3;
+      for (; k < tok.length && tok[k] !== '}'; k += 1 + fmt.cols) {
+        const id = D(tok[k]), c = (j: number) => Number(tok[k + 1 + j]) || 0;
+        if (id !== undefined && this.byId.has(id)) list.push({ id, n: Math.max(1, c(1)), span: fmt.cols >= 4 ? c(3) : 0, u: fmt.cols >= 5 ? c(4) : 0, w: c(0) * fmt.mul });
+      }
+      if (box !== undefined && list.length) {
+        let low = 0;
+        const entries = list.map((x, j) => { const w = j === list.length - 1 ? Math.max(0, 1_000_000 - low) : x.w; const e = { id: x.id, n: x.n, span: x.span, u: x.u, low, high: low + w }; low += w; return e; });
+        this.gifts.set(box, { entries });
+      }
       i = k;
     }
   }

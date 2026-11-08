@@ -1,5 +1,5 @@
 import type { Inventory } from '../character/inventory';
-import { BAG, BAG_SLOTS } from '../character/inventory';
+import { BAG } from '../character/inventory';
 import { query } from '../common/db/index';
 import { cleanLog, offerable, type QuestBook, type QuestDef, type QuestLog } from './quests';
 
@@ -126,7 +126,7 @@ export class QuestFlow<C extends QuestConn> {
         let left = g.count;
         for (const it of bag.filter((i) => i.id === g.item).sort((a, b) => a.n - b.n)) { const k = Math.min(left, it.n); left -= k; if (k === it.n) used.delete(it.s); if (!left) break; }
       }
-      if (BAG_SLOTS - used.size < rewardStacks) return 'A bolsa está cheia: abra espaço para a recompensa.';
+      if (x.state.bag - used.size < rewardStacks) return 'A bolsa está cheia: abra espaço para a recompensa.';
       for (const g of q.need) {
         let left = g.count;
         for (const it of x.state.items.filter((i) => i.c === BAG && i.id === g.item).sort((a, b) => a.n - b.n)) {

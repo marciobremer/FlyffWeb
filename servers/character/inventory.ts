@@ -15,7 +15,9 @@ import { MAX_PIERCING, maxPiercing, maxUpgrade } from '../../shared/upgrade';
  * Personagem OFFLINE (comandos de GM, ferramenta de linha de comando): as mesmas regras, mas carrega do banco, muda e grava
  * na hora, numa transação com as linhas travadas.
  */
+/** espaços abertos da bolsa de um personagem novo; o máximo é BAG_MAX (MAX_INVENTORY do original com __INVENTORY_168) */
 export const BAG_SLOTS = 42;
+export const BAG_MAX = 168;
 /** canal do PostgreSQL (LISTEN/NOTIFY) avisando que o inventário/penya de um personagem mudou fora do mundo (comandos, painel) */
 export const INVENTORY_CHANNEL = 'inventory_changed';
 /** avisa o servidor do jogo (payload = id do personagem); quem estiver online recebe o inventário novo na hora */
@@ -36,7 +38,7 @@ export interface InvItem { c: number; s: number; id: number; n: number; u: numbe
 export interface ItemUpgrade { u?: number; e?: number; el?: number; /** espaços de piercing abertos (suit: até 4) */ p?: number; /** raridade da arma (WeaponRarity.inc) */ r?: number }
 const plain = (i: { u: number; e: number; el: number; p?: number[]; g?: number[]; r?: number }) => !i.u && !i.e && !i.el && !i.p?.length && !i.g?.length && !i.r;
 const sameUpgrade = (a: InvItem, b: InvItem) => a.u === b.u && a.e === b.e && a.el === b.el && (a.p ?? []).join() === (b.p ?? []).join() && (a.g ?? []).join() === (b.g ?? []).join() && (a.r ?? 0) === (b.r ?? 0);
-export interface InvState { gold: number; /** Red Chip (II_CHP_RED): contador como o penya, fora da bolsa */ chips: number; items: InvItem[] }
+export interface InvState { /** espaços abertos da bolsa deste personagem (BAG_SLOTS…BAG_MAX; o painel de GM desbloqueia) */ bag: number; gold: number; /** Red Chip (II_CHP_RED): contador como o penya, fora da bolsa */ chips: number; items: InvItem[] }
 /** o que um lado põe na janela de trade: espaços da bolsa (com quanto de cada pilha) e penya */
 export interface TradeOffer { items: { s: number; n: number; /** item que estava no espaço ao oferecer */ id: number }[]; gold: number }
 export const TRADE_SLOTS = 25;
@@ -97,7 +99,10 @@ export class Inventory {
     const g = await q(`SELECT gold, red_chips FROM characters WHERE id = $1${lock ? ' FOR UPDATE' : ''}`, [characterId]);
     const r = await q(
       `SELECT container, slot, item_id, count, upgrade, element, element_level, piercing, upgrade_tries, gems, rarity, (extract(epoch from expires_at) * 1000)::float8 AS expires FROM character_items WHERE character_id = $1 ORDER BY container, slot${lock ? ' FOR UPDATE' : ''}`, [characterId]);
-    return { gold: Number(g.rows[0]?.gold ?? 0), chips: Number(g.rows[0]?.red_chips ?? 0), items: r.rows.map((x: { container: number; slot: number; item_id: number; count: number; upgrade: number; element: number; element_level: number; piercing: unknown; upgrade_tries: number; gems: unknown; rarity: number; expires: number | null }) => {
+    let bag = BAG_SLOTS;
+    try { bag = Number((await q('SELECT bag_slots FROM characters WHERE id = $1', [characterId])).rows[0]?.bag_slots ?? BAG_SLOTS); } catch { /* sem a coluna (migração 024): 42 */ }
+    bag = Math.max(BAG_SLOTS, Math.min(BAG_MAX, bag));
+    return { bag, gold: Number(g.rows[0]?.gold ?? 0), chips: Number(g.rows[0]?.red_chips ?? 0), items: r.rows.map((x: { container: number; slot: number; item_id: number; count: number; upgrade: number; element: number; element_level: number; piercing: unknown; upgrade_tries: number; gems: unknown; rarity: number; expires: number | null }) => {
       const p = Array.isArray(x.piercing) ? x.piercing.map((v) => Number(v) || 0).slice(0, MAX_PIERCING) : [];
       const g = Array.isArray(x.gems) ? x.gems.map((v) => Number(v) || 0).slice(0, 5) : [];
       return { c: x.container, s: x.slot, id: x.item_id, n: x.count, u: x.upgrade, e: x.element, el: x.element_level, ...(p.length ? { p } : {}), ...(x.expires ? { x: Math.round(x.expires) } : {}),
@@ -286,7 +291,7 @@ export class Inventory {
    * (sem mudar nada). Troca de lugar quando o destino está ocupado, se o item de lá couber na origem.
    */
   private applyMove(x: Ctx, ch: Who, from: [number, number], to: [number, number]): { state: InvState } | { error: string } {
-    const valid = ([c, s]: [number, number]) => (c === BAG && s >= 0 && s < BAG_SLOTS) || (c === EQUIP && EQUIP_PARTS.has(s));
+    const valid = ([c, s]: [number, number]) => (c === BAG && s >= 0 && s < x.state.bag) || (c === EQUIP && EQUIP_PARTS.has(s));
     if (!valid(from) || !valid(to)) return { error: 'Espaço inválido.' };
     if (from[0] === to[0] && from[1] === to[1]) return { error: '' };
     const st = x.state;
@@ -312,7 +317,7 @@ export class Inventory {
       const used = new Set(st.items.filter((i) => i.c === BAG && i !== a).map((i) => i.s));
       if (from[0] === BAG && b) used.add(from[1]); // o que estava no destino vai para a origem
       let free = -1;
-      for (let s = 0; s < BAG_SLOTS && free < 0; s++) if (!used.has(s)) free = s;
+      for (let s = 0; s < st.bag && free < 0; s++) if (!used.has(s)) free = s;
       if (free < 0) return { error: 'A bolsa está cheia para tirar o item da outra mão.' };
       x.touch(bump.c, bump.s);
       bump.c = BAG; bump.s = free;
@@ -368,7 +373,7 @@ export class Inventory {
   /** primeiro espaço livre da bolsa, ou -1 */
   private freeSlot(st: InvState) {
     const used = new Set(st.items.filter((i) => i.c === BAG).map((i) => i.s));
-    for (let s = 0; s < BAG_SLOTS; s++) if (!used.has(s)) return s;
+    for (let s = 0; s < st.bag; s++) if (!used.has(s)) return s;
     return -1;
   }
 
@@ -484,7 +489,7 @@ export class Inventory {
         return out;
       });
       const free: number[] = [];
-      for (let s = 0; s < BAG_SLOTS && free.length < pieces.length; s++) if (!used.has(s)) free.push(s);
+      for (let s = 0; s < x.state.bag && free.length < pieces.length; s++) if (!used.has(s)) free.push(s);
       if (free.length < pieces.length) return { error: `Precisa de ${pieces.length} espaços livres na bolsa para abrir.` };
       if (it.n > 1) it.n--; else x.state.items.splice(x.state.items.indexOf(it), 1);
       x.touch(BAG, slot);
@@ -498,6 +503,50 @@ export class Inventory {
       });
       for (const p of pack.items) names.push(`${this.catalog.byId.get(p.id)!.name}${p.n > 1 ? ` (${p.n}x)` : ''}`);
       return { state: x.state, names };
+    });
+  }
+
+  /**
+   * Desbloqueia (ou volta a trancar) espaços da bolsa de um personagem: de BAG_SLOTS a BAG_MAX. Não deixa passar do máximo nem
+   * trancar um espaço que tem item (esvazie antes). Grava na hora e, se ele está online, o inventário novo vai para a tela.
+   */
+  async setBag(characterId: number, want: number): Promise<{ bag: number } | { error: string }> {
+    if (!Number.isInteger(want) || want < BAG_SLOTS || want > BAG_MAX) return { error: `A bolsa vai de ${BAG_SLOTS} a ${BAG_MAX} espaços.` };
+    const st = await this.state(characterId);
+    const top = st.items.reduce((m, i) => (i.c === BAG ? Math.max(m, i.s + 1) : m), 0);
+    if (want < top) return { error: `Há item no espaço ${top}: esvazie os espaços de cima antes de trancar.` };
+    try { await query('UPDATE characters SET bag_slots = $2 WHERE id = $1', [characterId, want]); }
+    catch (e) { if (/bag_slots/.test((e as Error).message)) return { error: 'Falta a coluna characters.bag_slots: rode "npm run db:migrate" (o .bat já faz ao ligar).' }; throw e; }
+    const cached = this.cache.get(characterId);
+    if (cached) { cached.state.bag = want; this.onLocalChange?.(characterId); } else await notifyInventory(characterId);
+    return { bag: want };
+  }
+
+  /**
+   * Abre a caixa sorteada do espaço `slot` (propGiftbox.inc, CGiftboxMan::Open): sorteia UM item pela chance (sobre 1.000.000) e dá a
+   * quantidade dele — em quantas pilhas for preciso — com o enchant e a validade (minutos) da linha. Precisa de espaço para tudo.
+   */
+  openGift(characterId: number, slot: number) {
+    return this.mutate(characterId, (x): { state: InvState; name: string; n: number } | { error: string } => {
+      const it = x.state.items.find((i) => i.c === BAG && i.s === slot);
+      const gift = it && this.catalog.gifts.get(it.id);
+      if (!it || !gift) return { error: 'Isso não é uma caixa.' };
+      const roll = Math.floor(Math.random() * 1_000_000);
+      const e = gift.entries.find((g) => roll >= g.low && roll < g.high) ?? gift.entries[gift.entries.length - 1];
+      const d = this.catalog.byId.get(e.id)!, max = Math.max(1, d.packMax);
+      const used = new Set(x.state.items.filter((i) => i.c === BAG).map((i) => i.s));
+      if (it.n <= 1) used.delete(slot); // a caixa sai e o espaço dela também serve
+      const stacks: number[] = [];
+      for (let left = e.n; left > 0; left -= max) stacks.push(Math.min(left, max));
+      const free: number[] = [];
+      for (let s = 0; s < x.state.bag && free.length < stacks.length; s++) if (!used.has(s)) free.push(s);
+      if (free.length < stacks.length) return { error: `Precisa de ${stacks.length} espaço(s) livre(s) na bolsa para abrir.` };
+      if (it.n > 1) it.n--; else x.state.items.splice(x.state.items.indexOf(it), 1);
+      x.touch(BAG, slot);
+      const until = e.span > 0 ? Date.now() + e.span * 60_000 : 0;
+      const u = Math.max(0, Math.min(e.u, d.parts >= 0 ? maxUpgrade(d.parts) : 0));
+      stacks.forEach((n, k) => { x.state.items.push({ c: BAG, s: free[k], id: e.id, n, u, e: 0, el: 0, ...(until ? { x: until } : {}) }); x.touch(BAG, free[k]); });
+      return { state: x.state, name: d.name, n: e.n };
     });
   }
 
@@ -579,7 +628,7 @@ export class Inventory {
         left -= k;
       }
       const used = new Set(x.state.items.filter((i) => i.c === BAG).map((i) => i.s));
-      for (let s = 0; s < BAG_SLOTS && left > 0; s++) {
+      for (let s = 0; s < x.state.bag && left > 0; s++) {
         if (used.has(s)) continue;
         const k = Math.min(left, pack);
         x.state.items.push({ c: BAG, s, id: itemId, n: k, u: u.u, e: u.e, el: u.el, ...(u.p ? { p: [...u.p] } : {}), ...(u.r ? { r: u.r } : {}) });
@@ -614,7 +663,7 @@ export class Inventory {
       return out;
     };
     // põe um item na cópia da bolsa (empilha se for comum e da mesma pilha, senão espaço livre); false se não cabe
-    const putIn = (items: InvItem[], it: InvItem): boolean => {
+    const putIn = (items: InvItem[], it: InvItem, bag: number): boolean => {
       const d = this.catalog.byId.get(it.id);
       if (!d) return false;
       let left = it.n;
@@ -627,7 +676,7 @@ export class Inventory {
         }
       }
       const used = new Set(items.filter((i) => i.c === BAG).map((i) => i.s));
-      for (let slot = 0; slot < BAG_SLOTS && left > 0; slot++) {
+      for (let slot = 0; slot < bag && left > 0; slot++) {
         if (used.has(slot)) continue;
         const k = Math.min(left, Math.max(1, d.packMax));
         items.push({ ...it, c: BAG, s: slot, n: k, ...(it.p ? { p: [...it.p] } : {}) });
@@ -640,13 +689,13 @@ export class Inventory {
     const outA = takeOut(ca.state, offerA, ia), outB = takeOut(cb.state, offerB, ib);
     if (typeof outA === 'string') return outA;
     if (typeof outB === 'string') return outB;
-    for (const it of outB) if (!putIn(ia, it)) return 'Sua bolsa não tem espaço para a troca.';
-    for (const it of outA) if (!putIn(ib, it)) return 'A bolsa do outro jogador não tem espaço para a troca.';
+    for (const it of outB) if (!putIn(ia, it, ca.state.bag)) return 'Sua bolsa não tem espaço para a troca.';
+    for (const it of outA) if (!putIn(ib, it, cb.state.bag)) return 'A bolsa do outro jogador não tem espaço para a troca.';
     if (ca.state.gold - offerA.gold + offerB.gold > GOLD_MAX || cb.state.gold - offerB.gold + offerA.gold > GOLD_MAX) return 'Penya demais: passaria do limite.';
     // aplica nos dois: a bolsa inteira é marcada para gravar (upsert/delete por espaço) e o penya vai como incremento
     for (const [c, items, delta] of [[ca, ia, offerB.gold - offerA.gold], [cb, ib, offerA.gold - offerB.gold]] as const) {
       c.state.items = items;
-      for (let slot = 0; slot < BAG_SLOTS; slot++) c.pending.slots.add(key(BAG, slot));
+      for (let slot = 0; slot < BAG_MAX; slot++) c.pending.slots.add(key(BAG, slot));
       if (delta) { c.state.gold = Math.min(GOLD_MAX, Math.max(0, c.state.gold + delta)); c.pending.gold += delta; }
     }
     await Promise.all([this.flush(a), this.flush(b)]);
@@ -708,7 +757,7 @@ export class Inventory {
       // cartas espetadas: a dica do item mostra o nome e o bônus de cada uma
       for (const card of [...(i.p ?? []), ...(i.g ?? [])]) { const cd = card ? this.catalog.byId.get(card) : undefined; if (cd && !defs[card]) defs[card] = this.catalog.viewFull(cd); }
     }
-    return { t: 'inv', gold: st.gold, chips: st.chips, bag: BAG_SLOTS, items: st.items.map((i) => {
+    return { t: 'inv', gold: st.gold, chips: st.chips, bag: st.bag, items: st.items.map((i) => {
       // [c, s, id, n, u, e, el, piercing, tempo, joias da ultimate, raridade, falhas de upgrade] — só até o último campo que o item tem
       const row: unknown[] = [i.c, i.s, i.id, i.n, i.u, i.e, i.el, i.p ?? [], i.x ?? 0, i.g ?? [], i.r ?? 0, i.t ?? 0];
       const last = i.t ? 12 : i.r ? 11 : i.g?.length ? 10 : i.x ? 9 : i.p?.length ? 8 : 7;

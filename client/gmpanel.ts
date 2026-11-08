@@ -199,6 +199,7 @@ export class GmPanel extends GameWindow {
     const level = num(1, 150, 1);
     const job = select(JOBS);
     const penya = num(1, 2_000_000_000, 1000);
+    const bag = num(42, 168, 42);
     const needNick = (cmd: string) => () => { const n = this.nick(); if (!n) { this.status('Digite o nick do alvo.', true); return; } this.send(`//${cmd} ${n}`); };
     return el('div', {},
       el('h4', { textContent: 'Teleporte' }),
@@ -215,6 +216,11 @@ export class GmPanel extends GameWindow {
       el('div', { className: 'gm-row' }, field('Nível', level), btn('Aplicar', () => this.send(this.withTarget('set-level', level.value)))),
       el('div', { className: 'gm-row' }, field('Classe', job), btn('Aplicar', () => this.send(this.withTarget('set-job', job.value)))),
       el('div', { className: 'gm-row' }, field('Penya', penya), btn('Dar', () => this.send(this.withTarget('give-penya', penya.value)))),
+      el('div', { className: 'gm-row' }, field('Bolsa (42–168)', bag), btn('Desbloquear', () => {
+        const n = Math.round(Number(bag.value));
+        if (!(n >= 42 && n <= 168)) { this.status('A bolsa vai de 42 a 168 espaços.', true); return; }
+        this.send(this.withTarget('bag', String(n)));
+      })),
       el('div', { className: 'gm-row' }, btn('Resetar pontos de status', () => {
         const who = this.nick() || 'você';
         void gameConfirm(`Devolver os pontos de atributo de ${who}? STR, STA, DEX e INT voltam a 15.`, 'Devolver').then((ok) => { if (ok) this.send(this.withTarget('reset-stats', '')); });
