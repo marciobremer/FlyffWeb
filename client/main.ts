@@ -945,7 +945,7 @@ const sayLogin = message($('loginMsg')), saySelect = message($('selectMsg')), sa
  * senha; no servidor fica só o hash dele.
  */
 interface SavedLogin { name: string; remember?: string }
-const prefs = (() => { try { return JSON.parse(localStorage.getItem('flyff.game') ?? '{}') as { saved?: (SavedLogin | string)[]; last?: string; quality?: string; fps?: number }; } catch { return {}; } })();
+const prefs = (() => { try { return JSON.parse(localStorage.getItem('flyff.game') ?? '{}') as { saved?: (SavedLogin | string)[]; last?: string; lastAcc?: string; quality?: string; fps?: number }; } catch { return {}; } })();
 const savePrefs = () => { try { localStorage.setItem('flyff.game', JSON.stringify(prefs)); } catch { /* sem armazenamento */ } };
 // versões antigas guardavam só o nome (string)
 const saved: SavedLogin[] = (prefs.saved ?? []).map((x) => (typeof x === 'string' ? { name: x } : x)).filter((x) => x && typeof x.name === 'string');
@@ -1178,6 +1178,7 @@ worldReady.then(() => {
   loginBtn.disabled = false;
   (user.value ? pass : user).focus();
   $('loginScreen').classList.add('live');
+  autoStart();
   view.controls.autoRotate = true;
   view.controls.autoRotateSpeed = 0.35;
 }, (e) => {
@@ -1206,6 +1207,30 @@ $('loginWnd').addEventListener('submit', async (ev) => {
   await doLogin({ username, password });
 });
 
+/** início automático em andamento: depois do login, entra direto com o último personagem jogado */
+let autoEnter = false;
+/**
+ * Ao abrir o jogo: entra sozinho na última conta usada (com "token de lembrar" salvo) e no último personagem jogado. Esc, clique
+ * ou qualquer tecla na tela de login durante os 2 segundos de contagem cancela. Só roda uma vez (Desconectar volta ao login normal).
+ */
+function autoStart() {
+  const withToken = saved.filter((s) => s.remember);
+  const target = withToken.find((s) => s.name.toLowerCase() === (prefs.lastAcc ?? prefs.last ?? '').toLowerCase()) ?? withToken[0];
+  if (!target) return;
+  let cancelled = false;
+  const stop = () => { if (cancelled) return; cancelled = true; sayLogin('Entrada automática cancelada.'); };
+  const events = ['keydown', 'pointerdown'] as const;
+  const off = () => events.forEach((e) => removeEventListener(e, stop, true));
+  events.forEach((e) => addEventListener(e, stop, true));
+  sayLogin('Entrando como {name}… (Esc ou clique cancela)', false, { name: target.name });
+  setTimeout(() => {
+    off();
+    if (cancelled) return;
+    autoEnter = true;
+    void useSaved(target.name).then(() => { autoEnter = false; });
+  }, 2000);
+}
+
 /** entra com senha ou com o token de uma conta salva; devolve se deu certo */
 async function doLogin(cred: { username: string; password?: string; remember?: string }): Promise<boolean> {
   loginBtn.disabled = true;
@@ -1215,6 +1240,7 @@ async function doLogin(cred: { username: string; password?: string; remember?: s
     pass.value = '';
     const keep = $<HTMLInputElement>('saveAccount').checked;
     prefs.last = keep ? reply.account.username : undefined;
+    prefs.lastAcc = reply.account.username; // a conta do início automático
     savePrefs();
     // "Salvar conta" marcado ao entrar com a senha: guarda já com o token (próxima vez é só dar dois cliques)
     if (keep && cred.password) await rememberLogin(reply.account.username, reply.token);
@@ -1228,7 +1254,17 @@ async function doLogin(cred: { username: string; password?: string; remember?: s
     $('loginScreen').classList.add('leaving');
     setTimeout(() => { $('loginScreen').hidden = true; }, 450);
     $('charScreen').hidden = false;
-    if (characters.length) showSelect(); else showCreate(false);
+    if (characters.length) {
+      // início automático: escolhe o último personagem jogado nesta conta e já entra
+      if (autoEnter) {
+        let last = 0;
+        try { last = Number(localStorage.getItem(`flyff.lastchar.${reply.account.username.toLowerCase()}`)) || 0; } catch { /* sem armazenamento */ }
+        const ch = characters.find((c) => c.id === last);
+        if (ch) selectedSlot = ch.slot;
+      }
+      showSelect();
+      if (autoEnter) { autoEnter = false; if (characters.some((c) => c.slot === selectedSlot)) void enter(); }
+    } else showCreate(false);
     return true;
   } catch (e) {
     sayLogin((e as Error).message, true);
@@ -1467,6 +1503,7 @@ $('charCreate').addEventListener('submit', async (ev) => {
 async function enter() {
   const ch = characters.find((c) => c.slot === selectedSlot);
   if (!ch || !account) return;
+  try { localStorage.setItem(`flyff.lastchar.${account.username.toLowerCase()}`, String(ch.id)); } catch { /* sem armazenamento */ }
   $<HTMLButtonElement>('enterBtn').disabled = true;
   saySelect('Entrando como {name}…', false, { name: ch.name });
   previewing = false;
