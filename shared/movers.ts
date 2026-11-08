@@ -423,7 +423,7 @@ export class MoverInstance {
     const player = lift <= 0.3;
     this.labelGap = player ? 16 : 0;
     if (player) el.style.marginTop = `-${this.labelGap}px`;
-    this.labelLift = player ? 0.15 : lift;
+    this.labelLift = player ? 0.15 : rank === 'npc' ? lift - 0.2 : lift; // NPC: um pouco mais baixo
     this.label = new CSS2DObject(el);
     this.label.position.set(0, this.tpl.height + this.labelLift, 0);
     this.group.add(this.label);

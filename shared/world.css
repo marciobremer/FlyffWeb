@@ -20,6 +20,7 @@
 .npc-label.npc { color: #a0a0ff; }
 /* monstros e NPCs: fonte menor (os jogadores mantêm a grande) */
 .npc-label.mob, .npc-label.npc, .npc-label.boss { font: 700 11px Tahoma, Verdana, sans-serif; }
+.npc-label.npc { font-size: 12px; }
 /* monstro comum: amarelo claro (0xFFFFFFA0 do original) */
 .npc-label.mob { color: #ffffa0; }
 /* boss: nome vermelho (agressivo — ataca quem passa perto) */
