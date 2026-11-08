@@ -997,12 +997,12 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     return row ? { id: Number(row.id), name: row.name, rank: row.rank } : null;
   }
   async function guildView(guildId: number) {
-    const g = (await query<{ id: string; name: string; level: number; master_id: string; created_at: Date }>('SELECT id, name, level, master_id, created_at FROM guilds WHERE id = $1', [guildId])).rows[0];
+    const g = (await query<{ id: string; name: string; level: number; master_id: string; created_at: Date; notice: string }>('SELECT id, name, level, master_id, created_at, notice FROM guilds WHERE id = $1', [guildId])).rows[0];
     if (!g) return null;
     const ms = (await query<{ id: string; name: string; level: number; job: number; rank: number }>(
       'SELECT c.id, c.name, c.level, c.job, m.rank FROM guild_members m JOIN characters c ON c.id = m.character_id WHERE m.guild_id = $1 ORDER BY m.rank, lower(c.name)', [guildId])).rows;
     return {
-      id: Number(g.id), name: g.name, level: g.level, master: Number(g.master_id), max: GUILD_MAX, created: g.created_at,
+      id: Number(g.id), name: g.name, level: g.level, master: Number(g.master_id), max: GUILD_MAX, created: g.created_at, notice: g.notice,
       members: ms.map((m) => { const o = liveConn(Number(m.id)); return { id: Number(m.id), name: m.name, level: o?.player?.level ?? m.level, job: o?.player?.job ?? m.job, rank: m.rank, rankName: RANK_NAME[m.rank] ?? '', on: !!o }; }),
     };
   }
@@ -1101,6 +1101,14 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         if (o) { send(o.ws, { t: 'chat', id: 0, name: '', text: 'Você foi expulso da guild.' }); setGuildTag(o, null); send(o.ws, { t: 'guildView', g: null }); }
         guildNotice(g.id, 'Um membro foi expulso da guild.');
         await pushGuild(g.id);
+        return;
+      }
+      case 'guildNotice': { // Aviso da guild (aba Configurações): mestre e kingpin
+        if (!g || g.rank > 1) { reply('Só o mestre e o kingpin mudam o aviso da guild.'); return; }
+        const text = String(msg.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
+        await query('UPDATE guilds SET notice = $2 WHERE id = $1', [g.id, text]);
+        await pushGuild(g.id);
+        reply(text ? 'Aviso da guild atualizado.' : 'Aviso da guild removido.');
         return;
       }
       case 'guildDisband':
