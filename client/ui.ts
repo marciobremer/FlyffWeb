@@ -1129,11 +1129,28 @@ export class ChatWindow extends GameWindow {
     if (text && !this.onSend(text)) this.system(t('Sem conexão com o servidor — mensagem não enviada.'));
   }
 
+  /** linhas esperando o próximo quadro: com muita gente falando (centenas de mensagens por segundo) cada linha lia o layout e o
+   *  recalculava, travando o processamento das mensagens de posição; agora o chat grava tudo de uma vez por quadro */
+  private pending: HTMLLIElement[] = [];
+  private flushQueued = false;
   private push(li: HTMLLIElement) {
-    const atBottom = this.log.scrollHeight - this.log.scrollTop - this.log.clientHeight < 8;
-    this.log.appendChild(li);
-    while (this.log.childElementCount > ChatWindow.MAX_LINES) this.log.firstElementChild!.remove();
-    if (atBottom) this.log.scrollTop = this.log.scrollHeight;
+    this.pending.push(li);
+    if (this.pending.length > ChatWindow.MAX_LINES) this.pending.splice(0, this.pending.length - ChatWindow.MAX_LINES);
+    if (this.flushQueued) return;
+    this.flushQueued = true;
+    requestAnimationFrame(() => {
+      this.flushQueued = false;
+      const lines = this.pending;
+      this.pending = [];
+      if (!lines.length) return;
+      const atBottom = this.log.scrollHeight - this.log.scrollTop - this.log.clientHeight < 8;
+      const frag = document.createDocumentFragment();
+      for (const l of lines) frag.append(l);
+      this.log.append(frag);
+      let extra = this.log.childElementCount - ChatWindow.MAX_LINES;
+      while (extra-- > 0) this.log.firstElementChild!.remove();
+      if (atBottom) this.log.scrollTop = this.log.scrollHeight;
+    });
   }
 
   /** mensagem de jogador (texto puro, sem HTML) */
@@ -1154,6 +1171,6 @@ export class ChatWindow extends GameWindow {
     this.push(li);
   }
 
-  clear() { this.log.replaceChildren(); }
+  clear() { this.pending = []; this.log.replaceChildren(); }
   focus() { if (!this.visible) this.show(); this.input.focus(); }
 }

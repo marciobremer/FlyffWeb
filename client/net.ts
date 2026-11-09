@@ -259,7 +259,11 @@ export class RemotePlayers {
   stance(id: number) { return this.list.get(id)?.view.mt ?? 0; }
 
   /** balão de fala acima da cabeça (chat) */
-  say(id: number, text: string, shout = false) { this.list.get(id)?.inst?.say(text, 60, shout ? 8000 : 6000, shout); }
+  say(id: number, text: string, shout = false) {
+    const inst = this.list.get(id)?.inst;
+    // fora da visão ou longe (nome oculto) não vale criar/atualizar o balão: com centenas falando era trabalho de página à toa
+    if (inst && (shout || inst.label?.visible !== false) && inst.group.visible) inst.say(text, 60, shout ? 8000 : 6000, shout);
+  }
 
   /** posição atual (suavizada) de um jogador remoto */
   pos(id: number): [number, number, number] | null { const r = this.list.get(id); return r ? [...r.cur] : null; }
