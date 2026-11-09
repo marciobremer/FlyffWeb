@@ -281,6 +281,7 @@ export class RemotePlayers {
     let idx = 0;
     for (const r of this.list.values()) {
       idx++;
+      try {
       const [tx, ty, tz] = r.target, c = r.cur;
       if (Math.hypot(tx - c[0], tz - c[2]) > 40) { c[0] = tx; c[1] = ty; c[2] = tz; } // teleporte / reconexão
       else { c[0] += (tx - c[0]) * k; c[1] += (ty - c[1]) * k; c[2] += (tz - c[2]) * k; }
@@ -297,8 +298,10 @@ export class RemotePlayers {
         const every = d > 90 ? 4 : d > 45 ? 2 : 1;
         if (every === 1 || (this.lodN + idx) % every === 0) { r.inst.update(r.acc); r.acc = 0; }
       }
+      } catch (e) { if (!this.frameWarned) { this.frameWarned = true; console.error('remotes.frame: falha em um jogador', r.view.id, e); } }
     }
   }
+  private frameWarned = false;
 }
 
 export class NetClient {
@@ -311,6 +314,7 @@ export class NetClient {
   myId = 0;
   online = 0;
   /** maior intervalo entre mensagens 'states' desde a última leitura (diagnóstico ?perf) */
+  private warned = false;
   private statesAt = 0;
   private gapMax = 0;
   takeStatesGap() { const g = this.gapMax; this.gapMax = 0; return Math.round(g); }
@@ -478,7 +482,11 @@ export class NetClient {
         const at = performance.now();
         if (this.statesAt) this.gapMax = Math.max(this.gapMax, at - this.statesAt);
         this.statesAt = at;
-        for (const [id, x, y, z, h, s] of m.list as [number, number, number, number, number, string][]) if (id !== this.myId) this.remotes.update(id, x, y, z, h, s);
+        // um jogador com problema não pode travar a atualização de todos os outros: cada um num try/catch (o erro aparece no console)
+        for (const [id, x, y, z, h, s] of m.list as [number, number, number, number, number, string][]) {
+          if (id === this.myId) continue;
+          try { this.remotes.update(id, x, y, z, h, s); } catch (e) { if (!this.warned) { this.warned = true; console.error('states: falha ao atualizar jogador', id, e); } }
+        }
       } else if (m.t === 'mobs') {
         this.onMobs((m.a ?? []) as never, (m.u ?? []) as never, (m.d ?? []) as number[]);
       } else if (m.t === 'inv') {
