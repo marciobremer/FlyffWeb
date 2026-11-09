@@ -46,7 +46,7 @@ export interface GmContext {
   revive?(id: number): string;
   /** leva um personagem online para `p` (x, y, z FlyFF; o cliente acerta a altura pelo chão) */
   teleport(id: number, p: [number, number, number]): boolean;
-  /** mapas em que dá para entrar com //mapa (o principal, os extras e os do projeto, como o do L2) */
+  /** mapas em que dá para entrar com //mapa (o principal, os extras e os do projeto) */
   worldList?(): { name: string; id: number }[];
   /** leva quem digitou para outro mapa, no ponto de chegada dele; devolve a mensagem para mostrar */
   travel?(world: string): string;
@@ -77,7 +77,7 @@ export const ELEMENT_NAMES = ['', 'Fogo', 'Água', 'Elétrico', 'Vento', 'Terra'
 const HELP = [
   '//gm   abre o painel de GM',
   '//goto <personagem>   vai até o personagem · //summon <personagem>   traz o personagem até você',
-  '//tp <x> <z> [y]   vai para a coordenada · //ponto [nome]   lista / vai para um ponto marcado no editor · //mapa [nome]   lista os mapas / vai para um (ex.: //mapa l2)',
+  '//tp <x> <z> [y]   vai para a coordenada · //ponto [nome]   lista / vai para um ponto marcado no editor · //mapa [nome]   lista os mapas / vai para um (ex.: //mapa azria)',
   '//set-level [personagem] <nível>   muda o nível (1–' + MAX_LEVEL + ')',
   '//set-job [personagem] <classe>   muda a classe (ex.: knight, blade, ringmaster, elementor… ou o número JOB_*)',
   '//give-item [personagem] <II_…|id> [quantidade] [+enchant] [elemento+nível] [furosN]   ex.: //give-item II_WEA_SWO_WOODEN +5 fogo+3',
