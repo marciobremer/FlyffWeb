@@ -239,6 +239,8 @@ export class EnchantGlow {
     this.size[i] = this.s0[i]; this.alpha[i] = 0; this.aura[i] = em.aura ? 1 : 0;
   }
 
+  setVisible(v: boolean) { this.points.visible = v; }
+
   dispose() {
     this.points.removeFromParent();
     this.geo.dispose();

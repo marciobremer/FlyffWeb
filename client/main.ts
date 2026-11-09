@@ -1087,12 +1087,21 @@ view.onStatus = (s) => { if (!view.data) { sayLogin(s); bootStep(s); } };
 
 /** na seleção/criação o personagem fica parado no palco, de frente, só com a animação de repouso */
 let previewing = false;
+const PERF = new URLSearchParams(location.search).has('perf');
+let perfAcc = 0, perfGap = 0;
 view.onFrame = (dt) => {
   // mostra a porta do servidor: cada servidor (ex.: 8080 do painel e 5173 de desenvolvimento) é um mundo separado
   // rodapé: fps, hora do jogo (relógio do servidor, dia e noite), ping, quem está online e a porta do servidor
   $('hud').textContent = inGame
     ? `${view.fps.toFixed(0)} fps · ${fmtGameHour(clockFixed ?? gameHour(Date.now() + clockOffset))} · ping ${net.ping === null ? '—' : Math.round(net.ping) + ' ms'} · ${t('{n} online', { n: net.online })} · ${t('servidor')} :${location.port || (location.protocol === 'https:' ? 443 : 80)}`
     : `${view.fps.toFixed(0)} fps`;
+  if (PERF && inGame) {
+    // ?perf: chamadas de desenho, triângulos e o maior intervalo entre atualizações de posição (média de 1 s)
+    perfAcc += dt;
+    if (perfAcc >= 1) { perfAcc = 0; perfGap = net.takeStatesGap(); }
+    const inf = view.renderer.info.render;
+    $('hud').textContent += ` · ${inf.calls} calls · ${(inf.triangles / 1000).toFixed(0)}k tri · states gap ${perfGap} ms · ${remotes.count} jogadores`;
+  }
   if (previewing) view.player?.preview(dt, 0);
   if (inGame) {
     remotes.frame(dt);

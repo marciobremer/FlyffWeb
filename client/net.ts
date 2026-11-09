@@ -291,7 +291,7 @@ export class RemotePlayers {
         const ground = r.s.startsWith('fly') ? null : this.world.sampleHeight(c[0], c[2]);
         r.inst.place([c[0], ground === null ? c[1] : Math.max(c[1], ground), c[2]], r.curH);
         // fora da visão não desenha nem anima; longe anima a cada 2 ou 4 quadros; nome até 90 m e sombra até 45 m
-        const d = r.inst.cull(fr, cam, 90, 45);
+        const d = r.inst.cull(fr, cam, 90, 45, 45);
         if (d < 0) continue;
         r.acc = (r.acc ?? 0) + dt;
         const every = d > 90 ? 4 : d > 45 ? 2 : 1;
@@ -310,6 +310,10 @@ export class NetClient {
   private join: { token: string; characterId: number; pos: () => [number, number, number] } | null = null;
   myId = 0;
   online = 0;
+  /** maior intervalo entre mensagens 'states' desde a última leitura (diagnóstico ?perf) */
+  private statesAt = 0;
+  private gapMax = 0;
+  takeStatesGap() { const g = this.gapMax; this.gapMax = 0; return Math.round(g); }
   /** ping (ms de ida e volta, média suave); null até a 1ª medida */
   ping: number | null = null;
   private pingTimer = 0;
@@ -471,6 +475,9 @@ export class NetClient {
       } else if (m.t === 'online') {
         this.online = Number(m.n) || 0;
       } else if (m.t === 'states') {
+        const at = performance.now();
+        if (this.statesAt) this.gapMax = Math.max(this.gapMax, at - this.statesAt);
+        this.statesAt = at;
         for (const [id, x, y, z, h, s] of m.list as [number, number, number, number, number, string][]) if (id !== this.myId) this.remotes.update(id, x, y, z, h, s);
       } else if (m.t === 'mobs') {
         this.onMobs((m.a ?? []) as never, (m.u ?? []) as never, (m.d ?? []) as number[]);

@@ -243,7 +243,8 @@ export class MoverInstance {
   /** matriz do osso `i` no quadro atual (espaço do modelo, o mesmo de `modelSpace`) */
   boneMatrix(i: number): Matrix4 | null { return this.worlds[i] ?? null; }
   /** efeito que anda junto com a animação (ex.: brilho do enchant — shared/enchantGlow.ts) */
-  effect: { update(dt: number): void; dispose(): void } | null = null;
+  effect: { update(dt: number): void; dispose(): void; /** liga/desliga de longe (LOD) */ setVisible?(v: boolean): void } | null = null;
+  private fxOn = true;
   private time = Math.random() * 10;
   /** multiplicador de velocidade do movimento atual */
   private rate = 1;
@@ -309,7 +310,7 @@ export class MoverInstance {
    * também — mesmo atrás da câmera): fora da visão a instância some (e o nome/balão junto); o nome some além de `labelMax` e a
    * sombra além de `shadowMax`. Devolve a distância à câmera, ou -1 se está fora da visão (não precisa animar).
    */
-  cull(frustum: Frustum, cam: Vector3, labelMax: number, shadowMax: number): number {
+  cull(frustum: Frustum, cam: Vector3, labelMax: number, shadowMax: number, fxMax = Infinity): number {
     const e = this.group.matrixWorld.elements;
     cullSphere.center.set(e[12], e[13] + 1.2, e[14]);
     cullSphere.radius = 3.5;
@@ -318,6 +319,8 @@ export class MoverInstance {
     this.group.visible = vis;
     if (this.label) this.label.visible = vis && d < labelMax;
     if (this.bubble) this.bubble.visible = vis;
+    const fx = d < fxMax;
+    if (fx !== this.fxOn) { this.fxOn = fx; this.effect?.setVisible?.(fx); } // brilho do enchant (partículas) só de perto
     const shadow = d < shadowMax;
     if (shadow !== this.shadowOn) { this.shadowOn = shadow; this.group.traverse((o) => { if ((o as Mesh).isMesh) (o as Mesh).castShadow = shadow; }); }
     return vis ? d : -1;
@@ -326,7 +329,7 @@ export class MoverInstance {
   /** Avança a animação (perSlerp quadros por tique do Neuz — 62,5/s —, como CModel::MoveFrame). */
   update(dt: number) {
     for (const m of this.lightMeshes) m.visible = NIGHT;
-    this.effect?.update(dt);
+    if (this.fxOn) this.effect?.update(dt);
     const mo = this.motion;
     if (!mo || mo.frameCount < 2) return;
     this.time += dt * this.rate;
