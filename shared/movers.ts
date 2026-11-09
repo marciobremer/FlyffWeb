@@ -1,4 +1,4 @@
-import { type Object3D, type PerspectiveCamera, BufferAttribute, BufferGeometry, Bone, Color, Group, Material, Matrix4, Mesh, Quaternion, Skeleton as ThreeSkeleton, SkinnedMesh, Sphere, Vector3, MeshLambertMaterial } from 'three';
+import { type Frustum, type Object3D, type PerspectiveCamera, BufferAttribute, BufferGeometry, Bone, Color, Group, Material, Matrix4, Mesh, Quaternion, Skeleton as ThreeSkeleton, SkinnedMesh, Sphere, Vector3, MeshLambertMaterial } from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { parseChr, parseAni, type Motion, type Skeleton } from './formats/chr';
 import { parseO3d, type O3dPart } from './formats/o3d';
@@ -225,6 +225,7 @@ export async function loadTemplate(entry: ModelEntry, o3dFiles: string[], base: 
 }
 
 const lpos = new Vector3();
+const cullSphere = new Sphere();
 const bfP = new Vector3(), bfQ = new Quaternion(), bfS = new Vector3();
 const tmpQ = new Quaternion(), tmpQ2 = new Quaternion(), tmpV = new Vector3(), tmpV2 = new Vector3(), tmpS = new Vector3(1, 1, 1), tmpM = new Matrix4();
 
@@ -297,6 +298,29 @@ export class MoverInstance {
     this.pos = [world.elements[12], world.elements[13], world.elements[14]];
     this.rotY = source.rot[1];
     this.pose(0);
+  }
+
+  /** corte/LOD: tempo acumulado sem animar e a fase do quadro em que anima quando está longe */
+  lodDt = 0;
+  lodId = Math.floor(Math.random() * 2);
+  private shadowOn = true;
+  /**
+   * Corte manual (as malhas têm frustumCulled=false por causa dos ossos, então tudo era desenhado — e na passada de sombra
+   * também — mesmo atrás da câmera): fora da visão a instância some (e o nome/balão junto); o nome some além de `labelMax` e a
+   * sombra além de `shadowMax`. Devolve a distância à câmera, ou -1 se está fora da visão (não precisa animar).
+   */
+  cull(frustum: Frustum, cam: Vector3, labelMax: number, shadowMax: number): number {
+    const e = this.group.matrixWorld.elements;
+    cullSphere.center.set(e[12], e[13] + 1.2, e[14]);
+    cullSphere.radius = 3.5;
+    const d = cam.distanceTo(cullSphere.center);
+    const vis = frustum.intersectsSphere(cullSphere);
+    this.group.visible = vis;
+    if (this.label) this.label.visible = vis && d < labelMax;
+    if (this.bubble) this.bubble.visible = vis;
+    const shadow = d < shadowMax;
+    if (shadow !== this.shadowOn) { this.shadowOn = shadow; this.group.traverse((o) => { if ((o as Mesh).isMesh) (o as Mesh).castShadow = shadow; }); }
+    return vis ? d : -1;
   }
 
   /** Avança a animação (perSlerp quadros por tique do Neuz — 62,5/s —, como CModel::MoveFrame). */
@@ -808,12 +832,23 @@ export class MoverManager {
     if (now >= next) inst.play(idles[Math.floor(Math.random() * idles.length)], false);
   }
 
-  update(dt: number, camera?: Vector3) {
+  private lodN = 0;
+  update(dt: number, camera?: Vector3, frustum?: Frustum) {
+    this.lodN++;
     for (const [inst, w] of this.wander) this.patrol(inst, w, dt);
     if (this.external.size) this.updateExternal(dt);
     const now = performance.now();
     for (const inst of this.active.values()) {
       if (inst.owner === 'movers') this.npcIdle(inst, now);
+      if (frustum && camera) {
+        // fora da visão não anima; longe anima a cada 2 quadros (o tempo acumulado segue igual)
+        const d = inst.cull(frustum, camera, this.labelDistance, 60);
+        if (d < 0) continue;
+        inst.lodDt += dt;
+        if (d > 60 && (this.lodN + inst.lodId) & 1) continue;
+        inst.update(inst.lodDt); inst.lodDt = 0;
+        continue;
+      }
       inst.update(dt);
       if (inst.label && camera) inst.label.visible = inst.group.parent !== null && camera.distanceTo(lpos.setFromMatrixPosition(inst.label.matrixWorld)) < this.labelDistance;
     }

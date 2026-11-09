@@ -195,7 +195,7 @@ export class GmPanel extends GameWindow {
   private playerPage() {
     const x = el('input', { type: 'number', className: 'gm-in num', placeholder: 'x' });
     const z = el('input', { type: 'number', className: 'gm-in num', placeholder: 'z' });
-    const map = el('input', { type: 'text', className: 'gm-in', placeholder: 'mapa (ex.: l2)', value: 'l2' });
+    const map = el('input', { type: 'text', className: 'gm-in', placeholder: 'mapa (ex.: azria)', value: 'azria' });
     const level = num(1, 150, 1);
     const job = select(JOBS);
     const penya = num(1, 2_000_000_000, 1000);
@@ -210,8 +210,8 @@ export class GmPanel extends GameWindow {
       })),
       el('div', { className: 'gm-row' }, btn('Voltar para Flaris', () => this.send('//tp 6976 3327'))),
       el('h4', { textContent: 'Mapas' }),
-      el('div', { className: 'gm-row' }, map, btn('Ir', () => this.send(`//mapa ${map.value.trim() || 'l2'}`)), btn('Listar', () => this.send('//mapa'))),
-      el('div', { className: 'gm-row' }, el('span', { className: 'gm-hint', textContent: 'nome (ou parte): l2 = o mapa do L2 · azria, coral…' })),
+      el('div', { className: 'gm-row' }, map, btn('Ir', () => this.send(`//mapa ${map.value.trim() || 'azria'}`)), btn('Listar', () => this.send('//mapa'))),
+      el('div', { className: 'gm-row' }, el('span', { className: 'gm-hint', textContent: 'nome (ou parte): azria, coral…' })),
       el('h4', { textContent: 'Personagem (alvo)' }),
       el('div', { className: 'gm-row' }, field('Nível', level), btn('Aplicar', () => this.send(this.withTarget('set-level', level.value)))),
       el('div', { className: 'gm-row' }, field('Classe', job), btn('Aplicar', () => this.send(this.withTarget('set-job', job.value)))),

@@ -1,5 +1,5 @@
 import {
-  ColorManagement, LinearSRGBColorSpace, PCFSoftShadowMap, AmbientLight, BufferGeometry, Color, DirectionalLight, Fog, Group,
+  ColorManagement, Frustum, LinearSRGBColorSpace, PCFSoftShadowMap, AmbientLight, BufferGeometry, Color, DirectionalLight, Fog, Group,
   InstancedMesh, Material, Matrix4, Mesh, MeshBasicMaterial, MeshLambertMaterial, OctahedronGeometry, RingGeometry,
   MOUSE, Object3D, PerspectiveCamera, Raycaster, Scene, Vector2, Vector3, WebGLRenderer, WebGLRenderTarget,
 } from 'three';
@@ -74,6 +74,9 @@ export class WorldView {
   /** filtro de tela (painel "Filtro" do editor; o salvo no ambiente do mundo vale no jogo) */
   readonly postfx: PostFx;
   readonly labelRenderer = new CSS2DRenderer();
+  /** campo de visão da câmera neste quadro (corte de personagens/mobs: client/net.ts e shared/movers.ts) */
+  readonly frustum = new Frustum();
+  private pvm = new Matrix4();
   /** conta GM/admin: o nome dos monstros mostra ID e nível */
   staffLabels = false;
   readonly scene = new Scene();
@@ -1207,7 +1210,10 @@ export class WorldView {
     // primeira pessoa (vale o zoom que o jogador pediu, não o encurtamento por obstáculo): com a câmera dentro da cabeça o personagem some (senão se vê o interior do modelo)
     if (player?.inst) { const fp = this.gameCamera && this.camWantR > 0 && this.camWantR < CAM_FIRST_PERSON; if (player.inst.group.visible === fp) player.inst.group.visible = !fp; }
     this.stream(now);
-    this.moverMgr.update(dt, camera.position);
+    camera.updateMatrixWorld();
+    this.pvm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    this.frustum.setFromProjectionMatrix(this.pvm);
+    this.moverMgr.update(dt, camera.position, this.frustum);
     this.objAnims.update(dt);
     this.updateShadow();
     this.water.update(dt);

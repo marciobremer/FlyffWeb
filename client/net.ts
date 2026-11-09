@@ -69,7 +69,7 @@ export interface ItemView {
 export interface InvMessage { gold: number; /** Red Chip (contador fora da bolsa) */ chips?: number; bag: number; items: [number, number, number, number, number?, number?, number?, number[]?, number?, number[]?, number?, number?, number[]?][]; defs: Record<number, ItemView>; /** fail stack do ferreiro (dica) */ stack?: Record<string, Record<number, number>>; /** raridades da arma: [nome, cor 0xAARRGGBB, × ataque, × bônus] */ rar?: [string, number, number, number][] }
 
 
-interface Remote { view: PlayerView; inst: MoverInstance | null; target: [number, number, number]; cur: [number, number, number]; h: number; curH: number; s: string; gone: boolean; /** último golpe tocado da sequência (1–4) e quando */ hit?: number; hitAt?: number }
+interface Remote { /** tempo sem animar (corte/LOD) */ acc?: number; view: PlayerView; inst: MoverInstance | null; target: [number, number, number]; cur: [number, number, number]; h: number; curH: number; s: string; gone: boolean; /** último golpe tocado da sequência (1–4) e quando */ hit?: number; hitAt?: number }
 
 export class RemotePlayers {
   private list = new Map<number, Remote>();
@@ -269,9 +269,14 @@ export class RemotePlayers {
   }
 
   /** a cada quadro: aproxima posição/rumo do último recebido (meia-vida ~60 ms) e anima */
+  private lodN = 0;
   frame(dt: number) {
     const k = 1 - Math.exp(-dt * 12);
+    const cam = this.world.camera.position, fr = this.world.frustum;
+    this.lodN++;
+    let idx = 0;
     for (const r of this.list.values()) {
+      idx++;
       const [tx, ty, tz] = r.target, c = r.cur;
       if (Math.hypot(tx - c[0], tz - c[2]) > 40) { c[0] = tx; c[1] = ty; c[2] = tz; } // teleporte / reconexão
       else { c[0] += (tx - c[0]) * k; c[1] += (ty - c[1]) * k; c[2] += (tz - c[2]) * k; }
@@ -281,7 +286,12 @@ export class RemotePlayers {
         // quem não tem altura confiável (bot, ou ponto numa encosta) não pode ficar abaixo do terreno; acima (ponte, voo, pulo) vale a do servidor
         const ground = r.s.startsWith('fly') ? null : this.world.sampleHeight(c[0], c[2]);
         r.inst.place([c[0], ground === null ? c[1] : Math.max(c[1], ground), c[2]], r.curH);
-        r.inst.update(dt);
+        // fora da visão não desenha nem anima; longe anima a cada 2 ou 4 quadros; nome até 90 m e sombra até 45 m
+        const d = r.inst.cull(fr, cam, 90, 45);
+        if (d < 0) continue;
+        r.acc = (r.acc ?? 0) + dt;
+        const every = d > 90 ? 4 : d > 45 ? 2 : 1;
+        if (every === 1 || (this.lodN + idx) % every === 0) { r.inst.update(r.acc); r.acc = 0; }
       }
     }
   }
