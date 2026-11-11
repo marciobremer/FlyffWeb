@@ -6,6 +6,7 @@ import { initLang, t, tr } from './lang';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { keyedImage, themeImage, themeTiles } from '../shared/tga';
 import { hasS3tc } from '../shared/dds';
+import { setupMobile } from './mobile';
 import { hairColorOf, hairRgb, type Sex } from '../shared/humans';
 import { CharStage } from './charpreview';
 import { fmtGameHour, gameHour } from '../shared/gameclock';
@@ -298,6 +299,8 @@ view.onMoverClick = (inst, again) => {
   else if (!(inGame && inst.owner === 'spawns' && combat.attacking && combat.isTarget(inst))) combat.stop();
   if (inGame && inst.owner === 'movers' && inst.source.characterKey) npcGoing = { inst, key: inst.source.characterKey.trim(), next: 0 };
 };
+// celular: joystick, ataque, pulo e atalhos na tela (client/mobile.ts; só liga em aparelho de toque ou com ?mobile)
+setupMobile(view, { attack: () => { const tg = view.target; if (inGame && tg?.owner === 'spawns') combat.start(tg); else chat.system(t('Toque num monstro para selecioná-lo e depois em Atacar.')); } });
 view.onGroundClick = () => { combat.stop(); ground.cancel(); npcGoing = null; };
 net.onShop = (s) => {
   shopWnd.open(s);

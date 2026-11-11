@@ -159,6 +159,10 @@ export class WorldView {
   onFrame: (dt: number) => void = () => {};
 
   readonly keys = new Set<string>();
+  /** joystick da tela de toque (client/mobile.ts): x = direita, y = frente, de -1 a 1 */
+  touchMove: [number, number] = [0, 0];
+  /** aperta uma tecla por `ms` (botões de toque: pulo) */
+  pressKey(code: string, ms = 140) { this.keys.add(code); setTimeout(() => this.keys.delete(code), ms); }
   fps = 0;
   private raycaster = new Raycaster();
   private lastStream = 0;
@@ -875,7 +879,7 @@ export class WorldView {
   }
 
   /** alguma tecla de andar/pular apertada? (cancela o ataque automático) */
-  moveKeysDown() { for (const k of ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space']) if (this.keys.has(k)) return true; return false; }
+  moveKeysDown() { if (Math.hypot(this.touchMove[0], this.touchMove[1]) > 0.25) return true; for (const k of ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space']) if (this.keys.has(k)) return true; return false; }
 
   /** instância selecionada (alvo) */
   get target() { return this.selected; }
@@ -1168,8 +1172,9 @@ export class WorldView {
     if (this.controlling && player) {
       const k = (c: string) => keys.has(c);
       const input = {
-        forward: (k('KeyW') || k('ArrowUp') ? 1 : 0) - (k('KeyS') || k('ArrowDown') ? 1 : 0),
-        right: (k('KeyD') || k('ArrowRight') ? 1 : 0) - (k('KeyA') || k('ArrowLeft') ? 1 : 0),
+        // teclado + joystick de toque (o joystick vale quando passa de 30% do curso)
+        forward: Math.max(-1, Math.min(1, (k('KeyW') || k('ArrowUp') ? 1 : 0) - (k('KeyS') || k('ArrowDown') ? 1 : 0) + (Math.abs(this.touchMove[1]) > 0.3 ? Math.sign(this.touchMove[1]) : 0))),
+        right: Math.max(-1, Math.min(1, (k('KeyD') || k('ArrowRight') ? 1 : 0) - (k('KeyA') || k('ArrowLeft') ? 1 : 0) + (Math.abs(this.touchMove[0]) > 0.3 ? Math.sign(this.touchMove[0]) : 0))),
         walk: this.walkMode,
         turbo: this.turboPress,
         jump: k('Space'),
