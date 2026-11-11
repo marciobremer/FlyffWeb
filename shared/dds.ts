@@ -1,6 +1,7 @@
 import { CompressedTexture, DataTexture, LinearFilter, LinearMipmapLinearFilter, RGBAFormat, UnsignedByteType, type Texture } from 'three';
 import { trackedBuffer, trackedFetch } from './netstats';
 import { DDSLoader } from 'three/examples/jsm/loaders/DDSLoader.js';
+import { decodeDxt } from './dxt';
 
 /**
  * Carrega .dds do cliente FlyFF. O DDSLoader do Three só entende DXT1/3/5; os arquivos do jogo também trazem
@@ -13,6 +14,22 @@ const DDPF_ALPHAPIXELS = 0x1, DDPF_FOURCC = 0x4, DDPF_RGB = 0x40;
 
 function ctz(m: number) { let s = 0; while (m && !(m & 1)) { m >>>= 1; s++; } return s; }
 function bitsOf(m: number) { let n = 0; while (m) { n += m & 1; m >>>= 1; } return n; }
+
+/**
+ * A GPU aceita texturas S3TC (DXT)? PC sim; boa parte dos celulares (Mali, Apple, vários Adreno) NÃO — e aí a textura comprimida
+ * aparece preta (era o que deixava personagens e prédios como silhuetas pretas no celular). Testa uma vez num canvas à parte.
+ */
+let s3tc: boolean | null = null;
+function hasS3tc() {
+  if (s3tc !== null) return s3tc;
+  if (typeof document === 'undefined') return (s3tc = true);
+  try {
+    const gl = (document.createElement('canvas').getContext('webgl2') ?? document.createElement('canvas').getContext('webgl')) as WebGLRenderingContext | null;
+    s3tc = !!gl && !!(gl.getExtension('WEBGL_compressed_texture_s3tc') ?? gl.getExtension('WEBKIT_WEBGL_compressed_texture_s3tc'));
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+  } catch { s3tc = true; }
+  return s3tc;
+}
 
 export async function loadDds(url: string): Promise<Texture | null> {
   let buf: ArrayBuffer;
@@ -32,6 +49,15 @@ export function parseDds(buf: ArrayBuffer): Texture | null {
   const pfFlags = dv.getUint32(80, true);
 
   if (pfFlags & DDPF_FOURCC) {
+    // sem S3TC na GPU: decodifica o DXT no processador (nível 0) e sobe como RGBA8 comum, com mipmaps gerados
+    if (!hasS3tc()) {
+      const img = decodeDxt(buf, 4096);
+      if (!img) return null;
+      const t = new DataTexture(new Uint8Array(img.data.buffer, img.data.byteOffset, img.data.byteLength), img.width, img.height, RGBAFormat, UnsignedByteType);
+      t.minFilter = LinearMipmapLinearFilter; t.magFilter = LinearFilter; t.generateMipmaps = true;
+      t.needsUpdate = true;
+      return t;
+    }
     const dds = parser.parse(buf, true);
     if (!dds.mipmaps?.length || !dds.format) return null;
     const t = new CompressedTexture(dds.mipmaps as never, dds.width, dds.height, dds.format as never);

@@ -2,14 +2,14 @@
  * Decodifica o 1º nível (mip 0) de um .dds DXT1/DXT3/DXT5 para RGBA8 no processador — para ícones pequenos (32×32) que viram
  * <img> na interface (o DDSLoader do Three só entrega a textura comprimida para a GPU). null se não for DXT.
  */
-export function decodeDxt(buf: ArrayBuffer): ImageData | null {
+export function decodeDxt(buf: ArrayBuffer, maxSize = 1024): ImageData | null {
   if (buf.byteLength < 128) return null;
   const dv = new DataView(buf);
   if (dv.getUint32(0, true) !== 0x20534444 || !(dv.getUint32(80, true) & 0x4)) return null;
   const h = dv.getUint32(12, true), w = dv.getUint32(16, true);
   const four = String.fromCharCode(dv.getUint8(84), dv.getUint8(85), dv.getUint8(86), dv.getUint8(87));
   const kind = four === 'DXT1' ? 1 : four === 'DXT3' ? 3 : four === 'DXT5' ? 5 : 0;
-  if (!kind || !w || !h || w > 1024 || h > 1024) return null;
+  if (!kind || !w || !h || w > maxSize || h > maxSize) return null;
   const blockBytes = kind === 1 ? 8 : 16;
   const bw = Math.ceil(w / 4), bh = Math.ceil(h / 4);
   if (128 + bw * bh * blockBytes > buf.byteLength) return null;
