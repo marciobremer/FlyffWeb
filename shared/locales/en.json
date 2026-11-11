@@ -2,7 +2,6 @@
   "Personagem": "Character",
   "Messenger": "Messenger",
   "Add Friend": "Add Friend",
-  "Painel de GM": "GM Panel",
   "Guilda": "Guild",
   "Status": "Status",
   "Navegador": "Navigator",
@@ -167,5 +166,14 @@
   "Verde": "Green",
   "Azul": "Blue",
   "Rosto anterior": "Previous face",
-  "Próximo rosto": "Next face"
+  "Próximo rosto": "Next face",
+  "GM Panel": "GM Panel",
+  "Crafting": "Crafting",
+  "Craft": "Craft",
+  "Apagar itens": "Delete items",
+  "Duração do Item": "Item Duration",
+  "Heaven Tower": "Heaven Tower",
+  "Entrada automática cancelada.": "Automatic login cancelled.",
+  "Entrando como {name}… (Esc ou clique cancela)": "Entering as {name}… (Esc or click cancels)",
+  "Carregando personagens…": "Loading characters…"
 }

@@ -191,6 +191,8 @@ gmPanel.monsters = () => {
   return [...d.monsterMovers].map((id) => ({ id, name: d.moverNames.get(id) ?? d.moverSymbols.get(id) ?? String(id), symbol: d.moverSymbols.get(id) ?? String(id), level: d.moverLevel.get(id) ?? 0, boss: d.bossMovers.has(id) }));
 };
 gmPanel.search = (q, k, g) => { net.gmItems(q, k, g); };
+gmPanel.getStats = (name) => net.gmStats(name);
+gmPanel.setStatsReq = (name, v) => net.gmSetStats(name, v);
 /** outros jogadores (WebSocket /ws) */
 const remotes = new RemotePlayers(view);
 // pet coletor (o seu e o dos outros): segue o dono e corre até o item que o servidor manda pegar
@@ -678,7 +680,7 @@ net.onChat = (id, name, text) => {
     const shout = text.startsWith('[Grito] '), say = shout ? text.slice(8) : text; // grito: balão de outro tipo
     if (id === net.myId) view.player?.inst?.say(say, 60, shout ? 8000 : 6000, shout); else remotes.say(id, say, shout);
   }
-  else { chat.system(text); if (gmPanel.visible) gmPanel.status(text, /não|erro|uso:|inválid|fora do/i.test(text)); }
+  else { chat.system(text); if (gmPanel.visible) gmPanel.status(text, /no permission|not found|is not (online|dead)|no connection|error|usage:|invalid|outside|unknown command|too far|could not|did not (understand|fit)|does not (exist|accept)|do not have|unavailable|not available|already (dead|in )|only applies|only the suit|at most/i.test(text)); }
 };
 // anúncio do painel admin: letreiro no meio da tela e uma cópia no chat (para quem perdeu)
 const announcer = new Announcer(document.body);
@@ -687,6 +689,7 @@ const caption = new CaptionBanner(document.body);
 net.onAnnounce = (text, loops) => { announcer.show(text, loops); chat.system(`[Aviso] ${text}`); };
 net.onGmOpen = () => gmPanel.show();
 net.onGmItems = (list) => gmPanel.setResults(list);
+net.onGmStats = (m) => gmPanel.setStats(m);
 net.onTeleport = (p, revive) => { if (revive) { view.player?.revive(); deathScreen(false); } void view.teleportPlayer(p[0], p[2], p[1]); };
 chat.onSend = (text) => {
   // comando de emoticon (/laugh, /sad…): mostra a carinha em vez de mandar o texto

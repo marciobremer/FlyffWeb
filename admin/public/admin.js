@@ -14,7 +14,8 @@ const fmtUp = (ms) => { if (!ms) return '—'; const s = Math.floor(ms / 1000); 
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 
 // ---------------- navegação ----------------
-function show(view) {
+function show(route) {
+  const [view, arg] = route.split('/');
   for (const v of document.querySelectorAll('.view')) v.hidden = v.id !== 'view-' + view;
   for (const a of document.querySelectorAll('#side a[data-view]')) a.classList.toggle('on', a.dataset.view === view);
   if (view === 'account') loadAccounts();
@@ -26,6 +27,7 @@ function show(view) {
   else if (view === 'items') loadItems();
   else if (view === 'skills') loadSkills();
   else if (view === 'loadtest') loadLoadtest(true);
+  else if (view === 'characters') chOpen(arg ? decodeURIComponent(arg) : '');
   else refresh();
 }
 addEventListener('hashchange', () => show(location.hash.slice(1) || 'dashboard'));
@@ -159,7 +161,7 @@ async function loadAccounts() {
     const banTxt = banned ? `<span class="badge ban" title="até ${fmtDate(a.blockedUntil)}">${new Date(a.blockedUntil).getFullYear() >= 2100 ? 'permanente' : 'até ' + fmtDate(a.blockedUntil)}</span>` : '—';
     return `<tr>
       <td><b>${esc(a.username)}</b>${a.hasPassword ? '' : ' <span class="dim" title="sem senha do jogo web">(sem senha)</span>'}<br><small class="dim">criada ${fmtDate(a.createdAt)} · último login ${fmtDate(a.lastLoginAt)}</small></td>
-      <td class="tags">${a.characters.map((c) => `<span>${esc(c.name)}</span>`).join('') || '<span class="dim">—</span>'}</td>
+      <td class="tags">${a.characters.map((c) => `<a class="chlink" href="#characters/${encodeURIComponent(c.name)}" title="Ver a ficha de ${esc(c.name)}"><span>${esc(c.name)}</span></a>`).join('') || '<span class="dim">—</span>'}</td>
       <td>${a.authority === 'Z' ? '<span class="badge adm">Dono</span>' : a.authority !== 'F' ? '<span class="badge adm">GM</span>' : 'Jogador'}</td>
       <td>${level}</td>
       <td>${a.online ? `<span class="badge on">${esc(a.online)}</span>` : '<span class="dim">offline</span>'}</td>
@@ -962,3 +964,95 @@ let qPendingNpc = '';
 addEventListener('hashchange', () => { if (location.hash === '#quests' && qPendingNpc) setTimeout(() => { qOpen(null); $('qNpc').value = qPendingNpc; say($('qMsg'), 'ID "' + qPendingNpc + '" colocado no formulário.'); qPendingNpc = ''; }, 300); });
 $('npcWorld').onchange = npcLoad;
 $('npcQ').oninput = () => { clearTimeout(npcTimer); npcTimer = setTimeout(npcLoad, 250); };
+
+// ---------------- characters (só leitura) ----------------
+const ch = { page: 1, q: '' };
+let chTimer = 0;
+const num = (n) => Number(n).toLocaleString('pt-BR');
+const fmtMin = (m) => `${Math.floor(m / 60)}h ${m % 60}min`;
+async function chOpen(name) {
+  $('chListBox').hidden = !!name; $('chSheet').hidden = !name;
+  say($('chMsg'), '');
+  if (!name) { chList(); return; }
+  $('chSheet').innerHTML = '<p class="empty">Carregando…</p>';
+  try { chSheet(await api('/characters/by-name/' + encodeURIComponent(name))); }
+  catch (e) { $('chSheet').innerHTML = ''; say($('chMsg'), e.message, true); $('chListBox').hidden = false; $('chSheet').hidden = true; chList(); }
+}
+async function chList() {
+  let r;
+  try { r = await api('/characters?' + new URLSearchParams({ q: ch.q, page: ch.page })); } catch (e) { say($('chMsg'), e.message, true); return; }
+  const pages = Math.max(1, Math.ceil(r.total / r.size));
+  $('chInfo').textContent = `Página ${r.page} de ${pages} · ${r.total} personagem(ns)`;
+  $('chPrev').disabled = r.page <= 1; $('chNext').disabled = r.page >= pages;
+  $('chRows').innerHTML = r.rows.length
+    ? r.rows.map((c) => `<tr><td><a class="chlink" href="#characters/${encodeURIComponent(c.name)}"><b>${esc(c.name)}</b></a></td><td>${esc(c.jobName)}</td><td>${c.level}</td><td>${esc(c.account)}</td><td>${c.online ? '<span class="badge on">online</span>' : '<span class="dim">offline</span>'}</td></tr>`).join('')
+    : '<tr><td colspan="5" class="empty">Nenhum personagem encontrado.</td></tr>';
+}
+$('chQ').oninput = () => { clearTimeout(chTimer); chTimer = setTimeout(() => { ch.q = $('chQ').value; ch.page = 1; chList(); }, 250); };
+$('chPrev').onclick = () => { ch.page--; chList(); };
+$('chNext').onclick = () => { ch.page++; chList(); };
+
+// célula de item no estilo do inventário do jogo: só o ícone, +upgrade no canto, quantidade embaixo; os detalhes vão no balão (title)
+const GRADE_CLS = { Unique: 'g2', Ultimate: 'g3', Baruna: 'g4' };
+function chTip(i) {
+  const l = [i.name + (i.count > 1 ? ' ×' + num(i.count) : '') + (i.upgrade ? ' +' + i.upgrade : '')];
+  l.push(`${i.label ? i.label + ' · ' : ''}Nv. ${i.level} · ${i.grade} · ID ${i.id}`);
+  if (i.element) l.push('Elemento: ' + i.element);
+  if (i.rarity) l.push('Raridade: ' + i.rarity);
+  if (i.piercing.length) l.push('Furos: ' + i.piercing.join(', '));
+  if (i.gems) l.push(i.gems + ' joia(s)');
+  if (i.awakening) l.push('Despertar: ' + i.awakening + ' efeito(s)');
+  if (i.expires) l.push('Válido até ' + fmtDate(i.expires));
+  return l.join('\n');
+}
+function chCell(i, cls = '') {
+  if (!i) return `<div class="chcell empty ${cls}"></div>`;
+  return `<div class="chcell ${cls} ${GRADE_CLS[i.grade] || ''}" title="${esc(chTip(i))}">${i.icon ? `<img src="${iconUrl(i.icon)}" alt="" loading="lazy">` : '?'}${i.upgrade ? `<em class="up">+${i.upgrade}</em>` : ''}${i.count > 1 ? `<em class="n">${num(i.count)}</em>` : ''}</div>`;
+}
+function chSheet(c) {
+  const stat = (k, v) => `<div class="chstat"><span>${k}</span><b>${v}</b></div>`;
+  const bar = (k, v, max, cls) => { max = Number(max) || Number(v) || 0; const pc = max ? Math.max(0, Math.min(100, (Number(v) / max) * 100)) : 0; return `<div class="chbar ${cls}" title="${k}: ${num(v)} / ${num(max)}"><label>${k === 'EXP' ? 'Exp.' : k}</label><div><i style="width:${pc.toFixed(1)}%"></i><b>${cls === 'exp' ? pc.toFixed(2) + '%' : num(v) + ' / ' + num(max)}</b></div></div>`; };
+  const eq = new Map(c.equipped.map((i) => [i.slot, i]));
+  const slot = (part, label, cls = '') => { const i = eq.get(part); return i ? chCell(i, cls) : `<div class="chcell empty ${cls}" title="${label}"><small>${label}</small></div>`; };
+  const bag = new Map(c.bag.map((i) => [i.slot, i]));
+  const open = Math.max(c.bagSlots, ...c.bag.map((i) => i.slot + 1));
+  const rows = Math.ceil(open / 7) * 7;
+  const cells = []; for (let n = 0; n < rows; n++) cells.push(chCell(bag.get(n)));
+  const locked = 168 - c.bagSlots;
+  const q = c.quests.length;
+  $('chSheet').innerHTML = `
+    <p><a class="chlink" href="#characters">← Voltar à lista</a></p>
+    <div class="chlayout">
+      <div class="card chinv">
+        <div class="chbars">${bar('HP', c.hp, c.maxHp, 'hp')}${bar('MP', c.mp, c.maxMp, 'mp')}${bar('FP', c.fp, c.maxFp, 'fp')}${bar('EXP', c.expMax ? Number(c.exp) : 0, c.expMax, 'exp')}</div>
+        <h5>Inventário</h5>
+        <div class="cheq">
+          <div class="cheq-top">${slot(20, 'Anel')}${slot(22, 'Brinco')}${slot(19, 'Colar')}${slot(23, 'Brinco')}${slot(21, 'Anel')}</div>
+          <div class="cheq-left">${slot(10, 'Arma')}${eq.has(9) ? slot(9, '2ª arma') : ''}${slot(11, 'Escudo')}${slot(25, 'Munição')}${slot(8, 'Capa')}${slot(12, 'Máscara')}</div>
+          <div class="cheq-mid"><b>${esc(c.name)}</b><span>${esc(c.jobName)}</span><span>Nv. ${c.level}</span></div>
+          <div class="cheq-right">${slot(6, 'Capacete')}${slot(2, 'Roupa')}${slot(4, 'Luvas')}${slot(5, 'Botas')}${slot(13, 'Montaria')}</div>
+          <div class="cheq-cash">${slot(26, 'Chapéu')}${slot(27, 'Roupa')}${slot(28, 'Luvas')}${slot(29, 'Botas')}</div>
+        </div>
+        <div class="chbag">${cells.join('')}</div>
+        ${locked > 0 ? `<p class="dim chlock">🔒 +${locked} espaços ainda bloqueados (máx. 168)</p>` : ''}
+        <div class="chmoney"><span>Penya <b>${num(c.gold)}</b></span><span>Red Chips <b>${num(c.redChips)}</b></span></div>
+      </div>
+      <div class="chinfo">
+        <div class="card chhead">
+          <h2>${esc(c.name)} ${c.account.online ? '<span class="badge on">online</span>' : '<span class="dim">offline</span>'}</h2>
+          <p class="dim">${esc(c.jobName)} · Nível ${c.level} · ${esc(c.sex)} · conta <b>${esc(c.account.username)}</b>${c.account.authority !== 'F' ? ' <span class="badge adm">GM</span>' : ''} · slot ${c.slot + 1}</p>
+        </div>
+        <div class="card"><h5>Status</h5><div class="chstats">
+          ${stat('STR', c.str)}${stat('STA', c.sta)}${stat('DEX', c.dex)}${stat('INT', c.int)}
+          ${stat('Pontos de status', c.statPoints)}${stat('Pontos de skill', c.skillPoints)}
+        </div></div>
+        <div class="card"><h5>Personagem</h5><div class="chstats">
+          ${stat('Tempo de jogo', fmtMin(c.playMinutes))}${stat('Crafting EXP', num(c.craftingExp))}${stat('Buffs ativos', c.buffs)}
+          ${stat('Mundo', c.world)}${stat('Posição', c.pos.join(', '))}${stat('Criado em', fmtDate(c.createdAt))}${stat('Último online', fmtDate(c.lastOnlineAt))}
+        </div></div>
+        <div class="card"><h5>Skills (${c.skills.length})</h5><div class="chskills">${c.skills.map((s) => `<div class="chcell sk" title="${esc(s.name)} — Nv. ${s.level}${s.max ? ' / ' + s.max : ''}">${s.icon ? `<img src="/admin/skill-icons/${encodeURIComponent(s.icon)}" alt="" loading="lazy">` : '?'}<em class="n">${s.level}</em></div>`).join('') || '<p class="dim">Nenhuma skill aprendida.</p>'}</div></div>
+        <div class="card"><h5>Quests (${q})</h5>${q ? `<div class="tags chq">${c.quests.map((x) => `<span title="${esc(JSON.stringify(x.state))}">${esc(x.id)}</span>`).join('')}</div>` : '<p class="dim">Nenhuma quest registrada.</p>'}</div>
+        <div class="card"><h5>Banco</h5><p class="dim">O jogo ainda não tem banco: nada para mostrar.</p></div>
+      </div>
+    </div>`;
+}

@@ -12,6 +12,7 @@ import { dbHealth, installDatabase } from '../servers/common/db/install';
 import { itemIcon, itemsApi } from './items-api';
 import { skillIcon, skillsApi } from './skills-api';
 import { questsApi } from './quests-api';
+import { charactersApi } from './characters-api';
 import { LoadTest } from './loadtest';
 import { loadEdits, saveEdits } from '../servers/common/worldedits';
 import { parseAegonTeleports, parseTeleports } from '../shared/formats/teleport';
@@ -238,6 +239,8 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
   // ---------------- Skills: modo auto/manual e lista por classe (admin/skills-api.ts) ----------------
   if (await skillsApi(p, m, url, () => readJson(req), (status, body) => send(res, status, body))) return;
   if (await questsApi(p, m, url, () => readJson(req), (status, body) => send(res, status, body))) return;
+  // ---------------- Characters: busca e ficha completa, só leitura (admin/characters-api.ts) ----------------
+  if (await charactersApi(p, m, url, (status, body) => send(res, status, body), onlineAccounts)) return;
 
   // ---------------- Database: backup, baixar, apagar, restaurar e zerar ----------------
   if (p === '/db' && m === 'GET') {

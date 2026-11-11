@@ -26,7 +26,7 @@
       <a class="off" title="Em breve">😈 <span>Mobs</span></a>
       <h6>Sistemas</h6>
       <a href="#skills" data-view="skills">⚡ <span>Skills</span></a>
-      <a class="off" title="Em breve">🛡️ <span>Characters</span></a>
+      <a href="#characters" data-view="characters">🛡️ <span>Characters</span></a>
     </nav>
   </aside>
 
@@ -486,6 +486,24 @@
       <div class="sktabs" id="skTabs" role="tablist" aria-label="Classe"></div>
       <div class="card"><div class="skgrid" id="skGrid"><p class="empty">Carregando…</p></div></div>
       <div id="skTip" class="sktip" hidden></div>
+    </section>
+
+    <!-- ================= CHARACTERS (só leitura) ================= -->
+    <section id="view-characters" class="view" hidden>
+      <header class="top">
+        <div><h1>Characters</h1><p>Ficha completa do personagem: status, equipamentos, bolsa, skills e mais (somente visualização)</p></div>
+      </header>
+      <p id="chMsg" class="msg" role="status"></p>
+
+      <div id="chListBox">
+        <div class="searchbar ch"><input id="chQ" type="search" placeholder="Buscar por personagem ou conta…" autocomplete="off" /></div>
+        <div class="card">
+          <table class="grid"><thead><tr><th>Personagem</th><th>Classe</th><th>Nível</th><th>Conta</th><th>Online</th></tr></thead><tbody id="chRows"></tbody></table>
+          <div class="pager"><button class="btn" id="chPrev">← Anterior</button><span id="chInfo" class="dim"></span><button class="btn" id="chNext">Próxima →</button></div>
+        </div>
+      </div>
+
+      <div id="chSheet" hidden></div>
     </section>
 
   </main>

@@ -44,6 +44,9 @@ export interface PlayerStats {
 /** efeitos de uma skill (ids XI_*, -1 = nenhum): c ao lançar, p projétil, h no alvo, s no lançador, b que dura (buff) por `dur` s */
 export interface SkillFx { c: number; h: number; s: number; p?: number; b?: number; dur?: number; mo?: string; sn?: number; sh?: number }
 
+/** resposta do painel de GM aos atributos de um jogador: `temp` = os valores atuais são de teste e `real` são os verdadeiros */
+export interface GmStats { ok: boolean; error?: string; id?: number; name?: string; level?: number; job?: number; str?: number; sta?: number; dex?: number; int?: number; temp?: boolean; real?: { str: number; sta: number; dex: number; int: number } }
+
 export interface ItemView {
   /** raridade (dwItemGrade): 100 comum, 200 unique, 300 ultimate, 400 baruna */
   gr?: number;
@@ -412,6 +415,8 @@ export class NetClient {
   /** painel de GM: abrir, resultado da busca de itens; teleporte feito por um GM */
   onGmOpen: () => void = () => {};
   onGmItems: (list: ItemView[]) => void = () => {};
+  /** painel de GM: atributos de um jogador (ou o erro) */
+  onGmStats: (m: GmStats) => void = () => {};
   /** Wikipedia de itens: uma página da lista e a dica completa de um item */
   onWiki: (m: { req: number; off: number; total: number; rows: (number | string)[][] }) => void = () => {};
   onWikiTip: (item: ItemView) => void = () => {};
@@ -509,6 +514,8 @@ export class NetClient {
         this.onCraftResult(m);
       } else if (m.t === 'gmItems') {
         this.onGmItems((m.list ?? []) as ItemView[]);
+      } else if (m.t === 'gmStats') {
+        this.onGmStats(m as unknown as GmStats);
       } else if (m.t === 'teleport') {
         this.onTeleport(m.p as [number, number, number], !!m.revive);
       } else if (m.t === 'hit') {
@@ -735,6 +742,10 @@ export class NetClient {
   coolOpen() { return this.raw({ t: 'coolOpen' }); }
   craftDo(id: number) { return this.raw({ t: 'craftDo', id }); }
   gmItems(q: string, k: string, g = 0) { return this.raw({ t: 'gmItems', q, k, g }); }
+  /** GM: lê os atributos de um jogador online (nome vazio = você) */
+  gmStats(name: string) { return this.raw({ t: 'gmStats', name }); }
+  /** GM: valores de TESTE (1–1000, só na memória do servidor); `null` desfaz */
+  gmSetStats(name: string, v: { str: number; sta: number; dex: number; int: number } | null) { return this.raw(v ? { t: 'gmSetStats', name, ...v } : { t: 'gmSetStats', name, reset: true }); }
   /** a cada 2 s manda o carimbo do relógio; o pong volta com ele e dá o ping */
   private startPing() {
     clearInterval(this.pingTimer);

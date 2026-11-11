@@ -232,3 +232,57 @@ dl.ltnow { grid-template-columns: repeat(4, auto); }
 .qwide { margin: 8px 0; } .qwide textarea { width: 100%; }
 .q-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; align-items: center; }
 .q-item { min-width: 260px; }
+
+/* ---------- Characters (só leitura) ---------- */
+.searchbar.ch { grid-template-columns: 1fr; }
+.chlink { color: var(--teal); text-decoration: none; }
+.chlink:hover { text-decoration: underline; }
+.grid .tags a.chlink span { color: var(--teal); }
+.grid .tags a.chlink:hover span { border-color: var(--teal); }
+.chhead h2 { margin: 0 0 4px; font-size: 22px; }
+.chhead p { margin: 0; }
+.chstats { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.chstat { background: #0d1526; border: 1px solid #1f2b40; border-radius: 8px; padding: 8px 10px; }
+.chstat span { display: block; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.chstat b { font-size: 16px; }
+.chq span { font: 12px ui-monospace, Consolas, monospace; }
+
+/* ---------- Characters: ficha no estilo do inventário do jogo ---------- */
+.chlayout { display: grid; grid-template-columns: 372px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1000px) { .chlayout { grid-template-columns: 1fr; } }
+.chinv { position: sticky; top: 12px; padding: 14px; background: linear-gradient(#17202f, #111a2a); }
+.chcell { position: relative; width: 44px; height: 44px; display: grid; place-items: center; background: #1a2438; border: 1px solid #2a3a58; border-radius: 6px; color: var(--dim); }
+.chcell img { width: 32px; height: 32px; image-rendering: pixelated; }
+.chcell.empty { background: #131c2d; border-color: #1f2b40; }
+.chcell.empty small { font-size: 9px; text-transform: uppercase; letter-spacing: .03em; color: #3d4c68; text-align: center; line-height: 1.1; }
+.chcell:not(.empty):hover { border-color: var(--teal); box-shadow: 0 0 0 1px var(--teal) inset; }
+.chcell.g2 { border-color: #4a78c8; } .chcell.g3 { border-color: #b07ae0; } .chcell.g4 { border-color: #e0a040; }
+.chcell em { position: absolute; font: 700 11px/1 system-ui; font-style: normal; text-shadow: 0 1px 2px #000; pointer-events: none; }
+.chcell em.up { left: 3px; top: 3px; color: #ffd24a; }
+.chcell em.n { right: 3px; bottom: 3px; color: #fff; }
+.chcell.sk { width: 40px; height: 40px; }
+.cheq { display: grid; grid-template-columns: 44px 1fr 44px; grid-template-areas: 'top top top' 'left mid right' 'cash cash cash'; gap: 6px 8px; margin-bottom: 12px; }
+.cheq-top { grid-area: top; display: flex; justify-content: center; gap: 6px; }
+.cheq-left, .cheq-right { display: grid; gap: 6px; align-content: start; }
+.cheq-left { grid-area: left; } .cheq-right { grid-area: right; }
+.cheq-mid { grid-area: mid; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 8px; background: radial-gradient(circle at 50% 35%, #1e2c47, #0f1626 70%); text-align: center; padding: 8px; }
+.cheq-mid b { font-size: 16px; } .cheq-mid span { color: var(--dim); font-size: 13px; }
+.cheq-cash { grid-area: cash; display: flex; justify-content: center; gap: 6px; }
+.chbag { display: grid; grid-template-columns: repeat(7, 44px); gap: 4px; justify-content: space-between; padding: 8px; background: #0d1526; border: 1px solid #1f2b40; border-radius: 8px; }
+.chlock { margin: 8px 0 0; font-size: 12px; text-align: center; }
+.chmoney { display: flex; gap: 8px; margin-top: 10px; }
+.chmoney span { flex: 1; display: flex; justify-content: space-between; padding: 6px 10px; background: #0d1526; border: 1px solid #1f2b40; border-radius: 14px; font-size: 12px; color: var(--dim); }
+.chmoney b { color: var(--fg); }
+.chinfo .card { margin-bottom: 14px; }
+.chskills { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.chbars { display: grid; gap: 6px; margin-bottom: 12px; }
+.chbar { display: grid; grid-template-columns: 38px 1fr; align-items: center; gap: 8px; }
+.chbar label { font: 700 13px system-ui; color: #8fa6e8; }
+.chbar > div { position: relative; height: 18px; border-radius: 9px; background: #0b1120; border: 1px solid #2a3552; overflow: hidden; }
+.chbar i { position: absolute; inset: 0 auto 0 0; border-radius: 9px; box-shadow: inset 0 6px 0 rgb(255 255 255 / .22); }
+.chbar b { position: absolute; inset: 0; text-align: center; font: 700 12px/18px system-ui; color: #fff; text-shadow: 0 0 2px #000, 0 1px 1px #000; }
+.chbar.hp i { background: linear-gradient(#ff6b6b, #c0262d); }
+.chbar.mp i { background: linear-gradient(#6fb3ff, #2a62c9); }
+.chbar.fp i { background: linear-gradient(#6fe28a, #1f9a45); }
+.chbar.exp i { background: linear-gradient(#ffe27a, #d19a1a); }

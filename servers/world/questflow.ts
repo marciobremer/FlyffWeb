@@ -215,16 +215,16 @@ export class QuestFlow<C extends QuestConn> {
   /** GM: `//quest reset [id]` apaga o andamento (de uma ou de todas) */
   async reset(c: C, id?: string): Promise<string> {
     const log = this.log(c);
-    if (id) { if (!log[id]) return `Você não tem a quest "${id}".`; delete log[id]; } else for (const k of Object.keys(log)) delete log[k];
+    if (id) { if (!log[id]) return `You do not have the quest "${id}".`; delete log[id]; } else for (const k of Object.keys(log)) delete log[k];
     this.save(c);
     await this.push(c);
-    return id ? `Quest "${id}" zerada.` : 'Todas as quests zeradas.';
+    return id ? `Quest "${id}" reset.` : 'All quests reset.';
   }
 
   /** GM: `//quest` lista as quests do servidor e o estado de cada uma para o personagem */
   list(c: C): string {
     const qs = this.h.book.all();
-    if (!qs.length) return 'Nenhuma quest em data/quests.json.';
-    return qs.map((q) => { const st = this.log(c)[q.id]; return `${q.id} (${q.npc}) — ${st?.s === 1 ? 'em andamento' : st?.s === 2 ? `concluída${st.n && st.n > 1 ? ` ${st.n}×` : ''}` : 'não aceita'}`; }).join(' · ');
+    if (!qs.length) return 'No quests in data/quests.json.';
+    return qs.map((q) => { const st = this.log(c)[q.id]; return `${q.id} (${q.npc}) — ${st?.s === 1 ? 'in progress' : st?.s === 2 ? `completed${st.n && st.n > 1 ? ` ${st.n}×` : ''}` : 'not accepted'}`; }).join(' · ');
   }
 }

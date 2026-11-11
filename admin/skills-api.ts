@@ -21,7 +21,7 @@ const TYPE_TXT: Record<string, string> = { JTYPE_BASE: 'Vagrant', JTYPE_EXPERT: 
 
 let skills: SkillCatalog | null = null;
 let dstName: Map<number, string> | null = null;
-const catalog = () => (skills ??= new SkillCatalog(RES_DIR, cat()));
+export const catalog = () => (skills ??= new SkillCatalog(RES_DIR, cat()));
 /** DST_STR → "STR" etc., a partir dos #define do jogo */
 const dstLabel = (id: number) => {
   if (!dstName) { dstName = new Map(); for (const [k, v] of cat().defines) if (k.startsWith('DST_') && !dstName.has(v)) dstName.set(v, k.slice(4)); }

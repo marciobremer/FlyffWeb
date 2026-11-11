@@ -54,6 +54,8 @@ import { setRateBoost } from '../common/rates';
  *   { t: 'statUp', str, sta, dex, int }            distribui pontos de atributo (soma ≤ pontos livres)
  *   { t: 'pick', id }                               pega o item `id` do chão (perto, dono ou depois de 30 s)
  *   { t: 'gmItems', q, k, g }                       painel de GM: busca no catálogo de itens (só contas GM); g = raridade (dwItemGrade)
+ *   { t: 'gmStats', name? }                         painel de GM: STR/STA/DEX/INT de um jogador online (sem nome = você)
+ *   { t: 'gmSetStats', name?, str, sta, dex, int }  painel de GM: valores de TESTE (1–1000), só na memória; `reset: true` desfaz
  *   { t: 'invUse', c, s }                           duplo clique: equipa (da bolsa) ou desequipa (para a bolsa)
  *   { t: 'invDrop', s, n }                          lixeira: apaga `n` do item do espaço `s` da bolsa (não volta)
  *   { t: 'invSort' }                                organiza a bolsa por tipo e junta as pilhas
@@ -118,6 +120,7 @@ import { setRateBoost } from '../common/rates';
  *   { t: 'inv', gold, bag, items: [c, s, itemId, n][], defs }   inventário inteiro (ao entrar e a cada mudança)
  *   { t: 'invError', error }                        pedido recusado (nível, sexo, espaço ocupado…)
  *   { t: 'gmOpen' } / { t: 'gmItems', list }        abre o painel de GM / resultado da busca de itens
+ *   { t: 'gmStats', ok, name, str, sta, dex, int, temp, real } ou { ok: false, error }   resposta de gmStats / gmSetStats
  *   { t: 'teleport', p }                            GM levou você para p (x, y, z)
  *   { t: 'hit', k: 'p'|'m', a, d, dmg, f, hp }      golpe: k 'p' jogador a → mob d, k 'm' mob a → jogador d; f 1 = errou,
  *                                                   2 = crítico; hp = HP do alvo (mob: em milésimos do máximo; jogador: valor)
@@ -190,6 +193,8 @@ interface PlayerCombat {
   /** próxima vez que pode usar um item de cada grupo (comida/poção/refresher), ms */ readyAt: Map<number, number>;
   /** skills: níveis aprendidos, pontos livres e quando cada uma pode ser lançada de novo */ skills: Map<number, number>; skillPoints: number; skillReady: Map<number, number>;
   /** buffs ativos (skill → nível, fim e os efeitos DST que somam aos atributos de luta) */ buffs: Map<number, { lv: number; until: number; dst: [number, number][] }>;
+  /** atributos de TESTE de um GM (painel de GM): enquanto existir, `f.base` tem os valores de teste e aqui ficam os verdadeiros — só na memória, o banco sempre recebe estes */
+  realBase?: { str: number; sta: number; dex: number; int: number };
 }
 
 /** raio (unidades) e limite de mobs enviados a cada jogador */
@@ -462,7 +467,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       }
       cb.skillPoints = Math.max(0, skillCat.totalAt(level) - spent);
     }
-    const b = cb.f.base;
+    const b = cb.realBase ?? cb.f.base;
     cb.points = Math.max(0, rules.totalGp(level) - ((b.str - 15) + (b.sta - 15) + (b.dex - 15) + (b.int - 15)));
   }
 
@@ -539,7 +544,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   /** HP/MP/FP, exp e nível no banco (0 em HP significa "cheio" para personagem novo, então morto grava 1) */
   async function saveCombat(id: number, cb: PlayerCombat, level: number) {
     await query('UPDATE characters SET hp = $2, mp = $3, fp = $4, exp = $5, level = $6, str = $7, sta = $8, dex = $9, "int" = $10, stat_points = $11, skills = $12, skill_points = $13, updated_at = now() WHERE id = $1',
-      [id, Math.max(1, cb.hp), Math.max(1, cb.mp), Math.max(1, cb.fp), cb.exp, level, cb.f.base.str, cb.f.base.sta, cb.f.base.dex, cb.f.base.int, cb.points, JSON.stringify(Object.fromEntries(cb.skills)), cb.skillPoints]);
+      [id, Math.max(1, cb.hp), Math.max(1, cb.mp), Math.max(1, cb.fp), cb.exp, level, (cb.realBase ?? cb.f.base).str, (cb.realBase ?? cb.f.base).sta, (cb.realBase ?? cb.f.base).dex, (cb.realBase ?? cb.f.base).int, cb.points, JSON.stringify(Object.fromEntries(cb.skills)), cb.skillPoints]);
     await saveBuffs(id, cb);
   }
 
@@ -705,6 +710,25 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       str: cb.f.base.str, sta: cb.f.base.sta, dex: cb.f.base.dex, int: cb.f.base.int, bonus: { str: cb.f.str - cb.f.base.str, sta: cb.f.sta - cb.f.base.sta, dex: cb.f.dex - cb.f.base.dex, int: cb.f.int - cb.f.base.int },
       acc: rules ? rules.accuracy(cb.f) : 0, dodge: rules ? rules.dodge(cb.f) : 0, spd: rules ? Math.floor(Math.floor(rules.attackSpeed(cb.f) * 100) / 2) : 0, points: cb.points, job: cb.f.job, jobOpts: rules ? rules.jobOptions(cb.f.job, lv) : [],
       mv: +((rules ? rules.runSpeed(cb.f, c.player!.sex) : 6) * ((c.speedPct ?? 100) / 100)).toFixed(3), fx: rules ? rules.bonusList(cb.f) : [] };
+  }
+
+  /** painel de GM: atributos base de um jogador online (os de teste, se houver) e se são de teste */
+  function gmStatsMsg(o: Conn) {
+    const cb = o.cb!, b = cb.f.base;
+    return { t: 'gmStats', ok: true, id: o.player!.id, name: o.player!.name, level: o.player!.level, job: cb.f.job, str: b.str, sta: b.sta, dex: b.dex, int: b.int, temp: !!cb.realBase, real: cb.realBase ?? b };
+  }
+
+  /**
+   * Atributos de TESTE (GM): troca STR/STA/DEX/INT base de quem está online sem gravar nada. Os verdadeiros ficam em `cb.realBase`
+   * (é o que o banco recebe, ver saveCombat); `vals = null` desfaz. Sai sozinho ao entrar de novo ou reiniciar o servidor.
+   */
+  async function applyGmStats(o: Conn, vals: { str: number; sta: number; dex: number; int: number } | null) {
+    const cb = o.cb;
+    if (!cb || !o.player || !inventory) return;
+    if (vals) { cb.realBase ??= { ...cb.f.base }; cb.f.base = { ...vals }; }
+    else if (cb.realBase) { cb.f.base = { ...cb.realBase }; cb.realBase = undefined; }
+    refreshFighter(o, await inventory.state(o.player.id));
+    send(o.ws, statsMsg(o));
   }
 
   /** recalcula os máximos (nível/classe mudou) mantendo a proporção atual ou enchendo */
@@ -2626,7 +2650,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
             invis: (on) => {
               c.gmInvis = on ?? !c.gmInvis;
               refreshInvis(c);
-              return c.gmInvis ? 'Modo invisível: os jogadores não veem você (GMs e admins ainda veem).' : c.invis ? 'Modo invisível desligado (a Dark Illusion ainda está ativa).' : 'Modo invisível desligado: todos veem você de novo.';
+              return c.gmInvis ? 'Invisible mode: players cannot see you (GMs and admins still can).' : c.invis ? 'Invisible mode off (Dark Illusion is still active).' : 'Invisible mode off: everyone can see you again.';
             },
             drop: (itemId, n) => {
               const p = c.player!, now = Date.now(), name = inventory?.catalog.byId.get(itemId)?.name ?? 'Item';
@@ -2634,48 +2658,48 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
                 const a = Math.random() * Math.PI * 2, r = 3 + Math.random() * 6;
                 ground.set(++groundSeq, { w: p.w, id: groundSeq, itemId, count: 1, upgrade: 0, gold: 0, x: p.p[0] + Math.cos(a) * r, z: p.p[2] + Math.sin(a) * r, owner: 0, ownerUntil: 0, expires: now + GROUND_MS });
               }
-              return `${n}× ${name} no chão.`;
+              return `${n}× ${name} on the ground.`;
             },
             time: (hour) => {
               clockFixed = hour;
               for (const o of conns) if (o.player) send(o.ws, { t: 'clock', now: Date.now(), fixed: clockFixed });
-              return hour === null ? 'Relógio do jogo andando de novo (dia 6h–19h em 21,6 min, noite em 7,2 min).' : `Hora do jogo fixada em ${String(Math.floor(hour) % 24).padStart(2, '0')}:${String(Math.round((hour % 1) * 60)).padStart(2, '0')} para todos (//time auto volta ao normal).`;
+              return hour === null ? 'Game clock running again (day 6h–19h in 21.6 min, night in 7.2 min).' : `Game hour fixed at ${String(Math.floor(hour) % 24).padStart(2, '0')}:${String(Math.round((hour % 1) * 60)).padStart(2, '0')} for everyone (//time auto goes back to normal).`;
             },
             fly: (on) => {
               c.gmFly = on ?? !c.gmFly;
               send(ws, { t: 'gmFly', on: c.gmFly });
-              return c.gmFly ? 'Voo ligado: E sobe, Q desce e W A S D guiam.' : 'Voo desligado: você volta a pisar no chão.';
+              return c.gmFly ? 'Flight on: E up, Q down and W A S D steer.' : 'Flight off: you are back on the ground.';
             },
             god: (on) => {
               c.god = on ?? !c.god;
               send(ws, { t: 'god', on: c.god });
-              return c.god ? 'Imortal ligado: os mobs batem, o dano aparece, mas o seu HP não cai.' : 'Imortal desligado: você volta a perder HP e pode morrer.';
+              return c.god ? 'Immortal on: mobs hit you and the damage shows, but your HP does not drop.' : 'Immortal off: you lose HP again and can die.';
             },
             kill: (id) => {
               const o = liveConn(id);
-              if (!o?.cb || !o.player) return 'Esse personagem não está online.';
-              if (o.cb.dead) return `${o.player.name} já está morto.`;
-              if (o.god) return `${o.player.name} está imortal (//god off para desligar).`;
+              if (!o?.cb || !o.player) return 'That character is not online.';
+              if (o.cb.dead) return `${o.player.name} is already dead.`;
+              if (o.god) return `${o.player.name} is immortal (//god off to turn it off).`;
               killPlayer(o);
-              return `${o.player.name} foi morto.`;
+              return `${o.player.name} was killed.`;
             },
             revive: (id) => {
               const o = liveConn(id);
-              if (!o?.cb || !o.player) return 'Esse personagem não está online.';
-              if (!o.cb.dead) return `${o.player.name} não está morto.`;
+              if (!o?.cb || !o.player) return 'That character is not online.';
+              if (!o.cb.dead) return `${o.player.name} is not dead.`;
               reviveInPlace(o);
-              send(o.ws, { t: 'chat', id: 0, name: '', text: 'Um GM trouxe você de volta à vida.' });
-              return `${o.player.name} foi revivido.`;
+              send(o.ws, { t: 'chat', id: 0, name: '', text: 'A GM brought you back to life.' });
+              return `${o.player.name} was revived.`;
             },
-            clearMobs: () => { const n = W(c).mobs?.clearSummons() ?? 0; return n ? `${n} monstro(s) invocado(s) apagado(s).` : 'Nenhum monstro invocado neste mapa.'; },
+            clearMobs: () => { const n = W(c).mobs?.clearSummons() ?? 0; return n ? `${n} summoned monster(s) cleared.` : 'No summoned monsters on this map.'; },
             summonMob: (what, n, at) => {
               const mw = W(c).mobs, p = c.player;
-              if (!mw || !p) return 'Sem monstros neste mapa.';
-              if (at && Math.hypot(at[0] - p.p[0], at[1] - p.p[2]) > 120) return 'Esse ponto está longe demais (até 120 m de você).';
+              if (!mw || !p) return 'No monsters on this map.';
+              if (at && Math.hypot(at[0] - p.p[0], at[1] - p.p[2]) > 120) return 'That spot is too far (up to 120 m from you).';
               let id = /^\d+$/.test(what) ? Number(what) : -1;
               if (id < 0) for (const [k, v] of mw.terrain.moverProps) if (v.symbol.toLowerCase() === what.toLowerCase()) { id = k; break; }
               const made = id >= 0 ? mw.summon(id, at ? at[0] : p.p[0] + 3, at ? at[1] : p.p[2] + 3, p.p[1], n) : 0;
-              return made ? `${made}× ${mw.terrain.moverProps.get(id)?.symbol} invocado(s) ${at ? 'no lugar marcado' : 'perto de você'}.` : `Monstro ${what} não existe.`;
+              return made ? `${made}× ${mw.terrain.moverProps.get(id)?.symbol} summoned ${at ? 'at the marked spot' : 'near you'}.` : `Monster ${what} does not exist.`;
             },
             worldList: () => [...worlds.values()].filter((w) => !w.name.includes('#')).map((w) => ({ name: w.base ?? w.name, id: w.id })),
             travel: (q) => {
@@ -2683,65 +2707,65 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
               const all = [...worlds.values()].filter((w) => !w.name.includes('#'));
               const wr = all.find((w) => w.name.toLowerCase() === l || String(w.id) === l)
                 ?? all.find((w) => w.name.toLowerCase().includes(l) || w.define.toLowerCase().includes(l));
-              if (!wr) return `Não achei o mapa "${q}". Use //mapa para ver a lista.`;
-              if (c.player?.w === wr.name) return `Você já está em ${wr.name}.`;
+              if (!wr) return `Could not find the map "${q}". Use //map to see the list.`;
+              if (c.player?.w === wr.name) return `You are already in ${wr.name}.`;
               void changeWorld(c, wr.name, arrivalOf(wr) ?? ([...(wr.start ?? REVIVE_AT)] as [number, number, number])).catch((e) => console.error('realtime: //mapa', e));
-              return `Indo para ${wr.name}…`;
+              return `Going to ${wr.name}…`;
             },
             event: (op, id) => {
-              if (op === 'run') return id ? (events.run(id, `GM ${c.player?.name}`) ? `Evento "${id}" disparado.` : `Evento "${id}" não existe.`) : 'Uso: //evento run <id>';
+              if (op === 'run') return id ? (events.run(id, `GM ${c.player?.name}`) ? `Event "${id}" triggered.` : `Event "${id}" does not exist.`) : 'Usage: //event run <id>';
               const l = events.list();
-              return l.length ? `Eventos: ${l.map((e) => `${e.id}${e.when ? '' : ' (manual)'}`).join(', ')}. Uso: //evento run <id>` : 'Nenhum evento em data/events.json.';
+              return l.length ? `Events: ${l.map((e) => `${e.id}${e.when ? '' : ' (manual)'}`).join(', ')}. Usage: //event run <id>` : 'No events in data/events.json.';
             },
             weather: (kind, minutes) => {
               const wr = baseOf(W(c));
-              if (!kind) return `Clima em ${wr}: ${events.weatherOf(wr) === 'rain' ? 'chovendo' : 'limpo'}.`;
+              if (!kind) return `Weather in ${wr}: ${events.weatherOf(wr) === 'rain' ? 'raining' : 'clear'}.`;
               events.setWeather(kind, minutes, wr);
-              return kind === 'rain' ? `Chuva em ${wr} por ${minutes} min.` : `Tempo limpo em ${wr}.`;
+              return kind === 'rain' ? `Rain in ${wr} for ${minutes} min.` : `Clear weather in ${wr}.`;
             },
             portal: (op, what) => {
               const wr = W(c), k = baseOf(wr), here = loadEdits(k), ps = wr.portals ?? [];
               const closed = new Set(here.closedPortals ?? []);
-              const name = (d: string) => `${opts.worldInfo?.(d)?.name ?? d}${closed.has(d) ? ' (fechado)' : ''}`;
-              if (op === 'list') return ps.length ? `Portais de ${k}: ${[...new Set(ps.map((x) => x.define))].map(name).join(', ')}. Uso: //portal fechar|abrir <nome do mapa de destino>` : `${k} não tem portais.`;
+              const name = (d: string) => `${opts.worldInfo?.(d)?.name ?? d}${closed.has(d) ? ' (closed)' : ''}`;
+              if (op === 'list') return ps.length ? `Portals in ${k}: ${[...new Set(ps.map((x) => x.define))].map(name).join(', ')}. Usage: //portal close|open <destination map name>` : `${k} has no portals.`;
               const q = (what ?? '').toLowerCase();
               const def = [...new Set(ps.map((x) => x.define))].find((d) => d.toLowerCase() === q || (opts.worldInfo?.(d)?.name ?? '').toLowerCase() === q);
-              if (!def) return `Não achei o portal "${what ?? ''}" neste mapa. Use //portal para listar.`;
+              if (!def) return `Could not find the portal "${what ?? ''}" on this map. Use //portal to list them.`;
               if (op === 'close') closed.add(def); else closed.delete(def);
               saveEdits(k, { ...here, closedPortals: [...closed] });
               closedCache.delete(k);
-              return `Portal para ${opts.worldInfo?.(def)?.name ?? def} ${op === 'close' ? 'fechado: não teleporta mais' : 'aberto de novo'}.`;
+              return `Portal to ${opts.worldInfo?.(def)?.name ?? def} ${op === 'close' ? 'closed: it no longer teleports' : 'opened again'}.`;
             },
-            attr: () => { const p = c.player, a = p ? W(c).mobs?.terrain.attrAt(p.p[0], p.p[2]) : undefined; return a === undefined ? '' : ['normal', 'NoWalk (bloqueado)', 'NoFly', 'NoMove (bloqueado)', 'Die (mata)'][a] ?? String(a); },
+            attr: () => { const p = c.player, a = p ? W(c).mobs?.terrain.attrAt(p.p[0], p.p[2]) : undefined; return a === undefined ? '' : ['normal', 'NoWalk (blocked)', 'NoFly', 'NoMove (blocked)', 'Die (kills)'][a] ?? String(a); },
             open: (op, arg) => {
               const wr = W(c), k = baseOf(wr), p = c.player, e = loadEdits(k), list = [...(e.openAreas ?? [])];
               const fmt = (a: { x1: number; z1: number; x2: number; z2: number }, i: number) => `${i + 1}) x ${Math.round(a.x1)}–${Math.round(a.x2)}, z ${Math.round(a.z1)}–${Math.round(a.z2)}`;
-              if (op === 'list') return list.length ? `Áreas liberadas em ${k}: ${list.map(fmt).join(' · ')}` : `${k} não tem áreas liberadas. Use //liberar <raio> onde há uma barreira invisível.`;
-              if (op === 'clear') { saveEdits(k, { ...e, openAreas: [] }); return 'Todas as áreas liberadas foram apagadas.'; }
-              if (op === 'del') { const i = Number(arg) - 1; if (!list[i]) return 'Número inválido (veja //liberar lista).'; list.splice(i, 1); saveEdits(k, { ...e, openAreas: list }); return 'Área apagada.'; }
+              if (op === 'list') return list.length ? `Open areas in ${k}: ${list.map(fmt).join(' · ')}` : `${k} has no open areas. Use //unblock <radius> where there is an invisible barrier.`;
+              if (op === 'clear') { saveEdits(k, { ...e, openAreas: [] }); return 'All open areas were deleted.'; }
+              if (op === 'del') { const i = Number(arg) - 1; if (!list[i]) return 'Invalid number (see //unblock list).'; list.splice(i, 1); saveEdits(k, { ...e, openAreas: list }); return 'Area deleted.'; }
               if (!p) return '';
               const r = Math.max(1, Math.min(200, Number(arg) || 8));
               list.push({ x1: p.p[0] - r, z1: p.p[2] - r, x2: p.p[0] + r, z2: p.p[2] + r });
               saveEdits(k, { ...e, openAreas: list });
-              return `Passagem liberada num quadrado de ${r * 2} m em volta de você (${Math.round(p.p[0])}, ${Math.round(p.p[2])}). Vale para todos; no seu jogo aperte F5 para recarregar o mapa e atravessar.`;
+              return `Passage opened in a ${r * 2} m square around you (${Math.round(p.p[0])}, ${Math.round(p.p[2])}). It applies to everyone; in your game press F5 to reload the map and walk through.`;
             },
             speed: (pct) => {
-              if (pct === undefined) return `Velocidade: ${c.speedPct ?? 100}% (100 = normal). Uso: //speed <10 a 1000>; //speed 100 volta ao normal.`;
+              if (pct === undefined) return `Speed: ${c.speedPct ?? 100}% (100 = normal). Usage: //speed <10 to 1000>; //speed 100 returns to normal.`;
               c.speedPct = pct === 100 ? undefined : pct;
               if (c.cb) c.cb.dirty = true; // reenvia os atributos (velocidade de corrida) ao cliente
-              return pct === 100 ? 'Velocidade normal.' : `Velocidade em ${pct}% da normal (até você sair do jogo ou usar //speed 100).`;
+              return pct === 100 ? 'Normal speed.' : `Speed at ${pct}% of normal (until you leave the game or use //speed 100).`;
             },
             where: () => baseOf(W(c)),
-            quest: (op, id) => (!quests ? Promise.resolve('Sem quests neste servidor.') : op === 'reset' ? quests.reset(c, id) : Promise.resolve(quests.list(c))),
+            quest: (op, id) => (!quests ? Promise.resolve('No quests on this server.') : op === 'reset' ? quests.reset(c, id) : Promise.resolve(quests.list(c))),
             point: (q) => {
               const wr = W(c), pts = pointsOf(wr), p = c.player;
-              if (!q) return pts.length ? `Pontos de ${wr.base ?? wr.name}: ${pts.map((x) => x.name).join(', ')}. Uso: //ponto <nome>` : 'Este mapa não tem pontos marcados (use a ferramenta "Pontos" do editor).';
+              if (!q) return pts.length ? `Points in ${wr.base ?? wr.name}: ${pts.map((x) => x.name).join(', ')}. Usage: //point <name>` : 'This map has no marked points (use the editor\'s "Points" tool).';
               const l = q.toLowerCase();
               const pt = pts.find((x) => x.name.toLowerCase() === l) ?? pts.find((x) => x.name.toLowerCase().includes(l));
-              if (!pt || !p) return `Não achei o ponto "${q}".`;
-              if (!inWorld(pt.pos)) return 'Esse ponto está fora do mapa.';
+              if (!pt || !p) return `Could not find the point "${q}".`;
+              if (!inWorld(pt.pos)) return 'That point is outside the map.';
               p.p = [...pt.pos]; c.dirty = true; send(c.ws, { t: 'teleport', p: pt.pos });
-              return `Teleportado para ${pt.name}.`;
+              return `Teleported to ${pt.name}.`;
             },
             teleport: (id, p) => {
               if (!inWorld(p)) return false;
@@ -2760,6 +2784,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
             resetStatsLive: (id) => {
               let done = false;
               for (const o of conns) if (o.player?.id === id && o.cb && rules) {
+                o.cb.realBase = undefined; // o reset vale sobre qualquer teste de atributos
                 o.cb.f.base = { str: 15, sta: 15, dex: 15, int: 15 };
                 reconcilePoints(o.cb, o.player.level); // pontos livres = tudo o que o nível dá
                 void inventory?.state(id).then((st) => { refreshFighter(o, st); send(o.ws, statsMsg(o)); });
@@ -2778,7 +2803,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
                   if (okJob !== o.cb.f.job) {
                     o.player.job = okJob; o.cb.f.job = okJob; o.cb.buffs.clear();
                     void query('UPDATE characters SET job = $2, updated_at = now() WHERE id = $1', [id, okJob]).catch(() => {});
-                    send(o.ws, { t: 'chat', id: 0, name: '', text: `Você voltou a ser ${okJob === 0 ? 'Vagrant' : JOB_NAMES[okJob] ?? '#' + okJob}.` });
+                    send(o.ws, { t: 'chat', id: 0, name: '', text: `You went back to being ${okJob === 0 ? 'Vagrant' : JOB_NAMES[okJob] ?? '#' + okJob}.` });
                     toWatchers(o, { t: 'job', id, job: okJob });
                   }
                   o.cb.skills.clear();
@@ -2792,7 +2817,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
               }
               toWatchers(connOf(id), { t: 'level', id, level });
             },
-          }, text).catch((e) => { console.error('comando de GM', e); reply('Erro ao executar o comando.'); });
+          }, text).catch((e) => { console.error('comando de GM', e); reply('Error running the command.'); });
           return;
         }
         // /shout (ou /sh) texto: grito para o mapa inteiro, no máximo 1 a cada SHOUT_MS; o chat normal só chega a quem está perto
@@ -2888,6 +2913,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         const [s, t, d, i] = add as number[], total = s + t + d + i;
         const cb = c.cb;
         if (total <= 0 || total > cb.points) return;
+        if (cb.realBase) { reply(c, 'A GM changed your stats for testing. Log in again to get them back before spending points.'); return; }
         cb.points -= total;
         cb.f.base.str += s; cb.f.base.sta += t; cb.f.base.dex += d; cb.f.base.int += i;
         cb.f.str += s; cb.f.sta += t; cb.f.dex += d; cb.f.int += i;
@@ -2941,6 +2967,23 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       } else if (msg.t === 'wikiTip' && c.player && inventory && Number.isInteger(msg.id)) {
         const d = inventory.catalog.byId.get(msg.id as number);
         if (d) send(ws, { t: 'wikiTip', item: inventory.catalog.viewFull(d) });
+      } else if ((msg.t === 'gmStats' || msg.t === 'gmSetStats') && c.player) {
+        // painel de GM (só contas GM): lê / troca (só para teste, sem gravar) os atributos de um jogador online; sem nome = você
+        const nick = typeof msg.name === 'string' ? msg.name.trim().slice(0, 32) : '', setting = msg.t === 'gmSetStats';
+        const val = (v: unknown) => (Number.isFinite(Number(v)) ? Math.max(1, Math.min(1000, Math.round(Number(v)))) : 0);
+        gmAuthority(c.accountId).then(async (a) => {
+          if (!a) return;
+          let o: Conn | undefined = c;
+          if (nick) { o = undefined; for (const x of conns) if (x.player && x.player.name.toLowerCase() === nick.toLowerCase()) { o = x; break; } }
+          if (!o?.player || !o.cb || !rules || !inventory) { send(ws, { t: 'gmStats', ok: false, error: nick ? `${nick} is not online.` : 'Not available right now.' }); return; }
+          if (setting) {
+            const vals = msg.reset ? null : { str: val(msg.str), sta: val(msg.sta), dex: val(msg.dex), int: val(msg.int) };
+            if (vals && !(vals.str && vals.sta && vals.dex && vals.int)) { send(ws, { t: 'gmStats', ok: false, error: 'Stats go from 1 to 1000.' }); return; }
+            await applyGmStats(o, vals);
+            console.log(`GM ${c.player!.name}: stats ${o.player.name} ${vals ? `STR ${vals.str} STA ${vals.sta} DEX ${vals.dex} INT ${vals.int} (test)` : 'back to normal'}`);
+          }
+          send(ws, gmStatsMsg(o));
+        }).catch((e) => { console.error('painel GM: atributos', e); send(ws, { t: 'gmStats', ok: false, error: 'Error reading the stats.' }); });
       } else if (msg.t === 'gmItems' && c.player && inventory) {
         const q = typeof msg.q === 'string' ? msg.q.slice(0, 40) : '', kind = typeof msg.k === 'string' ? msg.k : '', grade = Number.isInteger(msg.g) ? msg.g as number : 0;
         gmAuthority(c.accountId).then((a) => {

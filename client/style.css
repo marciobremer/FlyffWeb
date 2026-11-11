@@ -154,18 +154,21 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #14161a; col
 #taskMenu li.has-sub:hover > .submenu { display: block; }
 #taskMenu li.has-sub::after { content: ''; position: absolute; left: 100%; top: 0; width: 18px; height: 100%; } /* ponte: o mouse chega ao submenu sem fechar */
 #taskMenu .submenu li { height: 21px; }
-#statusWnd { position: fixed; left: 6px; top: 6px; z-index: 6; width: 192px; height: 112px; background: #f2eee8 no-repeat 0 0; touch-action: none; cursor: move; user-select: none; font: 12px/1 Tahoma, Verdana, system-ui, sans-serif; }
+#statusWnd { transform: scale(1.2); transform-origin: 0 0; position: fixed; left: 6px; top: 6px; z-index: 6; width: 236px; height: 92px; background: none; touch-action: none; cursor: move; user-select: none; font: 12px/1 Tahoma, Verdana, system-ui, sans-serif; }
 #statusWnd.dragging { opacity: .9; }
+/* moldura da WndStatus1.tga em 9 fatias (o miolo é limpo pelo hud.ts): estica sem borrar os cantos nem deixar fundo quadrado atrás deles */
+#statusWnd::before { content: ''; position: absolute; inset: 0; z-index: -1; border-style: solid; border-width: 22px 9px 9px; border-image: var(--st-frame, none) 22 9 9 fill / 22px 9px 9px stretch; }
 .st-title { position: absolute; left: 10px; right: 10px; top: 3px; height: 15px; color: #fff; font-weight: 700; font-size: 13px; text-shadow: 0 0 2px #803d1a, 0 1px 1px #803d1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.st-face { position: absolute; left: 10px; top: 25px; width: 62px; height: 72px; object-fit: cover; border-radius: 4px; }
+.st-face { position: absolute; left: 12px; top: 26px; width: 54px; height: 56px; object-fit: cover; border-radius: 4px; }
 .st-face:not([src]) { display: none; }
-.st-bar { position: absolute; left: 100px; width: 78px; height: 11px; border-radius: 4px; overflow: hidden; background: rgb(0 0 0 / .08); }
+.st-bar { position: absolute; left: 100px; width: 124px; height: 12px; border-radius: 5px; overflow: hidden; background: rgb(120 90 70 / .16); box-shadow: 0 0 0 1px rgb(150 115 95 / .55) inset; }
+.st-lbl { position: absolute; left: 74px; width: 26px; font: 700 11px/12px Tahoma, Verdana, sans-serif; color: #3b3fa8; }
 .st-bar i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; transition: width .2s; }
-.st-bar b { position: absolute; inset: 0; text-align: center; font-weight: 700; font-size: 10px; line-height: 11px; color: #fff; text-shadow: 0 0 2px #000, 0 0 1px #000; }
-.st-hp { top: 26px; } .st-hp i { background: linear-gradient(#ff9aa8, #e0405a); }
+.st-bar b { position: absolute; inset: 0; text-align: center; font-weight: 700; font-size: 10px; line-height: 12px; color: #fff; text-shadow: 0 0 2px #000, 0 0 1px #000; }
+.st-hp { top: 27px; } .st-hp i { background: linear-gradient(#ff9aa8, #e0405a); }
 .st-mp { top: 41px; } .st-mp i { background: linear-gradient(#9ab8ff, #4062d8); }
-.st-fp { top: 56px; } .st-fp i { background: linear-gradient(#a8f0a0, #3fae3a); }
-.st-exp { top: 72px; } .st-exp i { background: linear-gradient(#fff2a0, #d9b23a); }
+.st-fp { top: 55px; } .st-fp i { background: linear-gradient(#a8f0a0, #3fae3a); }
+.st-exp { top: 69px; } .st-exp i { background: linear-gradient(#fff2a0, #d9b23a); }
 
 /* aviso de conexão do multiplayer (topo, ao centro) */
 #netStatus { position: fixed; top: 34px; left: 50%; transform: translateX(-50%); z-index: 7; padding: 4px 12px; border-radius: 4px; background: rgb(0 0 0 / .55); color: #fff; font-size: 14px; pointer-events: none; }
@@ -866,3 +869,38 @@ body.ingame #langPick { display: none; }
 .dmgnum { pointer-events: none; }
 .dmgnum-in { display: flex; will-change: transform, opacity; }
 .dmgnum-in i { display: block; flex: none; background-image: var(--atlas); background-repeat: no-repeat; image-rendering: auto; }
+
+/* painel de GM: bloco "Character" à esquerda e os atributos de teste (STR/STA/DEX/INT) à direita */
+.gm-split { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
+.gm-left { flex: 1 1 290px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.gm-stats { flex: none; width: 188px; padding: 6px 8px 8px; border: 1px solid #c9b3a6; border-radius: 4px; background: rgb(255 255 255 / .45); }
+.gm-stats.temp { border-color: #a74bd6; box-shadow: 0 0 0 1px #a74bd6 inset; }
+.gm-stats > b { display: block; color: #a14a24; }
+.gm-stats .gm-field { margin: 3px 0; }
+.gm-stats .gm-field > span { width: 30px; }
+.gm-stats .gm-row { margin-top: 4px; }
+
+/* painel de GM, aba Player: duas colunas no topo, separadores no estilo do tema e tudo compacto para caber sem rolagem */
+.gm-player { gap: 4px; }
+.gm-player .gm-left { gap: 4px; }
+.gm-split.cols { flex-wrap: nowrap; }
+.gm-split.cols > .gm-left { flex: 1 1 0; }
+.gm-sep { flex: none; height: 9px; margin: 2px 2px; position: relative; background: linear-gradient(90deg, transparent, #b9a0c8 12%, #8f6fae 50%, #b9a0c8 88%, transparent) center / 100% 1px no-repeat; }
+.gm-sep::after { content: ""; position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; margin: -3px 0 0 -3px; transform: rotate(45deg); background: linear-gradient(135deg, #f3d98b, #c9962f); border: 1px solid #8f6fae; box-shadow: 0 0 0 2px #f4ecff; }
+.gm-player .gm-hint { margin: 0; }
+.gm-player .gm-split { flex-wrap: nowrap; }
+.gm-player .gm-split > .gm-left { flex: 1 1 0; }
+.gm-player .gm-stats { width: 180px; }
+
+/* aba Player: "Character (target)" numa caixa com borda, igual à de Stats (test), e as duas lado a lado */
+.gm-player .gm-split.chars { justify-content: flex-start; align-items: stretch; gap: 14px; }
+.gm-player .gm-split.chars > .gm-left { flex: none; width: 262px; }
+.gm-player .gm-split.chars > .gm-stats { width: 190px; }
+.gm-box { padding: 6px 8px 8px; border: 1px solid #c9b3a6; border-radius: 4px; background: rgb(255 255 255 / .45); }
+.gm-box-title { display: block; margin-bottom: 2px; color: #a14a24; }
+.gm-box .gm-row { display: grid; grid-template-columns: minmax(0, 1fr) 62px; gap: 6px; align-items: center; }
+.gm-box .gm-field > span { width: 74px; flex: none; }
+.gm-box .gm-field .gm-in { flex: 1; width: auto; min-width: 0; }
+.gm-box .gm-row > .gm-btn { width: 100%; padding: 0 4px; }
+.gm-box .gm-row:nth-last-child(-n+2) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.gm-box .gm-row:nth-last-child(2) > .gm-btn { grid-column: 1 / -1; }

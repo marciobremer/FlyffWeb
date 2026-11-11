@@ -135,6 +135,9 @@ export class GameWindow {
     handle.addEventListener('pointercancel', end);
   }
 
+  /** muda o tamanho (respeitando o mínimo e a tela) e grava */
+  resizeTo(w: number, h: number) { this.apply({ ...this.rect, w, h }); this.save(); }
+
   /** move a janela para (x, y), dentro da tela */
   placeAt(x: number, y: number) { this.apply({ ...this.rect, x, y }); }
   get box() { return this.rect; }

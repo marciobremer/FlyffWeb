@@ -147,7 +147,24 @@ export class GameHud {
   private buildStatus() {
     const w = this.status;
     w.id = 'statusWnd';
-    void themeImage('WndStatus1.tga').then((u) => { if (u) w.style.backgroundImage = `url(${u})`; });
+    // a moldura da WndStatus1.tga traz "HP/MP/FP/Exp." e as cavas das barras desenhados: limpa o miolo (as barras e rótulos são HTML) para a janela poder ser mais larga e baixa
+    void themeImage('WndStatus1.tga').then((u) => {
+      if (!u) return;
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+          const g = c.getContext('2d')!;
+          g.drawImage(img, 0, 0);
+          const px = g.getImageData(30, 60, 1, 1).data;
+          g.clearRect(9, 22, img.width - 18, img.height - 31);
+          g.fillStyle = `rgba(${px[0]},${px[1]},${px[2]},${px[3] / 255})`;
+          g.fillRect(9, 22, img.width - 18, img.height - 31);
+          w.style.setProperty('--st-frame', `url(${c.toDataURL('image/png')})`);
+        } catch { w.style.setProperty('--st-frame', `url(${u})`); }
+      };
+      img.src = u;
+    });
     this.title.className = 'st-title';
     this.face.className = 'st-face';
     this.face.alt = '';
@@ -157,8 +174,11 @@ export class GameHud {
       bar.className = `st-bar st-${k}`;
       const fill = document.createElement('i');
       const text = document.createElement('b');
+      const lbl = document.createElement('span');
+      lbl.className = `st-lbl st-${k}`;
+      lbl.textContent = k === 'exp' ? 'Exp.' : k.toUpperCase();
       bar.append(fill, text);
-      w.appendChild(bar);
+      w.append(lbl, bar);
       this.bars[k] = { fill, text };
     }
     this.parent.appendChild(w);
@@ -182,7 +202,7 @@ export class GameHud {
     set('hp', (s.hp / s.maxHp) * 100, `${s.hp} / ${s.maxHp}`);
     set('mp', (s.mp / s.maxMp) * 100, `${s.mp} / ${s.maxMp}`);
     set('fp', (s.fp / s.maxFp) * 100, `${s.fp} / ${s.maxFp}`);
-    set('exp', s.expPct, `${s.expPct.toFixed(4)}%`);
+    set('exp', s.expPct, `${s.expPct.toFixed(2)}%`);
   }
 
   /** Arrastar a janela pela tela (mouse e toque), sem sair da área visível; posição salva no navegador. */
