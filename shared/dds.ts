@@ -20,7 +20,7 @@ function bitsOf(m: number) { let n = 0; while (m) { n += m & 1; m >>>= 1; } retu
  * aparece preta (era o que deixava personagens e prédios como silhuetas pretas no celular). Testa uma vez num canvas à parte.
  */
 let s3tc: boolean | null = null;
-function hasS3tc() {
+export function hasS3tc() {
   if (s3tc !== null) return s3tc;
   if (typeof document === 'undefined') return (s3tc = true);
   try {
@@ -61,7 +61,10 @@ export function parseDds(buf: ArrayBuffer): Texture | null {
     const dds = parser.parse(buf, true);
     if (!dds.mipmaps?.length || !dds.format) return null;
     const t = new CompressedTexture(dds.mipmaps as never, dds.width, dds.height, dds.format as never);
-    t.minFilter = dds.mipmaps.length === 1 ? LinearFilter : LinearMipmapLinearFilter;
+    // corrente de mipmaps incompleta (arquivo com poucos níveis): GPUs de celular tratam a textura como incompleta e devolvem PRETO
+    // (no PC o driver perdoa). Só usa mipmap se a corrente vai até 1×1.
+    const full = Math.floor(Math.log2(Math.max(dds.width, dds.height))) + 1;
+    t.minFilter = dds.mipmaps.length >= full ? LinearMipmapLinearFilter : LinearFilter;
     t.magFilter = LinearFilter;
     t.needsUpdate = true;
     return t;

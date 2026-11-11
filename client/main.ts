@@ -5,6 +5,7 @@ import { WorldView } from '../shared/world';
 import { initLang, t, tr } from './lang';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { keyedImage, themeImage, themeTiles } from '../shared/tga';
+import { hasS3tc } from '../shared/dds';
 import { hairColorOf, hairRgb, type Sex } from '../shared/humans';
 import { CharStage } from './charpreview';
 import { fmtGameHour, gameHour } from '../shared/gameclock';
@@ -1098,12 +1099,12 @@ view.onFrame = (dt) => {
   $('hud').textContent = inGame
     ? `${view.fps.toFixed(0)} fps · ${fmtGameHour(clockFixed ?? gameHour(Date.now() + clockOffset))} · ping ${net.ping === null ? '—' : Math.round(net.ping) + ' ms'} · ${t('{n} online', { n: net.online })} · ${t('servidor')} :${location.port || (location.protocol === 'https:' ? 443 : 80)}`
     : `${view.fps.toFixed(0)} fps`;
-  if (PERF && inGame) {
+  if (PERF) {
     // ?perf: chamadas de desenho, triângulos e o maior intervalo entre atualizações de posição (média de 1 s)
     perfAcc += dt;
     if (perfAcc >= 1) { perfAcc = 0; perfGap = net.takeStatesGap(); }
     const inf = view.renderer.info.render;
-    $('hud').textContent += ` · ${inf.calls} calls · ${(inf.triangles / 1000).toFixed(0)}k tri · states gap ${perfGap} ms · ${remotes.count} jogadores`;
+    $('hud').textContent += ` · s3tc ${hasS3tc() ? 'sim' : 'nao'} · maxTex ${view.renderer.capabilities.maxTextureSize} · ${inf.calls} calls · ${(inf.triangles / 1000).toFixed(0)}k tri · states gap ${perfGap} ms · ${remotes.count} jogadores`;
   }
   if (previewing) view.player?.preview(dt, 0);
   if (inGame) {
