@@ -5,9 +5,9 @@ body.mobile { touch-action: none; overscroll-behavior: none; -webkit-user-select
 body.mobile canvas { touch-action: none; }
 /* a dica de teclado do alto ocupa espaço à toa no celular */
 body.mobile #help { display: none !important; }
-/* janelas fixas menores: status do personagem e mini mapa; chat escondido até tocar no ícone */
+/* janelas fixas menores: status do personagem (alto à esquerda) e mini mapa (alto à direita, abaixo da fileira de atalhos); chat escondido até tocar no ícone */
 body.mobile #statusWnd { transform: scale(.66); }
-body.mobile #navWnd { transform: scale(.62); transform-origin: top right; }
+body.mobile #navWnd { transform: scale(.55); transform-origin: top right; top: 54px !important; }
 body.mobile:not(.chat-open) #chatWnd { display: none !important; }
 
 /* área invisível de andar (abaixo das janelas, z-index 20+) */
@@ -17,14 +17,26 @@ body.mobile:not(.chat-open) #chatWnd { display: none !important; }
 .mb-stick.on { display: block; }
 .mb-knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #ffe9a8, #d99a2b 70%, #8a5a12); border: 2px solid #fff3; box-shadow: 0 2px 6px rgb(0 0 0 / .5); }
-.mb-btn { position: fixed; z-index: 45; border: 2px solid #ffe9a8; border-radius: 50%; color: #fff; font: 700 28px/1 system-ui, sans-serif; text-shadow: 0 1px 3px #000;
+
+.mb-btn { position: fixed; z-index: 45; border: 2px solid #ffe9a8; border-radius: 50%; color: #fff; font: 700 26px/1 system-ui, sans-serif; text-shadow: 0 1px 3px #000;
   background: radial-gradient(circle at 35% 30%, #e0603c, #a02a12 75%); box-shadow: 0 3px 8px rgb(0 0 0 / .55); touch-action: none; padding: 0; }
 .mb-btn:active { filter: brightness(1.25); transform: scale(.94); }
-.mb-attack { right: max(22px, env(safe-area-inset-right)); bottom: max(28px, calc(env(safe-area-inset-bottom) + 20px)); width: 80px; height: 80px; font-size: 36px; }
-.mb-jump { right: calc(max(22px, env(safe-area-inset-right)) + 92px); bottom: max(26px, calc(env(safe-area-inset-bottom) + 18px)); width: 56px; height: 56px; background: radial-gradient(circle at 35% 30%, #5aa0e0, #1f4f8a 75%); }
-/* menu de um ícone só, logo abaixo do mini mapa */
-.mb-menu { position: fixed; right: max(10px, env(safe-area-inset-right)); top: 150px; z-index: 45; display: flex; align-items: center; gap: 8px; flex-direction: row-reverse; }
-.mb-items { display: none; gap: 8px; flex-direction: row-reverse; }
-.mb-menu.open .mb-items { display: flex; }
-.mb-small { position: static; width: 46px; height: 46px; font-size: 21px; background: radial-gradient(circle at 35% 30%, #6a5a48, #2e241a 80%); }
-.mb-burger { background: radial-gradient(circle at 35% 30%, #d99a2b, #7a4f10 80%); }
+
+/* direita embaixo: ataque grande, 3 skills em arco ao redor dele e o pulo */
+.mb-attack { --r: max(22px, env(safe-area-inset-right)); --b: max(24px, calc(env(safe-area-inset-bottom) + 16px)); right: var(--r); bottom: var(--b); width: 86px; height: 86px; font-size: 40px; }
+.mb-skill { width: 54px; height: 54px; font-size: 22px; background: radial-gradient(circle at 35% 30%, #7a6a9a, #3a2f55 78%); }
+.mb-s1 { right: calc(max(22px, env(safe-area-inset-right)) + 96px); bottom: calc(max(24px, calc(env(safe-area-inset-bottom) + 16px)) + 6px); }
+.mb-s2 { right: calc(max(22px, env(safe-area-inset-right)) + 74px); bottom: calc(max(24px, calc(env(safe-area-inset-bottom) + 16px)) + 74px); }
+.mb-s3 { right: calc(max(22px, env(safe-area-inset-right)) + 16px); bottom: calc(max(24px, calc(env(safe-area-inset-bottom) + 16px)) + 98px); }
+.mb-jump { right: calc(max(22px, env(safe-area-inset-right)) + 164px); bottom: calc(max(24px, calc(env(safe-area-inset-bottom) + 16px)) + 8px); width: 50px; height: 50px; font-size: 22px; background: radial-gradient(circle at 35% 30%, #5aa0e0, #1f4f8a 75%); }
+
+/* direita no meio: AUTO e alvo mais perto */
+.mb-auto { right: max(14px, env(safe-area-inset-right)); top: 30%; width: 54px; height: 54px; font-size: 13px; background: radial-gradient(circle at 35% 30%, #3a3a3a, #111 80%); }
+.mb-auto.on { background: radial-gradient(circle at 35% 30%, #5ad06a, #1f7a2c 80%); }
+.mb-near { right: max(14px, env(safe-area-inset-right)); top: calc(30% + 62px); width: 46px; height: 46px; font-size: 24px; background: radial-gradient(circle at 35% 30%, #3a3a3a, #111 80%); }
+
+/* alto à direita: fileira de atalhos; alto no centro: penya */
+.mb-top { position: fixed; right: max(8px, env(safe-area-inset-right)); top: 6px; z-index: 45; display: flex; gap: 6px; }
+.mb-small { position: static; width: 42px; height: 42px; font-size: 19px; background: radial-gradient(circle at 35% 30%, #6a5a48, #2e241a 80%); }
+.mb-gold { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 44; padding: 3px 12px; border-radius: 12px; background: rgb(0 0 0 / .45); color: #ffe9a8;
+  font: 700 14px/1.2 system-ui, sans-serif; text-shadow: 0 1px 2px #000; pointer-events: none; }

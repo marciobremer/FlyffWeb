@@ -764,6 +764,17 @@ export class MoverManager {
   externalIdOf(inst: MoverInstance) { for (const [id, e] of this.external) if (e.inst === inst && !e.pet) return id; return null; }
 
   /** posição (FlyFF), HP (milésimos), estado e instância de um mob do servidor */
+  /** monstro vivo mais perto de (x, z) até `max` unidades (botão de ataque/AUTO do celular); null se não há */
+  nearestHostile(x: number, z: number, max: number): MoverInstance | null {
+    let best: MoverInstance | null = null, bd = max;
+    for (const e of this.external.values()) {
+      if (e.gone || e.pet || !e.inst || e.s === 'dead') continue;
+      const d = Math.hypot(e.cur[0] - x, e.cur[2] - z);
+      if (d < bd) { bd = d; best = e.inst; }
+    }
+    return best;
+  }
+
   externalInfo(id: number) { const e = this.external.get(id); return e ? { pos: e.cur, hp: e.hp, s: e.s, inst: e.inst } : null; }
   /** posição (x, z) dos mobs do servidor vivos — pontos vermelhos do mini mapa */
   externalPositions(): [number, number][] { const out: [number, number][] = []; for (const e of this.external.values()) if (!e.gone && e.hp > 0 && !e.pet) out.push([e.cur[0], e.cur[2]]); return out; }

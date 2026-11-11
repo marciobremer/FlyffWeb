@@ -300,7 +300,19 @@ view.onMoverClick = (inst, again) => {
   if (inGame && inst.owner === 'movers' && inst.source.characterKey) npcGoing = { inst, key: inst.source.characterKey.trim(), next: 0 };
 };
 // celular: joystick, ataque, pulo e atalhos na tela (client/mobile.ts; só liga em aparelho de toque ou com ?mobile)
-setupMobile(view, { attack: () => { const tg = view.target; if (inGame && tg?.owner === 'spawns') combat.start(tg); else chat.system(t('Toque num monstro para selecioná-lo e depois em Atacar.')); } });
+/** seleciona e ataca o monstro vivo mais perto (botões Atacar sem alvo e AUTO do celular) */
+const attackNearest = () => {
+  const p = view.player;
+  if (!inGame || !p) return;
+  const inst = view.moverMgr.nearestHostile(p.pos[0], p.pos[2], 25);
+  if (!inst) { chat.system(t('Nenhum monstro por perto.')); return; }
+  view.selectTarget(inst);
+  combat.start(inst);
+};
+const mobileUi = setupMobile(view, {
+  attack: () => { const tg = view.target; if (inGame && tg?.owner === 'spawns') combat.start(tg); else attackNearest(); },
+  autoStep: () => { if (inGame && !combat.attacking) attackNearest(); },
+});
 view.onGroundClick = () => { combat.stop(); ground.cancel(); npcGoing = null; };
 net.onShop = (s) => {
   shopWnd.open(s);
@@ -833,6 +845,7 @@ net.onInv = (m) => {
   if (m.rar) setRarities(m.rar);
   if (m.stack) setFailStack(m.stack);
   inventory.setState(m.gold, m.bag, m.items, m.defs, m.chips ?? 0);
+  mobileUi?.setGold(m.gold);
   smithWnd.refresh();
   // prancha/vassoura equipada (PARTS_RIDE = 13): velocidade e giro dela no voo
   const ride = m.items.find(([c, s]) => c === 1 && s === 13);
