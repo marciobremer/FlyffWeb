@@ -28,7 +28,9 @@ export function setupMobile(view: WorldView, actions: MobileActions) {
   if (!isMobile()) return;
   document.body.classList.add('mobile');
   const root = el('div', 'mb');
-  // ---- joystick ----
+  // ---- joystick invisível: a metade de baixo à esquerda da tela é a área de andar; o círculo só aparece enquanto o dedo está nela
+  // (surge onde o dedo encostou e some ao soltar) ----
+  const zone = el('div', 'mb-zone');
   const base = el('div', 'mb-stick'), knob = el('div', 'mb-knob');
   base.append(knob);
   const R = 46;
@@ -39,18 +41,20 @@ export function setupMobile(view: WorldView, actions: MobileActions) {
     knob.style.transform = `translate(${x}px, ${y}px)`;
     view.touchMove = [x / R, -y / R]; // para cima = frente
   };
-  base.addEventListener('pointerdown', (e) => {
+  zone.addEventListener('pointerdown', (e) => {
+    if (pid >= 0) return;
     pid = e.pointerId;
-    base.setPointerCapture(pid);
-    const r = base.getBoundingClientRect();
-    cx = r.left + r.width / 2; cy = r.top + r.height / 2;
-    set(e.clientX - cx, e.clientY - cy);
+    zone.setPointerCapture(pid);
+    cx = e.clientX; cy = e.clientY;
+    base.style.left = `${cx - 65}px`; base.style.top = `${cy - 65}px`;
+    base.classList.add('on');
+    set(0, 0);
     e.preventDefault();
   });
-  base.addEventListener('pointermove', (e) => { if (e.pointerId === pid) set(e.clientX - cx, e.clientY - cy); });
-  const end = (e: PointerEvent) => { if (e.pointerId !== pid) return; pid = -1; set(0, 0); view.touchMove = [0, 0]; };
-  base.addEventListener('pointerup', end);
-  base.addEventListener('pointercancel', end);
+  zone.addEventListener('pointermove', (e) => { if (e.pointerId === pid) set(e.clientX - cx, e.clientY - cy); });
+  const end = (e: PointerEvent) => { if (e.pointerId !== pid) return; pid = -1; base.classList.remove('on'); set(0, 0); view.touchMove = [0, 0]; };
+  zone.addEventListener('pointerup', end);
+  zone.addEventListener('pointercancel', end);
   // ---- botões ----
   const btn = (cls: string, label: string, onTap: () => void, title: string) => {
     const b = el('button', `mb-btn ${cls}`, label);
@@ -62,14 +66,19 @@ export function setupMobile(view: WorldView, actions: MobileActions) {
   };
   const atk = btn('mb-attack', '⚔', actions.attack, 'Atacar');
   const jump = btn('mb-jump', '⤒', () => view.pressKey('Space'), 'Pular');
-  const side = el('div', 'mb-side');
-  side.append(
-    btn('mb-small', '🎒', () => tap('KeyI'), 'Bolsa'),
-    btn('mb-small', '👤', () => tap('KeyH'), 'Personagem'),
-    btn('mb-small', '✦', () => tap('KeyK'), 'Skills'),
-    btn('mb-small', '💬', () => tap('Enter'), 'Chat'),
+  // um ícone só ao lado do mapa; ao tocar abre bolsa, personagem, skills e chat
+  const menu = el('div', 'mb-menu');
+  const items = el('div', 'mb-items');
+  const toggle = btn('mb-small mb-burger', '☰', () => menu.classList.toggle('open'), 'Menu');
+  const item = (label: string, title: string, f: () => void) => btn('mb-small', label, () => { menu.classList.remove('open'); f(); }, title);
+  items.append(
+    item('🎒', 'Bolsa', () => tap('KeyI')),
+    item('👤', 'Personagem', () => tap('KeyH')),
+    item('✦', 'Skills', () => tap('KeyK')),
+    item('💬', 'Chat', () => { const open = document.body.classList.toggle('chat-open'); if (open) tap('Enter'); }),
   );
-  root.append(base, atk, jump, side);
+  menu.append(items, toggle);
+  root.append(zone, base, atk, jump, menu);
   document.body.append(root);
   // impede o navegador de dar zoom/rolar a página com gestos na cena
   document.addEventListener('gesturestart', (e) => e.preventDefault());
