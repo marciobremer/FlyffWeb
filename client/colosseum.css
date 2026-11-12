@@ -1,0 +1,14 @@
+/* Colosseum (client/colosseum.ts): janela de entrada em cima de APP_NEWCOLOENTER.tga (469×395) e letreiro da partida */
+.colo-win { position: fixed; left: 50%; top: 50%; width: 469px; height: 395px; margin: -198px 0 0 -235px; z-index: 60; background: no-repeat 0 0 / 469px 395px; filter: drop-shadow(0 6px 18px rgb(0 0 0 / .6)); user-select: none; }
+.colo-title { position: absolute; left: 112px; top: 11px; width: 245px; text-align: center; font: 700 13px/24px Tahoma, Verdana, sans-serif; color: #f4d58a; text-shadow: 0 1px 2px #000; pointer-events: none; }
+.colo-card { position: absolute; top: 60px; width: 210px; height: 284px; padding: 0; border: 0; background: transparent no-repeat 0 0 / 840px 284px; cursor: pointer; }
+.colo-card:hover { background-position: -210px 0; }
+.colo-card.on { background-position: -420px 0; filter: drop-shadow(0 0 8px #ffd34d); }
+.colo-card:disabled { background-position: -630px 0; cursor: not-allowed; filter: none; }
+.colo-mode { position: absolute; top: 361px; width: 184px; height: 24px; border: 1px solid #c8913a; border-radius: 12px; background: linear-gradient(#2a1c0a, #0d0803); color: #f4d58a; font: 700 12px Tahoma, Verdana, sans-serif; cursor: pointer; }
+.colo-mode:hover:not(:disabled) { filter: brightness(1.3); }
+.colo-mode:disabled { color: #7a6a4a; border-color: #5a4a2a; cursor: not-allowed; }
+.colo-close { position: absolute; right: 2px; top: 14px; width: 22px; height: 22px; border: 0; border-radius: 50%; background: #5a1e12; color: #fff; font: 700 16px/20px system-ui, sans-serif; cursor: pointer; }
+.colo-hud { position: fixed; left: 50%; top: 50px; transform: translateX(-50%); z-index: 55; display: flex; align-items: center; gap: 10px; padding: 6px 16px; border: 1px solid #c8913a; border-radius: 14px;
+  background: rgb(20 12 4 / .8); color: #f4d58a; font: 700 14px/1.2 Tahoma, Verdana, sans-serif; text-shadow: 0 1px 2px #000; }
+.colo-go { padding: 3px 10px; border: 1px solid #c8913a; border-radius: 10px; background: linear-gradient(#e0a43a, #8a5a12); color: #fff; font: 700 12px Tahoma, sans-serif; cursor: pointer; }

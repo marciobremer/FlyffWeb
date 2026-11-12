@@ -7,6 +7,7 @@ import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { keyedImage, themeImage, themeTiles } from '../shared/tga';
 import { hasS3tc } from '../shared/dds';
 import { setupMobile } from './mobile';
+import { ColosseumUi } from './colosseum';
 import { hairColorOf, hairRgb, type Sex } from '../shared/humans';
 import { CharStage } from './charpreview';
 import { fmtGameHour, gameHour } from '../shared/gameclock';
@@ -349,6 +350,7 @@ net.onNpcMenu = (m) => {
   if (m.shop) opts.push({ label: t('Comércio'), run: () => net.shopOpen(m.key) });
   if (m.buff) opts.push({ label: t('Receber Buffs!'), run: () => net.npcBuff(m.key) });
   if (m.tower) opts.push({ label: t('Heaven Tower'), run: () => towerWnd.show() });
+  if (m.colosseum) opts.push({ label: t('Colosseum'), run: () => coloUi.open(characters.find((c) => c.slot === selectedSlot)?.level ?? 1) });
   if (m.craft) opts.push({ label: t('Craft'), run: () => craftWnd.show() }); // o servidor só deixa fabricar perto do NPC de craft
   // quests do NPC: ❗ oferece, … em andamento, ✔ pronta para entregar
   for (const q of m.quests) opts.push({ label: `${q.st === 'offer' ? '❗' : q.st === 'ready' ? '✔' : '…'} ${q.name}`, run: () => net.quest('open', q.id, m.key) });
@@ -900,6 +902,12 @@ net.onGmFly = (on) => { if (view.player) view.player.gmFly = on; gmPanel.setFly(
 let clockOffset = 0, clockFixed: number | null = null;
 net.onTeleports = (list) => teleportWnd.set(list);
 net.onTower = (list) => towerWnd.set(list);
+/** Colosseum (Marcario): janela de entrada, convite da party e letreiro de estágio/tempo */
+const coloUi = new ColosseumUi(document.body);
+coloUi.onStart = (diff, menu) => { if (!net.colo('start', { diff, menu })) chat.system(t('Sem conexão com o servidor.')); };
+coloUi.onJoin = () => { net.colo('join'); };
+coloUi.onGo = () => { net.colo('go'); };
+net.onColo = (m) => coloUi.handle(m);
 const rain = new Rain(view);
 net.onWeather = (on) => { if (on !== rain.raining) chat.system(on ? t('Começou a chover.') : t('A chuva parou.')); rain.set(on); };
 net.onQuestDialog = (d) => questDlg.open(d);
@@ -1468,6 +1476,7 @@ async function backToLogin() {
   view.player?.remove();
   view.labelRenderer.domElement.hidden = false;
   hud.hide();
+  coloUi.stop();
   inventory.hide(); inventory.clear(); delBox.hide(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); miniMap.hide(); worldMap.hide(); smithWnd.hide(); shopWnd.hide(); skillWnd.hide(); teleportWnd.hide(); towerWnd.hide(); questDlg.hide(); questLog.hide(); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
   $('help').hidden = true;
   $('charScreen').hidden = true;

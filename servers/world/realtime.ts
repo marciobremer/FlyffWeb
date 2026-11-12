@@ -32,6 +32,7 @@ import { rates } from '../common/rates';
 import { parseAegonTeleports, parseTeleports } from '../../shared/formats/teleport';
 import { PartyManager, PARTY_MAX, PARTY_SKILLS, partyExpShares, type Party } from './party';
 import type { MoverProp } from './world';
+import { COLO_ENTRY, COLO_EXIT, COLO_SPAWN, ColoMatch, loadColoRules } from './colosseum';
 import { UpgradeRules, type SmithResult } from './upgrade';
 import type { InvEdit } from '../character/inventory';
 import { QuestBook, type QuestLog } from './quests';
@@ -1323,7 +1324,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   function worldForJoin(worldId: number, charId: number): WorldRuntime | null {
     const info = opts.worldInfo?.(worldId);
     if (!info) return null;
-    if (info.define.startsWith('WI_INSTANCE_')) {
+    if (info.define.startsWith('WI_INSTANCE_') || info.define === 'WI_WORLD_COLOSSEUM') {
       const party = parties.of(charId);
       return party ? instances.get(`${info.name}#${party.id}`) ?? null : null;
     }
@@ -1613,6 +1614,94 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       await changeWorld(c, wr.name, d.pos);
     }).catch((e) => console.error('realtime: torre', e));
   }
+
+  // ---------- Colosseum (servers/world/colosseum.ts): o líder da party pede a partida ao Marcario (mafl_colonpc) ----------
+  const COLO_NPC = 'mafl_colonpc';
+  const coloRules = inventory ? loadColoRules(inventory.catalog.resDir) : null;
+  /** partidas em andamento, por id da party */
+  const coloMatches = new Map<number, ColoMatch>();
+  const coloKey = (partyId: number) => `${opts.worldInfo?.('WI_WORLD_COLOSSEUM')?.name ?? 'WdColosseum'}#${partyId}`;
+  const connOfChar = (id: number) => { for (const o of conns) if (o.player?.id === id) return o; return null; };
+  const coloTell = (m: ColoMatch, text: string) => {
+    for (const id of m.players) { const o = connOfChar(id); if (o) { reply(o, text); send(o.ws, { t: 'colo', op: 'state', phase: m.phase, stage: m.stage, max: m.max, until: m.until }); } }
+  };
+  const coloNear = (c: Conn) => { const p = c.player, shops = W(c).shops; return !!p && !!shops && shops.near(COLO_NPC, p.p[0], p.p[2]); };
+  async function coloEnter(c: Conn, m: ColoMatch) {
+    const p = c.player;
+    if (!p || m.players.has(p.id) || c.switching) return;
+    const wr = instances.get(coloKey(m.party));
+    if (!wr) return;
+    m.players.add(p.id);
+    instOrigin.set(p.id, { w: p.w, p: [...p.p] });
+    reply(c, 'Entrando no Colosseum…');
+    await changeWorld(c, wr.name, [...COLO_ENTRY]);
+    send(c.ws, { t: 'colo', op: 'state', phase: m.phase, stage: m.stage, max: m.max, until: m.until });
+  }
+  function coloStart(c: Conn, diff: number, menu: number) {
+    const p = c.player;
+    if (!p || !coloRules) return;
+    if (!coloNear(c)) { reply(c, 'Chegue perto do Colosseum Manager.'); return; }
+    const party = parties.of(p.id);
+    if (!party || party.leader !== p.id) { reply(c, 'Só o líder de uma party pode pedir a entrada no Colosseum.'); return; }
+    if (coloMatches.has(party.id)) { reply(c, 'Sua party já está numa partida do Colosseum.'); return; }
+    const d = diff === 2 ? 2 : 1, mn = menu === 2 ? 2 : 1;
+    if (d === 1 && p.level > 90 && !p.rank) { reply(c, 'O Colosseum de nível baixo é só até o nível 90.'); return; }
+    if (mn === 2 && !c.guild) { reply(c, 'O modo Guild exige estar em uma guild.'); return; }
+    const key = coloKey(party.id);
+    const target = opts.loadInstance?.('WI_WORLD_COLOSSEUM', key) ?? null;
+    if (!target) { reply(c, 'O Colosseum ainda não está disponível neste servidor.'); return; }
+    target.instance = { define: 'WI_WORLD_COLOSSEUM', party: party.id, emptySince: 0 };
+    instances.set(key, target); registerWorld(target);
+    const m = new ColoMatch(party.id, d, mn, c.guild?.id ?? 0, coloRules, Date.now());
+    coloMatches.set(party.id, m);
+    console.log(`[colosseum] ${p.name} abriu uma partida (nível ${d === 1 ? 'baixo' : 'alto'}, ${mn === 2 ? 'guild' : 'normal'}) party ${party.id}`);
+    void coloEnter(c, m);
+    // convite aos outros da party (modo guild: só quem é da mesma guild)
+    for (const id of party.members) {
+      if (id === p.id) continue;
+      const o = connOfChar(id);
+      if (!o || (mn === 2 && o.guild?.id !== c.guild?.id)) continue;
+      send(o.ws, { t: 'colo', op: 'invite', from: p.name, diff: d, menu: mn });
+    }
+  }
+  function coloEnd(m: ColoMatch, win: boolean) {
+    coloMatches.delete(m.party);
+    const secs = Math.round((Date.now() - m.startedAt) / 1000);
+    for (const id of m.players) {
+      const o = connOfChar(id);
+      if (!o) continue;
+      reply(o, win ? `Colosseum concluído em ${Math.floor(secs / 60)} min ${secs % 60} s!` : 'O tempo acabou: a partida do Colosseum foi perdida.');
+      send(o.ws, { t: 'colo', op: 'end', win, secs });
+      if (o.player && o.player.w === coloKey(m.party)) void changeWorld(o, MAIN, [...COLO_EXIT]);
+    }
+  }
+  /** a cada 1 s: anda as partidas (espera, estágios, tempo) */
+  const coloTick = setInterval(() => {
+    const now = Date.now();
+    for (const m of [...coloMatches.values()]) {
+      const wr = instances.get(coloKey(m.party));
+      // ninguém mais dentro (todos saíram/desconectaram): encerra
+      let inside = 0;
+      for (const o of conns) if (o.player && o.player.w === coloKey(m.party)) inside++;
+      if (!wr || (m.players.size && !inside && now - m.startedAt > 15_000)) { coloMatches.delete(m.party); continue; }
+      const ev = m.step(now);
+      if (ev === 'ready') coloTell(m, `O primeiro estágio começa em ${Math.round((m.until - now) / 1000)} segundos!`);
+      else if (ev === 'spawn' && m.current) {
+        const id = inventory?.catalog.defines.get(m.current.symbol);
+        const mobs = wr.mobs;
+        if (id !== undefined && mobs && mobs.summon(id, COLO_SPAWN[0], COLO_SPAWN[2], COLO_SPAWN[1], 1)) {
+          const mob = mobs.mobs[mobs.mobs.length - 1];
+          mob.aggressive = true;
+          mob.area = { xMin: 1240, xMax: 1340, zMin: 1060, zMax: 1260 };
+          m.mob = mob;
+          coloTell(m, `Estágio ${m.stage} de ${m.max}${m.stage === m.bossStage ? ' — CHEFE!' : ''}: derrote o monstro antes que o tempo acabe!`);
+        } else { coloTell(m, 'Erro ao criar o monstro do estágio: a partida foi encerrada.'); coloEnd(m, false); }
+      } else if (ev === 'cleared') coloTell(m, `Estágio ${m.stage} concluído! O próximo começa em ${Math.round((m.until - now) / 1000)} segundos.`);
+      else if (ev === 'win') coloEnd(m, true);
+      else if (ev === 'lose') coloEnd(m, false);
+    }
+  }, 1000);
+  http.on('close', () => clearInterval(coloTick));
 
   /** golpe do jogador no mob (pedido { t: 'atk', id }) */
   function playerAttack(c: Conn, mobId: number) {
@@ -2871,7 +2960,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         const key = msg.key.slice(0, 40), k = key.toLowerCase();
         const shops = W(c).shops;
         if (!shops?.near(key, c.player.p[0], c.player.p[2])) return;
-        const base = { t: 'npcMenu', key, name: shops.npcNames.get(k) ?? key, shop: shops.shops.has(k) || shops.tokenShops.has(k), buff: shops.npcBuffs.has(k), craft: craftNpcs.has(k), tower: k === TOWER_NPC, smith: [...(shops.npcMenus.get(k) ?? [])] };
+        const base = { t: 'npcMenu', key, name: shops.npcNames.get(k) ?? key, shop: shops.shops.has(k) || shops.tokenShops.has(k), buff: shops.npcBuffs.has(k), craft: craftNpcs.has(k), tower: k === TOWER_NPC, colosseum: k === COLO_NPC, smith: [...(shops.npcMenus.get(k) ?? [])] };
         void (quests ? quests.menuFor(c, key) : Promise.resolve([])).then((q) => send(ws, { ...base, quests: q })).catch((e) => console.error('realtime: menu do NPC', e));
       } else if (msg.t === 'quest' && c.player && typeof msg.id === 'string' && typeof msg.key === 'string' && quests) {
         const id = msg.id.slice(0, 64), key = msg.key.slice(0, 40), op = msg.op, q = quests;
@@ -2883,6 +2972,12 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         npcBuff(c, msg.key.slice(0, 40));
       } else if (msg.t === 'buffOff' && c.player && Number.isInteger(msg.id)) {
         removeBuff(c, msg.id as number);
+      } else if (msg.t === 'colo' && c.player) {
+        // Colosseum: start (líder pede a partida), join (aceita o convite), go (líder começa já a primeira rodada)
+        const party = parties.of(c.player.id), m = party ? coloMatches.get(party.id) : undefined;
+        if (msg.op === 'start') coloStart(c, Number(msg.diff), Number(msg.menu));
+        else if (msg.op === 'join' && m && m.phase === 'wait' && (m.menu === 1 || c.guild?.id === m.guild)) void coloEnter(c, m);
+        else if (msg.op === 'go' && m && party?.leader === c.player.id) m.startNow(Date.now());
       } else if (msg.t === 'tower' && c.player) {
         towerList(c);
       } else if (msg.t === 'towerGo' && c.player && Number.isInteger(msg.k)) {
