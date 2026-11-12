@@ -1036,19 +1036,22 @@ export class WorldView {
       if (this.placing) return;
       const d = this.down;
       this.down = null;
-      if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) >= 4) return;
+      // tolerância de 8 px entre apertar e soltar (touchpad e mouse tremem no clique; com 4 px muito clique era jogado fora)
+      if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) >= 8) return;
+      // o que vale é onde o dedo APERTOU: com o monstro correndo, onde o ponteiro estava ao soltar já é outro lugar
+      const at = { clientX: d.x, clientY: d.y };
       const blocked = this.inputBlocked();
       if (e.button === 2) {
-        const target = blocked || !this.controlling ? null : this.moverAt(e);
+        const target = blocked || !this.controlling ? null : this.moverAt(at);
         if (target) { this.selectTarget(target); this.onMoverRightClick(target); }
         return;
       }
       if (e.button !== 0) return;
-      if (!blocked && this.controlling && this.pickFirst(e)) return;
-      const target = blocked ? null : this.moverAt(e);
+      if (!blocked && this.controlling && this.pickFirst(at)) return;
+      const target = blocked ? null : this.moverAt(at);
       const again = !!target && target === this.target;
       if (target) this.selectTarget(target);
-      if (!blocked && this.controlling) { if (!target) { this.clickMove(e); this.onGroundClick(); } else this.onMoverClick(target, again); } else this.onPick(e);
+      if (!blocked && this.controlling) { if (!target) { this.clickMove(at); this.onGroundClick(); } else this.onMoverClick(target, again); } else this.onPick(e);
     });
     addEventListener('keydown', (e) => {
       const tag = (e.target as HTMLElement).tagName;
@@ -1064,7 +1067,12 @@ export class WorldView {
   }
 
   /** uma checagem por quadro, só com o mouse sobre o canvas */
+  private hoverT = 0;
   private updateHoverCursor() {
+    // o raio contra todos os monstros custa caro: a cada 100 ms basta para o cursor (espada/balão) acompanhar o mouse
+    const t = performance.now();
+    if (t - this.hoverT < 100) return;
+    this.hoverT = t;
     let kind = 'base';
     if (this.hoverAt && !this.inputBlocked() && !this.down) {
       const m = this.moverAt(this.hoverAt);
