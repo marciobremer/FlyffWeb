@@ -865,7 +865,7 @@ export class WorldView {
     const meshes: Object3D[] = [];
     this.moverGroup.traverse((o) => { if (o instanceof Mesh && o.visible) meshes.push(o); });
     const hit = this.setRay(ev).intersectObjects(meshes, false)[0];
-    const inst = (hit && this.moverMgr.instanceOf(hit.object)) || this.moverMgr.nearestOnScreen(ev.clientX, ev.clientY, this.camera, innerWidth, innerHeight);
+    const inst = (hit && this.moverMgr.instanceOf(hit.object)) || this.moverMgr.nearestOnScreen(ev.clientX, ev.clientY, this.camera, innerWidth, innerHeight, 48, this.selected);
     // só o que dá para ver: não vale NPC/mob longe demais (na neblina) nem escondido atrás do morro
     return inst && this.moverVisible(inst) ? inst : null;
   }

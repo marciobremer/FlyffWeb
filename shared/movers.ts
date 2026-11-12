@@ -613,8 +613,10 @@ export class MoverManager {
    * Mover sob o ponto (px, py) da tela pela silhueta aproximada: círculo do corpo (raio do modelo × escala) projetado, com no mínimo
    * `minPx` pixels — clicar em mobs pequenos ou em movimento fica fácil. Entre vários, o de centro relativamente mais próximo.
    */
-  nearestOnScreen(px: number, py: number, camera: PerspectiveCamera, width: number, height: number, minPx = 48): MoverInstance | null {
-    let best: MoverInstance | null = null, bestK = 1;
+  nearestOnScreen(px: number, py: number, camera: PerspectiveCamera, width: number, height: number, minPx = 48, penalize: MoverInstance | null = null): MoverInstance | null {
+    // vale quem tem o CENTRO mais perto do clique, em pixels, dentro da área dele (antes era a distância dividida pelo raio, e um monstro
+    // grande e perto — o que está sendo atacado — roubava o clique de um pequeno logo ao lado); o alvo atual leva uma desvantagem pequena
+    let best: MoverInstance | null = null, bestK = Infinity;
     const focal = height / 2 / Math.tan((camera.fov * Math.PI) / 360);
     for (const inst of this.active.values()) {
       if (!inst.group.parent || inst.owner === 'pets') continue;
@@ -623,7 +625,9 @@ export class MoverManager {
       lpos.project(camera);
       if (lpos.z > 1 || dist < 1e-3) continue;
       const r = Math.max(minPx, (inst.tpl.radius * inst.tpl.entry.scale * focal * 1.35) / dist); // área de clique generosa: o alvo está correndo e a câmera também
-      const k = Math.hypot((lpos.x * 0.5 + 0.5) * width - px, (-lpos.y * 0.5 + 0.5) * height - py) / r;
+      const dpx = Math.hypot((lpos.x * 0.5 + 0.5) * width - px, (-lpos.y * 0.5 + 0.5) * height - py);
+      if (dpx >= r) continue;
+      const k = dpx * (inst === penalize ? 1.6 : 1);
       if (k < bestK) { bestK = k; best = inst; }
     }
     return best;
