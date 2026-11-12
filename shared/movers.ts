@@ -613,7 +613,7 @@ export class MoverManager {
    * Mover sob o ponto (px, py) da tela pela silhueta aproximada: círculo do corpo (raio do modelo × escala) projetado, com no mínimo
    * `minPx` pixels — clicar em mobs pequenos ou em movimento fica fácil. Entre vários, o de centro relativamente mais próximo.
    */
-  nearestOnScreen(px: number, py: number, camera: PerspectiveCamera, width: number, height: number, minPx = 30): MoverInstance | null {
+  nearestOnScreen(px: number, py: number, camera: PerspectiveCamera, width: number, height: number, minPx = 48): MoverInstance | null {
     let best: MoverInstance | null = null, bestK = 1;
     const focal = height / 2 / Math.tan((camera.fov * Math.PI) / 360);
     for (const inst of this.active.values()) {
@@ -622,7 +622,7 @@ export class MoverManager {
       const dist = lpos.distanceTo(camera.position);
       lpos.project(camera);
       if (lpos.z > 1 || dist < 1e-3) continue;
-      const r = Math.max(minPx, (inst.tpl.radius * inst.tpl.entry.scale * focal) / dist);
+      const r = Math.max(minPx, (inst.tpl.radius * inst.tpl.entry.scale * focal * 1.35) / dist); // área de clique generosa: o alvo está correndo e a câmera também
       const k = Math.hypot((lpos.x * 0.5 + 0.5) * width - px, (-lpos.y * 0.5 + 0.5) * height - py) / r;
       if (k < bestK) { bestK = k; best = inst; }
     }
