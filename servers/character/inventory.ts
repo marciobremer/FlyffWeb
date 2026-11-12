@@ -2,7 +2,7 @@ import type pg from 'pg';
 import { query, transaction } from '../common/db/index';
 import { EQUIP_PARTS, fitsPart, ItemCatalog, jobCanUse, twoHanded, type ItemDef } from '../common/items';
 import { lookList, RIDE_TAG, type LookPiece } from '../../shared/look';
-import { MAX_PIERCING, maxPiercing, maxUpgrade } from '../../shared/upgrade';
+import { MAX_PIERCING, acceptsElement, maxPiercing, maxUpgrade } from '../../shared/upgrade';
 
 /**
  * Inventário (`character_items` + `characters.gold`): bolsa = container 0 (slots 0..BAG_SLOTS-1), equipados = container 1
@@ -499,7 +499,7 @@ export class Inventory {
       const names: string[] = [];
       pieces.forEach(({ p, n }, k) => {
         const d = this.catalog.byId.get(p.id)!;
-        const u = Math.max(0, Math.min(p.u, d.parts >= 0 ? maxUpgrade(d.parts) : 0));
+        const u = Math.max(0, Math.min(p.u, d.parts >= 0 ? maxUpgrade(d.parts, d.kind2) : 0));
         x.state.items.push({ c: BAG, s: free[k], id: p.id, n, u, e: 0, el: 0, ...(until ? { x: until } : {}) });
         x.touch(BAG, free[k]);
       });
@@ -546,7 +546,7 @@ export class Inventory {
       if (it.n > 1) it.n--; else x.state.items.splice(x.state.items.indexOf(it), 1);
       x.touch(BAG, slot);
       const until = e.span > 0 ? Date.now() + e.span * 60_000 : 0;
-      const u = Math.max(0, Math.min(e.u, d.parts >= 0 ? maxUpgrade(d.parts) : 0));
+      const u = Math.max(0, Math.min(e.u, d.parts >= 0 ? maxUpgrade(d.parts, d.kind2) : 0));
       stacks.forEach((n, k) => { x.state.items.push({ c: BAG, s: free[k], id: e.id, n, u, e: 0, el: 0, ...(until ? { x: until } : {}) }); x.touch(BAG, free[k]); });
       return { state: x.state, name: d.name, n: e.n };
     });
@@ -610,10 +610,11 @@ export class Inventory {
     const d = this.catalog.byId.get(itemId);
     if (!d) throw new Error(`item ${itemId} não existe`);
     const clamp = (v: number | undefined, max: number) => Math.max(0, Math.min(max, Math.floor(Number(v) || 0)));
-    const sockets = clamp(up.p, maxPiercing(d.parts));
+    const sockets = clamp(up.p, maxPiercing(d.parts, d.kind2));
     // raridade só em arma (IK1_WEAPON), até o maior nível do WeaponRarity.inc
     const rarity = d.kind1 === 1 ? clamp(up.r, Math.max(0, this.catalog.rarity.length - 1)) : 0;
-    const u = { u: clamp(up.u, maxUpgrade(d.parts)), e: clamp(up.e, 5), el: clamp(up.el, 20), ...(sockets ? { p: new Array<number>(sockets).fill(0) } : {}), ...(rarity ? { r: rarity } : {}) };
+    const noElement = !acceptsElement(d.parts, d.kind2); // cash: sem enchant, elemento nem piercing
+    const u = { u: clamp(up.u, maxUpgrade(d.parts, d.kind2)), e: noElement ? 0 : clamp(up.e, 5), el: noElement ? 0 : clamp(up.el, 20), ...(sockets ? { p: new Array<number>(sockets).fill(0) } : {}), ...(rarity ? { r: rarity } : {}) };
     if (!u.e) u.el = 0;
     if (!plain(u) && d.parts < 0) throw new Error(`${d.name} não é equipamento: não aceita enchant nem elemento`);
     const pack = plain(u) ? d.packMax : 1;

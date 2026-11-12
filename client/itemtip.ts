@@ -1,4 +1,5 @@
 import type { ItemView } from './net';
+import { jobCanUse } from '../shared/jobuse';
 import { gradeOf } from '../shared/grade';
 import { JOBS } from './jobs';
 import { EXPUP_ROWS, SETITEM_ROWS, effectiveExpUp } from '../shared/expup';
@@ -123,7 +124,7 @@ function lines(d: ItemView, it: TipItem, elementNames: string[]): Line[] {
   }
   if (d.card) out.push({ text: 'Duplo clique e escolha a suit na bolsa para aplicar.', cls: 'hint' });
   // classe e nível exigidos (PutJob / PutLevel; nível 1 não aparece, __LEESE_REMOVE_LVL1)
-  if (d.job !== undefined && d.job >= 0 && JOBS[d.job]) out.push({ text: `Classe: ${JOBS[d.job].name}`, cls: player.job !== undefined && d.job > 0 && player.job !== d.job ? 'bad' : undefined });
+  if (d.job !== undefined && d.job >= 0 && JOBS[d.job]) out.push({ text: `Classe: ${JOBS[d.job].name}`, cls: player.job !== undefined && !jobCanUse(d.job, player.job) ? 'bad' : undefined });
   if (d.lv > 1) out.push({ text: `Nível: ${d.lv}`, cls: player.level !== undefined && player.level < d.lv ? 'bad' : undefined });
   if (it.n > 1) out.push({ text: `Quantidade: ${it.n}` });
   // conjunto (PutSetItemOpt): nome (equipadas/total), peças (azul = equipada), efeitos do conjunto (laranja = já valem, cinza = faltam peças)

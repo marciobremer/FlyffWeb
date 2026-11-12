@@ -1,8 +1,9 @@
 import { itemIcon } from '../shared/tga';
 import { gameConfirm } from './dialog';
 import { GameWindow } from './ui';
+import { WikiPanel } from './wiki';
 import type { GmStats, ItemView } from './net';
-import { maxPiercing, maxUpgrade } from '../shared/upgrade';
+import { acceptsElement, maxPiercing, maxUpgrade } from '../shared/upgrade';
 import { GRADES, gradeOf } from '../shared/grade';
 import { hideItemTip, moveItemTip, showItemTip } from './itemtip';
 
@@ -50,6 +51,14 @@ export class GmPanel extends GameWindow {
   getStats: (name: string) => boolean = () => false;
   /** troca os atributos (só para teste, não grava); `null` volta ao normal; false se desconectado */
   setStatsReq: (name: string, v: { str: number; sta: number; dex: number; int: number } | null) => boolean = () => false;
+
+  /** mapas para onde o GM pode ir (o servidor manda ao abrir o painel); o valor é o número do mapa, que o //map aceita */
+  private mapSelect = select([['', '…']]);
+  setMaps(list: { name: string; id: number }[]) {
+    const keep = this.mapSelect.value;
+    this.mapSelect.replaceChildren(...list.map((m) => el('option', { value: String(m.id), textContent: `${m.name} (${m.id})` })));
+    if (keep && list.some((m) => String(m.id) === keep)) this.mapSelect.value = keep;
+  }
 
   private target = el('input', { className: 'gm-in', placeholder: 'nick (empty = you)', maxLength: 32 });
   /** atributos de teste do jogador escolhido (botão Select) */
@@ -147,6 +156,7 @@ export class GmPanel extends GameWindow {
       page.hidden = !on;
     }
     if (key === 'mobs' && !this.mobList.childElementCount) this.renderMobs();
+    if (key === 'items') this.wiki.activate();
     if (this.visible) this.fit(key);
   }
 
@@ -154,6 +164,7 @@ export class GmPanel extends GameWindow {
   private fit(key: string) {
     const page = this.tabs.get(key)?.page;
     if (!page) return;
+    if (key === 'items') { this.resizeTo(Math.max(this.box.w, 740), Math.max(this.box.h, 800)); return; }
     if (key !== 'player') { this.resizeTo(this.box.w, Math.max(this.box.h, 600)); return; }
     const before = page.offsetHeight;
     page.style.flex = 'none'; page.style.overflow = 'visible';
@@ -253,7 +264,7 @@ export class GmPanel extends GameWindow {
   private playerPage() {
     const x = el('input', { type: 'number', className: 'gm-in num', placeholder: 'x' });
     const z = el('input', { type: 'number', className: 'gm-in num', placeholder: 'z' });
-    const map = el('input', { type: 'text', className: 'gm-in', placeholder: 'map (e.g. azria)', value: 'azria' });
+    const map = this.mapSelect;
     const level = num(1, 150, 1);
     const job = select(JOBS);
     const penya = num(1, 2_000_000_000, 1000);
@@ -272,8 +283,8 @@ export class GmPanel extends GameWindow {
           el('div', { className: 'gm-row' }, btn('Back to Flaris', () => this.send('//tp 6976 3327')))),
         el('div', { className: 'gm-left' },
           el('h4', { textContent: 'Maps' }),
-          el('div', { className: 'gm-row' }, map, btn('Go', () => this.send(`//map ${map.value.trim() || 'azria'}`)), btn('List', () => this.send('//map'))),
-          el('span', { className: 'gm-hint', textContent: 'name (or part): azria, coral…' }))),
+          el('div', { className: 'gm-row' }, map, btn('Go', () => { if (!map.value) { this.status('Choose a map.', true); return; } this.send(`//map ${map.value}`); }), btn('List', () => this.send('//map'))),
+          el('span', { className: 'gm-hint', textContent: 'pick a map and press Go (List shows them in the chat)' }))),
       sep(),
       el('div', { className: 'gm-split chars' }, el('div', { className: 'gm-left gm-box' },
       el('b', { className: 'gm-box-title', textContent: 'Character (target)' }),
@@ -302,15 +313,17 @@ export class GmPanel extends GameWindow {
   }
 
   // ---------- aba Itens ----------
-  /** abre a Wikipedia de itens (o catálogo organizado por categoria): clicar escolhe o item aqui, duplo clique cria */
-  openCatalog: () => void = () => {};
+  /** a Wikipedia de itens incorporada na aba: clicar escolhe o item, duplo clique cria */
+  readonly wiki = new WikiPanel(el('div', { className: 'gm-wiki' }));
 
   private itemsPage() {
+    this.wiki.onPick = (r) => this.pickRow(r);
+    this.wiki.onActivate = (r) => this.createRow(r);
     this.element.addEventListener('change', () => { this.elementLv.disabled = this.element.value === '0' || this.upgrade.disabled; });
     this.pick(null);
     return el('div', { className: 'gm-items' },
-      el('div', { className: 'gm-row' }, btn('Open item catalog (Wikipedia)', () => this.openCatalog())),
-      el('p', { className: 'gm-hint', textContent: 'In the catalog: click picks the item; double-click creates it in the target\'s bag with the options below.' }),
+      this.wiki.root,
+      el('p', { className: 'gm-hint', textContent: 'Click picks the item; double-click creates it in the target\'s bag with the options below.' }),
       this.pickBox,
       el('div', { className: 'gm-row wrap' }, field('Qty.', this.qty), field('Enchant', this.upgrade), field('Element', this.element), field('Lv.', this.elementLv), this.piercingField),
       el('div', { className: 'gm-row' }, btn('Create item in the target\'s bag', () => this.create())),
@@ -318,8 +331,8 @@ export class GmPanel extends GameWindow {
   }
 
   /** o catálogo escolheu um item (linha leve da Wikipedia) */
-  pickRow(r: { id: number; sym: string; name: string; icon: string; lv: number; parts: number; pack: number; gr: number }) {
-    this.pick({ id: r.id, sym: r.sym, name: r.name, icon: r.icon, lv: r.lv, parts: r.parts, pack: r.pack, gr: r.gr } as unknown as ItemView);
+  pickRow(r: { id: number; sym: string; name: string; icon: string; lv: number; parts: number; pack: number; gr: number; k2?: number }) {
+    this.pick({ id: r.id, sym: r.sym, name: r.name, icon: r.icon, lv: r.lv, parts: r.parts, pack: r.pack, gr: r.gr, k2: r.k2 } as unknown as ItemView);
   }
 
   /** duplo clique no catálogo: escolhe e cria */
@@ -349,14 +362,17 @@ export class GmPanel extends GameWindow {
     for (const li of this.results.querySelectorAll('li[data-id]')) li.setAttribute('aria-selected', String(Number((li as HTMLElement).dataset.id) === d?.id));
     const equip = !!d && d.parts >= 0;
     // enchant até o limite do item (joias +20, o resto +10); furos só na suit
-    const maxU = d ? maxUpgrade(d.parts) : 10, keep = Math.min(Number(this.upgrade.value) || 0, maxU);
+    const maxU = d ? maxUpgrade(d.parts, d.k2) : 10, keep = Math.min(Number(this.upgrade.value) || 0, maxU);
     this.upgrade.replaceChildren(...Array.from({ length: maxU + 1 }, (_, i) => el('option', { value: String(i), textContent: `+${i}` })));
     this.upgrade.value = String(keep);
-    const maxP = d ? maxPiercing(d.parts) : 0;
+    const maxP = d ? maxPiercing(d.parts, d.k2) : 0;
     this.piercingField.hidden = !maxP;
     if (!maxP) this.piercing.value = '0';
-    this.upgrade.disabled = this.element.disabled = !equip;
-    this.elementLv.disabled = !equip || this.element.value === '0';
+    const elem = !!d && acceptsElement(d.parts, d.k2), ench = equip && maxU > 0; // cash: nada de enchant, elemento nem piercing
+    this.upgrade.disabled = !ench; this.element.disabled = !elem;
+    this.elementLv.disabled = !elem || this.element.value === '0';
+    if (!ench) this.upgrade.value = '0';
+    if (!elem) { this.element.value = '0'; this.elementLv.value = '0'; }
     if (!equip) { this.upgrade.value = '0'; this.element.value = '0'; this.elementLv.value = '0'; }
     this.qty.disabled = !d || d.pack <= 1;
     if (this.qty.disabled) this.qty.value = '1';

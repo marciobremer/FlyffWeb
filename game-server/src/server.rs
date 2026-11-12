@@ -18,7 +18,13 @@ use std::io::{BufReader, BufWriter, Write};
 use std::net::{SocketAddr, TcpListener};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
+use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 use std::time::{Duration, Instant};
+
+/// medidas da escrita no link do Node (thread de escrita → thread de mapa lê no `stats`)
+static LINK_WRITE_MAX_US: AtomicU64 = AtomicU64::new(0);
+static LINK_BATCH_MAX: AtomicU64 = AtomicU64::new(0);
+static LINK_BYTES: AtomicU64 = AtomicU64::new(0);
 
 /// ids de jogador na grade = PLAYER_BASE + id do personagem (ids de mob são pequenos)
 pub const PLAYER_BASE: EntityId = 1 << 30;
@@ -74,12 +80,19 @@ pub fn start<T: Terrain + Send + 'static>(addr: &str, cfg: Config, mobs: MobWorl
             thread::spawn(move || {
                 let mut w = BufWriter::new(write_half);
                 while let Ok(body) = out_rx.recv() {
+                    let t0 = Instant::now();
+                    let (mut batch, mut bytes) = (1u64, body.len() as u64);
                     if w.write_all(&body).is_err() { break; }
                     // junta o que já está na fila antes de esvaziar o buffer
                     while let Ok(more) = out_rx.try_recv() {
+                        batch += 1;
+                        bytes += more.len() as u64;
                         if w.write_all(&more).is_err() { return; }
                     }
                     if w.flush().is_err() { break; }
+                    LINK_WRITE_MAX_US.fetch_max(t0.elapsed().as_micros() as u64, Relaxed);
+                    LINK_BATCH_MAX.fetch_max(batch, Relaxed);
+                    LINK_BYTES.fetch_add(bytes, Relaxed);
                 }
             });
             let t = acceptor_tx.clone();
@@ -191,6 +204,8 @@ struct MapState<T: Terrain> {
     rng: Xorshift32,
     stats: Stats,
     tick_sum_ms: f64,
+    views_sum_ms: f64,
+    views_n: u64,
     /// contador dos envios de rede (escalona a revisão da visão)
     net_n: u64,
     /// navegadores conectados direto ao Rust: id → fila de saída
@@ -397,6 +412,13 @@ impl<T: Terrain> MapState<T> {
                 s.players = self.players.len();
                 s.mobs = self.mobs.len();
                 s.tick_avg_ms = if s.ticks > 0 { self.tick_sum_ms / s.ticks as f64 } else { 0.0 };
+                s.views_avg_ms = if self.views_n > 0 { self.views_sum_ms / self.views_n as f64 } else { 0.0 };
+                s.link_write_max_ms = LINK_WRITE_MAX_US.swap(0, Relaxed) as f64 / 1000.0;
+                s.link_batch_max = LINK_BATCH_MAX.swap(0, Relaxed);
+                s.link_bytes = LINK_BYTES.load(Relaxed);
+                // máximos da janela: zeram a cada leitura
+                self.stats.tick_gap_max_ms = 0.0; self.stats.tick_late_max_ms = 0.0; self.stats.input_batch_max = 0;
+                self.stats.input_phase_max_ms = 0.0; self.stats.handle_max_ms = 0.0; self.stats.views_max_ms = 0.0;
                 self.send(link, &LinkOut::Stats(s));
             }
             LinkIn::C2s { conn, msg } => {
@@ -636,24 +658,40 @@ fn run_map<T: Terrain>(rx: Receiver<Inbound>, stop: Receiver<()>, cfg: Config, m
     let dt = cfg.tick_ms as f64 / 1000.0;
     let mut st = MapState {
         cfg, mobs, aoi: Aoi::new(), aoi_p: Aoi::new(), links: HashMap::new(), players: IdMap::default(), by_conn: HashMap::new(),
-        rng: Xorshift32::new(0x9e3779b1), stats: Stats::default(), tick_sum_ms: 0.0, net_n: 0, ws_conns: IdMap::default(), ws_dropped: std::cell::Cell::new(0), elements: Elements::default(), ws_ent: IdMap::default(),
+        rng: Xorshift32::new(0x9e3779b1), stats: Stats::default(), tick_sum_ms: 0.0, views_sum_ms: 0.0, views_n: 0, net_n: 0, ws_conns: IdMap::default(), ws_dropped: std::cell::Cell::new(0), elements: Elements::default(), ws_ent: IdMap::default(),
     };
     let _ = st.rng.next_f64();
     let start = Instant::now();
     let mut next = start + tick;
     let mut n = 0u64;
+    let mut last_tick: Option<Instant> = None;
     loop {
         // entrada: tudo o que chegou até a hora do próximo tick
+        let mut batch = 0u64;
+        let phase0 = Instant::now();
         loop {
             let wait = next.saturating_duration_since(Instant::now());
             match rx.recv_timeout(wait) {
-                Ok(ev) => { let now = start.elapsed().as_millis() as u64; st.handle(now, ev); }
+                Ok(ev) => {
+                    let h0 = Instant::now();
+                    let now = start.elapsed().as_millis() as u64;
+                    st.handle(now, ev);
+                    batch += 1;
+                    st.stats.handle_max_ms = st.stats.handle_max_ms.max(h0.elapsed().as_secs_f64() * 1000.0);
+                    // fluxo contínuo de mensagens não pode adiar o tick: passou da hora, sai (o resto da fila fica para a próxima fase)
+                    if Instant::now() >= next { break; }
+                }
                 Err(RecvTimeoutError::Timeout) => break,
                 Err(RecvTimeoutError::Disconnected) => return,
             }
         }
         if stop.try_recv().is_ok() { return; }
         let t0 = Instant::now();
+        st.stats.input_batch_max = st.stats.input_batch_max.max(batch);
+        st.stats.input_phase_max_ms = st.stats.input_phase_max_ms.max(t0.duration_since(phase0).as_secs_f64() * 1000.0);
+        st.stats.tick_late_max_ms = st.stats.tick_late_max_ms.max(t0.saturating_duration_since(next).as_secs_f64() * 1000.0);
+        if let Some(prev) = last_tick { st.stats.tick_gap_max_ms = st.stats.tick_gap_max_ms.max(t0.duration_since(prev).as_secs_f64() * 1000.0); }
+        last_tick = Some(t0);
         let now = start.elapsed().as_millis() as u64;
         n += 1;
         let attacks = {
@@ -663,7 +701,13 @@ fn run_map<T: Terrain>(rx: Receiver<Inbound>, stop: Receiver<()>, cfg: Config, m
         };
         st.stats.mob_attacks += attacks.len() as u64;
         st.resolve_mob_attacks(attacks);
-        if n % 2 == 0 { st.send_views(now); }
+        if n % 2 == 0 {
+            let v0 = Instant::now();
+            st.send_views(now);
+            let vm = v0.elapsed().as_secs_f64() * 1000.0;
+            st.views_sum_ms += vm; st.views_n += 1;
+            st.stats.views_max_ms = st.stats.views_max_ms.max(vm);
+        }
         let ms = t0.elapsed().as_secs_f64() * 1000.0;
         st.stats.ticks += 1;
         st.tick_sum_ms += ms;

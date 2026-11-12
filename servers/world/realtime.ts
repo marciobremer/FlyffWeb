@@ -148,7 +148,9 @@ export interface PlayerView { /** mundo onde está (WdMadrigal, WdKebaras…) */
 
 /** trade entre dois jogadores: o que cada um pôs, quem deu OK (trava a oferta) e quem confirmou a troca */
 interface Trade { a: Conn; b: Conn; offer: Map<Conn, TradeOffer>; lock: Set<Conn>; ok: Set<Conn>; busy: boolean }
-interface Conn { ws: WebSocket; player: PlayerView | null; accountId: number; dirty: boolean; alive: boolean; /** mobs que este cliente conhece */ mobs: Set<number>; /** horários das últimas mensagens de chat */ chatAt: number[]; /** pedidos de inventário em fila (um de cada vez) */ invQueue: Promise<void>; /** gravação do 'online = true' (a saída espera por ela) */ onlineSet?: Promise<void>; /** quando entrou no mundo (ms) — tempo de jogo */ joinedAt: number;
+/** medidas do navegador (?perf): [mín, máx] do intervalo entre 'states' e entre quaisquer mensagens, fps, ping, maior quadro */
+interface ClientPerf { at: number; sg: [number, number]; mg: [number, number]; fps: number; ping: number | null; fm: number }
+interface Conn { /** última medida enviada pelo navegador com ?perf */ cperf?: ClientPerf; ws: WebSocket; player: PlayerView | null; accountId: number; dirty: boolean; alive: boolean; /** mobs que este cliente conhece */ mobs: Set<number>; /** horários das últimas mensagens de chat */ chatAt: number[]; /** pedidos de inventário em fila (um de cada vez) */ invQueue: Promise<void>; /** gravação do 'online = true' (a saída espera por ela) */ onlineSet?: Promise<void>; /** quando entrou no mundo (ms) — tempo de jogo */ joinedAt: number;
   /** combate: atributos, HP/MP/FP, exp, morte, ritmo dos golpes */ cb: PlayerCombat | null;
   /** itens do chão que este cliente conhece */ ground: Set<number>;
   /** partes do visual escondidas pelo jogador (máscara de bits, shared/look.ts) */ hide: number;
@@ -1252,7 +1254,12 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
    * Buff Pang (MMI_NPC_BUFF): perto do NPC, recebe todos os buffs dele — no nível MÁXIMO de cada skill (pedido do servidor;
    * o original dava o nível do SetBuffSkill) — com a duração do NPC; vale se o nível do personagem está na faixa dele.
    */
-  function npcBuff(c: Conn, key: string) {
+  /**
+   * `mode`: 'assist' = "Get Buffed!" — todos os buffs de Assist (classe 3) que o nível do personagem libera; 'class' = "Class Buffs" —
+   * os buffs da própria classe (a 1ª e a 2ª: um Blade recebe os de Mercenary e de Blade) liberados no nível; 'npc' = os SetBuffSkill do
+   * NPC (como antes). Os dois primeiros valem no nível máximo de cada skill e na duração dela (dwSkillTime).
+   */
+  function npcBuff(c: Conn, key: string, mode = 'npc') {
     const shops = W(c).shops;
     const p = c.player, cb = c.cb, k = key.toLowerCase();
     const list = shops?.npcBuffs.get(k);
@@ -1260,21 +1267,38 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (!shops!.near(key, p.p[0], p.p[2])) { reply(c, 'Chegue mais perto do NPC.'); return; }
     // os buffs que valem para o nível do personagem, cada um com o efeito e o som da própria skill
     const give: { skill: number; ms: number; lv: number; dst: [number, number][]; fx: number; snd: number }[] = [];
-    for (const b of list) {
-      if (p.level < b.minLv || p.level > b.maxLv) continue;
-      const s = skillCat.byId.get(b.skill);
-      const L = s?.levels[s.max - 1];
-      if (!s || !L) continue;
+    const effects = (s: NonNullable<typeof skillCat>['byId'] extends Map<number, infer V> ? V : never) => {
+      const L = s.levels[s.max - 1];
       const dst: [number, number][] = [];
-      for (let i = 0; i < 2; i++) { const d = L.dest[i], v = L.adj[i]; if (d > 0 && v && d !== DST.HP && d !== DST.MP && d !== DST.FP) dst.push([d, v]); }
-      if (!dst.length) continue;
-      // efeito em quem recebe (dwSfxObj3; sem ele, o do lançador) e o som do acerto (dwSndAttack2; sem ele, o de lançar)
-      give.push({ skill: b.skill, ms: b.ms, lv: s.max, dst, fx: s.sfx[2] >= 0 ? s.sfx[2] : s.sfx[4], snd: s.snd[1] >= 0 ? s.snd[1] : s.snd[0] });
+      if (L) for (let i = 0; i < 2; i++) { const d = L.dest[i], v = L.adj[i]; if (d > 0 && v && d !== DST.HP && d !== DST.MP && d !== DST.FP) dst.push([d, v]); }
+      return { L, dst };
+    };
+    if (mode === 'assist' || mode === 'class') {
+      const lineage = skillCat.lineage(cb.f.job);
+      const mine = (job: number) => (mode === 'assist' ? job === 3 : job !== 0 && lineage.has(job));
+      const picked = [...skillCat.byId.values()].filter((s) => mine(s.job) && s.kind === 'buff' && !s.hostile && p.level >= s.reqLevel).sort((a, b) => a.job - b.job || a.reqLevel - b.reqLevel || a.id - b.id);
+      for (const s of picked) {
+        const { L, dst } = effects(s);
+        if (!L || !(L.time > 0) || !dst.length) continue; // só buff com duração e efeito (cura instantânea fica de fora)
+        give.push({ skill: s.id, ms: L.time, lv: s.max, dst, fx: s.sfx[2] >= 0 ? s.sfx[2] : s.sfx[4], snd: s.snd[1] >= 0 ? s.snd[1] : s.snd[0] });
+      }
+      if (!give.length) { reply(c, mode === 'assist' ? 'Não há buffs de Assist liberados para o seu nível.' : 'Não há buffs da sua classe liberados para o seu nível.'); return; }
+    } else {
+      for (const b of list) {
+        if (p.level < b.minLv || p.level > b.maxLv) continue;
+        const s = skillCat.byId.get(b.skill);
+        if (!s) continue;
+        const { L, dst } = effects(s);
+        if (!L || !dst.length) continue;
+        // efeito em quem recebe (dwSfxObj3; sem ele, o do lançador) e o som do acerto (dwSndAttack2; sem ele, o de lançar)
+        give.push({ skill: b.skill, ms: b.ms, lv: s.max, dst, fx: s.sfx[2] >= 0 ? s.sfx[2] : s.sfx[4], snd: s.snd[1] >= 0 ? s.snd[1] : s.snd[0] });
+      }
+      if (!give.length) { reply(c, 'Este NPC não tem buffs para o seu nível.'); return; }
     }
-    if (!give.length) { reply(c, 'Este NPC não tem buffs para o seu nível.'); return; }
     if (c.buffing) return; // já está recebendo
     c.buffing = true;
     // um de cada vez, a cada 0,5 s (como o NPC lançando um buff depois do outro)
+    const gap = mode === 'npc' ? 500 : 300;
     give.forEach((g, i) => setTimeout(() => {
       if (c.player !== p || !c.cb || c.cb.dead || c.ws.readyState !== WebSocket.OPEN) { c.buffing = false; return; }
       c.cb.buffs.set(g.skill, { lv: g.lv, until: Date.now() + g.ms, dst: g.dst });
@@ -1282,9 +1306,9 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       void inventory?.state(p.id).then((st) => { if (!c.cb) return; refreshFighter(c, st); send(c.ws, buffsMsg(c)); send(c.ws, statsMsg(c)); });
       if (i === give.length - 1) {
         c.buffing = false;
-        reply(c, `Você recebeu ${give.length} buff(s) no nível máximo por ${Math.round(give[0].ms / 60000)} minutos.`);
+        reply(c, mode === 'npc' ? `Você recebeu ${give.length} buff(s) no nível máximo por ${Math.round(give[0].ms / 60000)} minutos.` : `Você recebeu ${give.length} buff(s) ${mode === 'assist' ? 'de Assist' : 'da sua classe'} no nível máximo.`);
       }
-    }, i * 500));
+    }, i * gap));
   }
 
   /**
@@ -1298,7 +1322,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     return a ? [...a.pos] : null;
   };
 
-  async function changeWorld(c: Conn, world: string, pos: [number, number, number]) {
+  /** `force`: o cliente reabre o mapa mesmo que ache que já está nele (ressincroniza quando a tela ficou em outro mapa) */
+  async function changeWorld(c: Conn, world: string, pos: [number, number, number], force = false) {
     const p = c.player;
     if (!p || !worlds.has(world)) return;
     W(c).mobs?.forget(p.id);
@@ -1307,7 +1332,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     c.switching = true;
     await savePosition(p, c.cb, 0);
     void query('UPDATE characters SET online = true WHERE id = $1', [p.id]).catch(() => {});
-    send(c.ws, { t: 'changeWorld', w: worlds.get(world)?.base ?? world, p: pos });
+    send(c.ws, { t: 'changeWorld', w: worlds.get(world)?.base ?? world, p: pos, ...(force ? { f: 1 } : {}) });
   }
 
   // ---------- dungeons: portas (regiões de teleporte dos .rgn), party, nível/classe e cópia por party ----------
@@ -1549,9 +1574,9 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     const now = Date.now();
     for (const c of conns) {
       const p = c.player;
-      if (!p || !ticketWorlds.has(p.w) || c.switching) continue;
+      if (!p || !ticketWorlds.has(p.w) || c.switching || isStaff(c)) continue; // conta de GM/admin entra nos mapas de ticket sem ticket (//map, painel de GM)
       void inventory.state(p.id).then((st) => {
-        if (c.player !== p || !ticketWorlds.has(p.w) || c.switching) return;
+        if (c.player !== p || !ticketWorlds.has(p.w) || c.switching || isStaff(c)) return;
         const ok = st.items.some((i) => { const sym = inventory.catalog.byId.get(i.id)?.symbol; const t = sym ? tickets.get(sym) : undefined; return t && worldByDefine(t.define)?.name === p.w && i.x && i.x > now; });
         if (ok) return;
         reply(c, 'Seu ticket deste mapa acabou. Voltando para Flaris…');
@@ -1839,7 +1864,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     return { t: 'buffs', list: [...(c.cb?.buffs.entries() ?? [])].map(([id, b]) => {
       if (id >= ITEM_BUFF) { const d = inventory?.catalog.byId.get(id - ITEM_BUFF); return { id, name: d?.name ?? '', icon: d?.icon ?? '', lv: 0, item: 1, left: Math.max(0, b.until - now) }; }
       const s = skillCat?.byId.get(id);
-      return { id, name: s?.name ?? '', icon: s?.icon ?? '', lv: b.lv, left: Math.max(0, b.until - now) };
+      return { id, name: s?.name ?? '', icon: s?.icon ?? '', lv: b.lv, left: Math.max(0, b.until - now), d: s?.desc ?? '', fx: b.dst ?? [] };
     }) };
   }
   /** buffs vencidos saem e os atributos de luta voltam ao normal */
@@ -2694,6 +2719,11 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         c.dirty = true;
         const portals = worlds.get(c.player.w)?.portals;
         if (portals) for (const pt of portals) if (p[0] >= pt.rect.xMin && p[0] <= pt.rect.xMax && p[2] >= pt.rect.zMin && p[2] <= pt.rect.zMax) { void usePortal(c, pt).catch((e) => console.error('realtime: porta', e)); break; }
+      } else if (msg.t === 'perf' && c.player) {
+        // medidas do navegador de quem abriu com ?perf: vão para o registro do teste de carga (stats → painel admin)
+        const num = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? Math.max(0, Math.min(600_000, Math.round(x))) : 0);
+        const pair = (v: unknown): [number, number] => { const a = Array.isArray(v) ? v : []; return [num(a[0]), num(a[1])]; };
+        c.cperf = { at: Date.now(), sg: pair(msg.sg), mg: pair(msg.mg), fps: num(msg.fps), ping: typeof msg.ping === 'number' ? num(msg.ping) : null, fm: num(msg.fm) };
       } else if (msg.t === 'friendAdd' && c.player && typeof msg.name === 'string' && !Number.isInteger(msg.id)) {
         // janela "Add Friend": o pedido vai pelo nome (o jogador precisa estar online)
         const nick = msg.name.trim().slice(0, 32).toLowerCase();
@@ -2741,7 +2771,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
           runGmCommand({
             accountId: c.accountId, self: { id: me.id, name: me.name, level: me.level, p: [...me.p] }, inventory, reply,
             online: (name) => { for (const o of conns) if (o.player && o.player.name.toLowerCase() === name.toLowerCase()) return { id: o.player.id, name: o.player.name, level: o.player.level, p: [...o.player.p] }; return null; },
-            openPanel: () => send(ws, { t: 'gmOpen' }),
+            // o painel abre já com a lista de mapas para onde o GM pode ir (o mesmo que o //map aceita: nome ou número)
+            openPanel: () => send(ws, { t: 'gmOpen', maps: [...worlds.values()].filter((w) => !w.name.includes('#')).map((w) => ({ name: w.base ?? w.name, id: w.id })) }),
             invis: (on) => {
               c.gmInvis = on ?? !c.gmInvis;
               refreshInvis(c);
@@ -2803,7 +2834,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
               const wr = all.find((w) => w.name.toLowerCase() === l || String(w.id) === l)
                 ?? all.find((w) => w.name.toLowerCase().includes(l) || w.define.toLowerCase().includes(l));
               if (!wr) return `Could not find the map "${q}". Use //map to see the list.`;
-              if (c.player?.w === wr.name) return `You are already in ${wr.name}.`;
+              // já está nele pelo servidor: reenvia a troca para o cliente reabrir o mapa (se a tela ficou em outro, isto conserta)
+              if (c.player?.w === wr.name) { void changeWorld(c, wr.name, [...c.player.p] as [number, number, number], true).catch((e) => console.error('realtime: //mapa', e)); return `You are already in ${wr.name}: reloading it.`; }
               void changeWorld(c, wr.name, arrivalOf(wr) ?? ([...(wr.start ?? REVIVE_AT)] as [number, number, number])).catch((e) => console.error('realtime: //mapa', e));
               return `Going to ${wr.name}…`;
             },
@@ -2975,7 +3007,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       } else if (msg.t === 'quests' && c.player && quests) {
         void quests.push(c);
       } else if (msg.t === 'npcBuff' && c.player && typeof msg.key === 'string') {
-        npcBuff(c, msg.key.slice(0, 40));
+        npcBuff(c, msg.key.slice(0, 40), msg.mode === 'assist' || msg.mode === 'class' ? msg.mode : 'npc');
       } else if (msg.t === 'buffOff' && c.player && Number.isInteger(msg.id)) {
         removeBuff(c, msg.id as number);
       } else if (msg.t === 'prefs') {
@@ -3191,12 +3223,18 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
 
   // 10×/s: refaz a grade, revê a área de visão de parte dos clientes, manda a cada um os movimentos de quem ele vê e anda a IA
   // dos mobs de cada mundo
+  // diagnóstico: avisa no console quando o tick atrasa (event loop ocupado) ou quando o próprio trabalho do tick demora
+  let lastTickAt = Date.now();
   const tick = setInterval(() => {
+    const t0 = Date.now(), late = t0 - lastTickAt - TICK_MS;
+    lastTickAt = t0;
     // tudo o que sai neste tick (visão, 'states', mobs, itens no chão) vai para o socket numa escrita só por conexão: cada
     // mensagem era uma chamada ao sistema e, com muitos jogadores, isso pesava mais que o próprio jogo
     const corked: Duplex[] = [];
     for (const c of byId.values()) { const s = socketOf(c); if (s && !s.destroyed) { s.cork(); corked.push(s); } }
     try { worldTick(); } finally { for (const s of corked) s.uncork(); }
+    const took = Date.now() - t0;
+    if (late > 250 || took > 80) console.warn(`[tick] ${new Date().toISOString().slice(11, 23)} atraso ${late} ms · trabalho do tick ${took} ms · ${byId.size} online`);
   }, TICK_MS);
   function worldTick() {
     rebuildGrid();
@@ -3290,6 +3328,9 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       sockets: conns.size,
       mobs: [...worlds.values()].reduce((n, wr) => n + (wr.mobs?.mobs.length ?? 0), 0),
       players: [...conns].filter((c) => c.player).map((c) => ({ accountId: c.accountId, characterId: c.player!.id, name: c.player!.name, level: c.player!.level, p: c.player!.p })),
+      /** motor em uso e a medida mais recente (últimos 5 s) de um navegador com ?perf (teste de carga) */
+      engine: rustOn() ? 'rust' : 'node',
+      clientPerf: ([...conns].map((c) => c.cperf).filter((x): x is ClientPerf => !!x && Date.now() - x.at < 5000).sort((a, b) => b.at - a.at)[0]) ?? null,
     }),
     shutdown,
     /** anúncio do painel admin para todos no mundo (letreiro no meio da tela); devolve para quantos foi */

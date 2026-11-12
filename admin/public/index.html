@@ -47,7 +47,7 @@
 
       <div class="cards">
         <div class="card stat"><h5>Players online</h5><b id="sPlayers">0</b><small>no servidor do jogo</small><i>👤</i></div>
-        <div class="card stat"><h5>Serviços online</h5><b id="sServices">0/2</b><small>JOGO · BANCO</small><i>🩺</i></div>
+        <div class="card stat"><h5>Serviços online</h5><div style="display:flex;align-items:baseline;gap:14px"><b id="sServices">0/2</b><span id="sEngine" style="font-size:13px;font-weight:700;letter-spacing:.04em;padding:2px 8px;border-radius:6px;border:1px solid currentColor;display:none"></span></div><small>JOGO · BANCO</small><i>🩺</i></div>
         <div class="card stat"><h5>Conexões WS</h5><b id="sConns">0</b><small>total desde o boot</small><i>🔌</i></div>
         <div class="card stat"><h5>Uptime do jogo</h5><b id="sUptime">—</b><small id="sStatus">parado</small><i>⏱️</i></div>
       </div>
@@ -80,6 +80,9 @@
       <div class="card">
         <h5>Jogadores online</h5>
         <table class="grid"><thead><tr><th>Personagem</th><th>Nível</th><th>Conta</th><th>Posição (x, z)</th></tr></thead><tbody id="onlineRows"><tr><td colspan="4" class="empty">Ninguém online.</td></tr></tbody></table>
+        <div id="onlinePager" style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:10px" hidden>
+          <button type="button" id="onlinePrev" class="btn">‹ Anterior</button><span id="onlinePageInfo" class="dim"></span><button type="button" id="onlineNext" class="btn">Próxima ›</button>
+        </div>
       </div>
 
       <div class="card logs">

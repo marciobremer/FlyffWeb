@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { jobCanUse } from '../../shared/jobuse';
 import { applyPatch, blankItem, readItemsCustom, type ItemsCustom } from './items-custom';
 import path from 'node:path';
 import { parseDefines } from '../../shared/formats/inc';
@@ -71,18 +72,7 @@ export interface ItemDef {
  */
 export const twoHanded = (d: ItemDef) => d.handed === 2 && d.kind3 !== 4;
 
-/**
- * CMover::IsInteriorityJob: a classe `job` pode usar um item da classe `need`? Vagrant e a própria classe sempre; a 2ª classe
- * usa os da 1ª que a originou; Master/Hero/Legend Hero usam os da linha deles (mesmas contas do original).
- */
-export function jobCanUse(need: number, job: number): boolean {
-  if (need < 0 || need === 0 || need === job) return true;
-  if (job >= 6 && job < 16 && need < 6) return need * 2 + 4 === job || need * 2 + 5 === job;
-  if (job >= 16 && job < 24) return need < 6 ? need * 2 + 14 === job || need * 2 + 15 === job : need < 16 && need + 10 === job;
-  if (job >= 24 && job < 32) return need < 6 ? need * 2 + 22 === job || need * 2 + 23 === job : need < 16 ? need + 18 === job : need < 24 && need + 8 === job;
-  if (job >= 32 && job < 40) return need < 6 ? need * 2 + 30 === job || need * 2 + 31 === job : need < 16 ? need + 26 === job : need < 24 ? need + 16 === job : need < 32 && need + 8 === job;
-  return false;
-}
+export { jobCanUse };
 
 /**
  * Conjunto (SetItem do propItemEtc.inc): peças (item + PARTS_* onde precisa estar equipada) e bônus por quantidade
@@ -519,7 +509,7 @@ export class ItemCatalog {
     }
     const dir = o.desc ? -1 : 1;
     list.sort((a, b) => (o.sort === 'level' ? a.level - b.level || a.name.localeCompare(b.name) : o.sort === 'job' ? a.job - b.job || a.name.localeCompare(b.name) : a.name.localeCompare(b.name)) * dir);
-    return { total: list.length, rows: list.slice(o.off, o.off + o.n).map((d) => [d.id, d.symbol, d.name, d.icon, d.level, d.job, d.sex, d.kind1, d.parts, d.packMax, d.grade]) };
+    return { total: list.length, rows: list.slice(o.off, o.off + o.n).map((d) => [d.id, d.symbol, d.name, d.icon, d.level, d.job, d.sex, d.kind1, d.parts, d.packMax, d.grade, d.kind2]) };
   }
 
   /** o que o cliente precisa para desenhar (nome, ícone, empilhamento, onde equipa) */

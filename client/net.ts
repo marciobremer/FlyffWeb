@@ -6,6 +6,7 @@ import type { WorldView } from '../shared/world';
 import { MoverInstance, preloadMotions } from '../shared/movers';
 import { hairRgb, loadHumanTemplate } from '../shared/humans';
 import { applyEnchantGlow } from '../shared/enchantGlow';
+import { fuseSkinned } from '../shared/meshfuse';
 import { attachRide, flyMotion, rideOf } from '../shared/ride';
 import { objectMatrix } from '../shared/math';
 import { OT, type WorldObject } from '../shared/formats/types';
@@ -72,17 +73,24 @@ export interface ItemView {
 export interface InvMessage { gold: number; /** Red Chip (contador fora da bolsa) */ chips?: number; bag: number; items: [number, number, number, number, number?, number?, number?, number[]?, number?, number[]?, number?, number?, number[]?][]; defs: Record<number, ItemView>; /** fail stack do ferreiro (dica) */ stack?: Record<string, Record<number, number>>; /** raridades da arma: [nome, cor 0xAARRGGBB, × ataque, × bônus] */ rar?: [string, number, number, number][] }
 
 
-interface Remote { /** tempo sem animar (corte/LOD) */ acc?: number; view: PlayerView; inst: MoverInstance | null; target: [number, number, number]; cur: [number, number, number]; h: number; curH: number; s: string; gone: boolean; /** último golpe tocado da sequência (1–4) e quando */ hit?: number; hitAt?: number }
+/** ?nofuse desliga a fusão de malhas (comparar com ?perf) */
+const FUSE = !new URLSearchParams(location.search).has('nofuse');
+/** atraso (ms) com que os outros jogadores são mostrados: o servidor manda a posição a cada ~100–140 ms e o andar é interpolado entre duas posições recebidas */
+const INTERP_MS = 150;
+
+interface Remote { /** posições recebidas (instante local de chegada) para interpolar o andar */ snaps?: { t: number; x: number; y: number; z: number }[]; /** fusão de malhas falhou/não vale para este visual */ noFuse?: boolean; /** tempo sem animar (corte/LOD) */ acc?: number; view: PlayerView; inst: MoverInstance | null; target: [number, number, number]; cur: [number, number, number]; h: number; curH: number; s: string; gone: boolean; /** último golpe tocado da sequência (1–4) e quando */ hit?: number; hitAt?: number }
 
 export class RemotePlayers {
   private list = new Map<number, Remote>();
   constructor(private world: WorldView) {}
 
   get count() { return this.list.size; }
+  /** quantos estão com a malha fundida (?perf) */
+  get fusedCount() { let n = 0; for (const r of this.list.values()) if (r.inst?.isFused) n++; return n; }
 
   add(v: PlayerView) {
     this.remove(v.id);
-    const r: Remote = { view: v, inst: null, target: [...v.p], cur: [...v.p], h: v.h, curH: v.h, s: v.s, gone: false };
+    const r: Remote = { view: v, inst: null, target: [...v.p], cur: [...v.p], h: v.h, curH: v.h, s: v.s, gone: false, snaps: [{ t: performance.now(), x: v.p[0], y: v.p[1], z: v.p[2] }] };
     this.list.set(v.id, r);
     void this.load(r);
   }
@@ -141,6 +149,16 @@ export class RemotePlayers {
     if (!r) return;
     r.target = [x, y, z];
     r.h = h;
+    const now = performance.now(), sn = (r.snaps ??= []), last = sn[sn.length - 1];
+    if (last && Math.hypot(x - last.x, z - last.z) > 40) sn.length = 0; // teleporte: sem deslizar até lá
+    if (!last || last.x !== x || last.y !== y || last.z !== z || now - last.t > 400) {
+      // rajada (o navegador engasgou e as mensagens chegaram juntas): espaça as posições em 60 ms para o andar continuar fluido
+      // em vez de congelar e pular; se o atraso acumulado passa de 600 ms, desiste do histórico e vai para a posição mais nova
+      let t = last ? Math.max(now, last.t + 60) : now;
+      if (t - now > 600) { sn.length = 0; t = now; }
+      sn.push({ t, x, y, z });
+    }
+    if (sn.length > 12) sn.shift();
     if (s !== r.s) {
       r.s = s;
       if (s.startsWith('fly')) r.inst?.play(this.motionFor(r));
@@ -281,15 +299,37 @@ export class RemotePlayers {
   private lodN = 0;
   frame(dt: number) {
     const k = 1 - Math.exp(-dt * 12);
-    const cam = this.world.camera.position, fr = this.world.frustum;
+    const cam = this.world.camera.position, fr = this.world.frustum, now = performance.now();
     this.lodN++;
-    let idx = 0;
+    let idx = 0, builds = 0;
     for (const r of this.list.values()) {
       idx++;
       try {
       const [tx, ty, tz] = r.target, c = r.cur;
-      if (Math.hypot(tx - c[0], tz - c[2]) > 40) { c[0] = tx; c[1] = ty; c[2] = tz; } // teleporte / reconexão
-      else { c[0] += (tx - c[0]) * k; c[1] += (ty - c[1]) * k; c[2] += (tz - c[2]) * k; }
+      const sn = r.snaps;
+      if (!sn || sn.length < 2) { c[0] = tx; c[1] = ty; c[2] = tz; } // teleporte / reconexão / ainda sem histórico
+      else {
+        // interpolação entre as duas posições que cercam (agora − INTERP_MS); sem posição mais nova, fica na última
+        const rt = now - INTERP_MS;
+        let i = sn.length - 1;
+        while (i > 0 && sn[i].t > rt) i--;
+        const a = sn[i], b = sn[i + 1];
+        if (!b) {
+          // a posição seguinte atrasou (rede/CPU engasgou): se ele vinha andando, segue na mesma direção por até 400 ms em vez de congelar;
+          // quem parou manda 'stand' e fica onde está
+          const pv = sn.length > 1 ? sn[sn.length - 2] : null, late = Math.min(rt - a.t, 400) / 1000;
+          if (pv && late > 0 && (r.s === 'walk' || r.s === 'run') && a.t > pv.t) {
+            const dtp = (a.t - pv.t) / 1000;
+            c[0] = a.x + ((a.x - pv.x) / dtp) * late; c[1] = a.y; c[2] = a.z + ((a.z - pv.z) / dtp) * late;
+          } else { c[0] = a.x; c[1] = a.y; c[2] = a.z; }
+        }
+        else {
+          // intervalo longo (parou e voltou a andar): o trecho dura no máximo INTERP_MS, não desliza devagar durante a pausa
+          const f = Math.max(0, Math.min(1, (rt - a.t) / Math.min(b.t - a.t, INTERP_MS)));
+          c[0] = a.x + (b.x - a.x) * f; c[1] = a.y + (b.y - a.y) * f; c[2] = a.z + (b.z - a.z) * f;
+        }
+        while (sn.length > 2 && sn[1].t <= rt) sn.shift(); // descarta o que já passou
+      }
       const dh = ((r.h - r.curH + 540) % 360) - 180; // menor ângulo
       r.curH = (r.curH + dh * k + 360) % 360;
       if (r.inst) {
@@ -299,8 +339,17 @@ export class RemotePlayers {
         // fora da visão não desenha nem anima; longe anima a cada 2 ou 4 quadros; nome até 90 m e sombra até 45 m
         const dd = this.world.detail, d = r.inst.cull(fr, cam, this.showNames ? 90 * dd : 0, 45 * dd, 45 * dd);
         if (d < 0) continue;
+        // LOD: longe (> ~40 m) as peças viram uma malha só (histerese 36/40 m; no máx. 2 montagens novas por quadro)
+        if (FUSE && !r.noFuse) {
+          if (r.inst.isFused) { if (d < 36 * dd) r.inst.useFused(null); }
+          else if (d > 40 * dd && !r.view.iv && builds < 2) {
+            const v = r.view, parts = r.inst.fusable();
+            const f = fuseSkinned(`${v.sex}|${v.hair}|${v.head}|${v.hc ?? 0}|${(v.eq ?? []).join(',')}`, parts, this.world.renderer);
+            if (f) { r.inst.useFused(f, parts); builds++; } else r.noFuse = true;
+          }
+        }
         r.acc = (r.acc ?? 0) + dt;
-        const every = d > 90 ? 4 : d > 45 ? 2 : 1;
+        const every = d > 100 ? 3 : d > 45 ? 2 : 1; // longe anima a cada 2 ou 3 quadros (era 4: andar de bots distantes ficava aos trancos)
         if (every === 1 || (this.lodN + idx) % every === 0) { r.inst.update(r.acc); r.acc = 0; }
       }
       } catch (e) { if (!this.frameWarned) { this.frameWarned = true; console.error('remotes.frame: falha em um jogador', r.view.id, e); } }
@@ -322,7 +371,17 @@ export class NetClient {
   private warned = false;
   private statesAt = 0;
   private gapMax = 0;
-  takeStatesGap() { const g = this.gapMax; this.gapMax = 0; return Math.round(g); }
+  private gapMin = Infinity;
+  /** [mínimo, máximo] (ms) do intervalo entre 'states' desde a última leitura */
+  takeStatesGap(): [number, number] { const g: [number, number] = [this.gapMin === Infinity ? 0 : Math.round(this.gapMin), Math.round(this.gapMax)]; this.gapMax = 0; this.gapMin = Infinity; return g; }
+  /** maior intervalo entre QUALQUER mensagens do servidor e o maior intervalo entre uma mensagem e o quadro em que ela foi lida (?perf) */
+  private anyAt = 0;
+  private anyGapMax = 0;
+  private anyGapMin = Infinity;
+  /** [mínimo, máximo] (ms) do intervalo entre quaisquer mensagens do servidor desde a última leitura */
+  takeAnyGap(): [number, number] { const g: [number, number] = [this.anyGapMin === Infinity ? 0 : Math.round(this.anyGapMin), Math.round(this.anyGapMax)]; this.anyGapMax = 0; this.anyGapMin = Infinity; return g; }
+  /** ?perf: manda as medidas do navegador ao servidor, que as grava no registro do teste de carga (painel admin) */
+  sendPerf(p: { sg: [number, number]; mg: [number, number]; fps: number; ping: number | null; fm: number }) { return this.raw({ t: 'perf', ...p }); }
   /** ping (ms de ida e volta, média suave); null até a 1ª medida */
   ping: number | null = null;
   private pingTimer = 0;
@@ -376,7 +435,7 @@ export class NetClient {
   /** relógio do servidor (dia e noite) e a hora fixada pelo GM (null = andando) */
   onClock: (now: number, fixed: number | null) => void = () => {};
   /** o servidor mandou trocar de mundo (ticket de Azria, teleporte para outro mapa) */
-  onChangeWorld: (w: string, p: [number, number, number]) => void = () => {};
+  onChangeWorld: (w: string, p: [number, number, number], force?: boolean) => void = () => {};
   /** guild: sua guild (null = sem guild), convite recebido, o nome da sua guild mudou */
   onGuildView: (g: import('./guild').GuildView | null) => void = () => {};
   onGuildReq: (id: number, name: string, guild: string) => void = () => {};
@@ -417,7 +476,7 @@ export class NetClient {
   /** a própria aparência mudou no servidor (equipamento/postura), ex.: por GM ou outro aviso */
   onLook: (eq: string[], mt: number) => void = () => {};
   /** painel de GM: abrir, resultado da busca de itens; teleporte feito por um GM */
-  onGmOpen: () => void = () => {};
+  onGmOpen: (maps?: { name: string; id: number }[]) => void = () => {};
   onGmItems: (list: ItemView[]) => void = () => {};
   /** painel de GM: atributos de um jogador (ou o erro) */
   onGmStats: (m: GmStats) => void = () => {};
@@ -460,6 +519,9 @@ export class NetClient {
     this.onStatus(t('Conectando ao servidor…'));
     ws.onopen = () => { this.retry = 0; this.last = ''; this.startPing(); ws.send(JSON.stringify({ t: 'join', token: this.join!.token, characterId: this.join!.characterId, p: this.join!.pos(), hide: this.hide })); };
     ws.onmessage = (ev) => {
+      const arrived = performance.now();
+      if (this.anyAt) { const g = arrived - this.anyAt; this.anyGapMax = Math.max(this.anyGapMax, g); this.anyGapMin = Math.min(this.anyGapMin, g); }
+      this.anyAt = arrived;
       let m: { t: string; [k: string]: unknown };
       try { m = JSON.parse(String(ev.data)); } catch { return; }
       if (m.t === 'redirect') {
@@ -489,7 +551,7 @@ export class NetClient {
         this.online = Number(m.n) || 0;
       } else if (m.t === 'states') {
         const at = performance.now();
-        if (this.statesAt) this.gapMax = Math.max(this.gapMax, at - this.statesAt);
+        if (this.statesAt) { const g = at - this.statesAt; this.gapMax = Math.max(this.gapMax, g); this.gapMin = Math.min(this.gapMin, g); }
         this.statesAt = at;
         // um jogador com problema não pode travar a atualização de todos os outros: cada um num try/catch (o erro aparece no console)
         for (const [id, x, y, z, h, s] of m.list as [number, number, number, number, number, string][]) {
@@ -505,7 +567,7 @@ export class NetClient {
       } else if (m.t === 'invError') {
         this.onInvError(String(m.error));
       } else if (m.t === 'gmOpen') {
-        this.onGmOpen();
+        this.onGmOpen(Array.isArray(m.maps) ? (m.maps as { name: string; id: number }[]) : undefined);
       } else if (m.t === 'wiki') {
         this.onWiki(m as never);
       } else if (m.t === 'wikiTip') {
@@ -574,7 +636,7 @@ export class NetClient {
       } else if (m.t === 'clock') {
         this.onClock(Number(m.now) || Date.now(), typeof m.fixed === 'number' ? m.fixed : null);
       } else if (m.t === 'changeWorld') {
-        this.onChangeWorld(String(m.w), m.p as [number, number, number]);
+        this.onChangeWorld(String(m.w), m.p as [number, number, number], m.f === 1);
       } else if (m.t === 'guildView') {
         this.onGuildView((m.g ?? null) as import('./guild').GuildView | null);
       } else if (m.t === 'guildReq') {
@@ -715,7 +777,8 @@ export class NetClient {
   /** janela de movimentos: movimento (MTI_*, modo do propMotion) e emoticon (índice) */
   emote(m: string, md: number) { return this.raw({ t: 'emote', m, md }); }
   emoticon(i: number) { return this.raw({ t: 'emo', i }); }
-  npcBuff(key: string) { return this.raw({ t: 'npcBuff', key }); }
+  /** Buff Pang: 'assist' = Get Buffed! (buffs de Assist), 'class' = Class Buffs (da própria classe), 'npc' = os do NPC */
+  npcBuff(key: string, mode: 'assist' | 'class' | 'npc' = 'npc') { return this.raw({ t: 'npcBuff', key, mode }); }
   /** tira o buff da skill `id` */
   removeBuff(id: number) { return this.raw({ t: 'buffOff', id }); }
   shopBuy(key: string, id: number, n: number) { return this.raw({ t: 'buy', key, id, n }); }

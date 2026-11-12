@@ -258,6 +258,31 @@ export class MoverInstance {
   private ended = false;
   private loading = false;
   private lightMeshes: Mesh[] = [];
+  private skeleton!: ThreeSkeleton;
+  /** malha única que substitui as peças do corpo quando o jogador está longe (shared/meshfuse.ts) */
+  private fusedMesh: SkinnedMesh | null = null;
+  private fusedHidden: Mesh[] = [];
+  get isFused() { return this.fusedMesh !== null; }
+  /** peças skinned do corpo que entram na fusão (luzes noturnas ficam de fora) */
+  fusable(): SkinnedMesh[] { return this.body.children.filter((o): o is SkinnedMesh => (o as SkinnedMesh).isSkinnedMesh === true && !this.lightMeshes.includes(o as Mesh)); }
+  /** liga a malha fundida (esconde as peças) ou volta às peças (null) */
+  useFused(f: { geometry: BufferGeometry; material: Material } | null, parts?: SkinnedMesh[]) {
+    if (this.fusedMesh) { this.fusedMesh.removeFromParent(); this.fusedMesh = null; }
+    for (const m of this.fusedHidden) m.visible = true;
+    this.fusedHidden = [];
+    if (!f) return;
+    const hide = parts ?? this.fusable();
+    const mesh = new SkinnedMesh(f.geometry, f.material);
+    mesh.frustumCulled = false;
+    mesh.castShadow = this.shadowOn; mesh.receiveShadow = true;
+    mesh.boundingSphere = f.geometry.boundingSphere ?? new Sphere();
+    mesh.bindMode = 'detached';
+    mesh.bind(this.skeleton, new Matrix4());
+    mesh.userData.pick = hide[0]?.userData.pick;
+    this.body.add(mesh);
+    this.fusedMesh = mesh;
+    for (const m of hide) { m.visible = false; this.fusedHidden.push(m); }
+  }
   /** poses locais (por osso) do último quadro e do movimento anterior, para misturar ao trocar de movimento */
   private lastLocal: Matrix4[] = [];
   private blendFrom: Matrix4[] | null = null;
@@ -269,7 +294,7 @@ export class MoverInstance {
     this.motion = tpl.motion;
     this.bones = tpl.skeleton.bones.map(() => { const b = new Bone(); b.matrixAutoUpdate = false; b.matrixWorldAutoUpdate = false; return b; });
     this.worlds = tpl.bindWorld.map((m) => m.clone());
-    const skeleton = new ThreeSkeleton(this.bones, tpl.boneInverses);
+    const skeleton = this.skeleton = new ThreeSkeleton(this.bones, tpl.boneInverses);
     for (const { part, geometry, materials, file } of tpl.parts) {
       const mat = materials.length > 1 ? materials : materials[0];
       if (part.skinned) {

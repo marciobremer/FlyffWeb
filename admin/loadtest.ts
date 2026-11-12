@@ -24,12 +24,17 @@ export interface Sample {
   at: number; bots: number; connected: number; failed: number; rxKBps: number; rxMsgs: number; txMsgs: number; pulls: number;
   rttP50: number | null; rttP95: number | null; gapP95: number | null; botLag: number;
   lagP99: number | null; lagMax: number | null; cpu: number | null; rssMb: number | null; players: number; srvMsgOut: number | null;
+  /** medidas do navegador com ?perf (null sem navegador): intervalo entre 'states' e entre quaisquer mensagens (mín/máx, ms), fps, ping e maior quadro */
+  cSgMin: number | null; cSgMax: number | null; cMgMin: number | null; cMgMax: number | null; cFps: number | null; cPing: number | null; cFm: number | null;
   ok: boolean;
 }
 export interface Summary {
   bots: number; peakJoined: number; failed: number; degradedAt: number | null; degradedWhy: string | null; maxOkBots: number;
   worst: { lagP99: number; rttP95: number; gapP95: number; cpu: number; rssMb: number; rxMBps: number; botLag: number };
   stoppedEarly: boolean;
+  /** motor do jogo no teste (rust/node) */ engine: string | null;
+  /** resumo das medidas do navegador (null se nenhum navegador com ?perf mandou medidas) */
+  client: { samples: number; sgMin: number; sgMax: number; mgMin: number; mgMax: number; fpsMin: number; pingMax: number; fmMax: number } | null;
 }
 type Options = Omit<LoadConfig, 'url' | 'bots'> & { count: number };
 
@@ -47,6 +52,7 @@ export class LoadTest {
   private degraded: { at: number; bots: number; why: string } | null = null;
   private lastMsgOut: { t: number; n: number } | null = null;
   private stoppedEarly = false;
+  private engine: string | null = null;
 
   constructor(private root: string, private game: GameProcess, private port: number) {}
 
@@ -118,7 +124,7 @@ export class LoadTest {
 
   private async onTick(m: Record<string, unknown>) {
     const st = await this.game.stats();
-    const g = st?.data, perf = g?.perf ?? null;
+    const g = st?.data, perf = g?.perf ?? null, cp = g?.clientPerf ?? null;
     const now = Date.now(), out = g ? g.msgOut : null;
     let srvMsgOut: number | null = null;
     if (out !== null && this.lastMsgOut) srvMsgOut = Math.round((out - this.lastMsgOut.n) / ((now - this.lastMsgOut.t) / 1000));
@@ -128,7 +134,9 @@ export class LoadTest {
       at: n('at') ?? 0, bots: n('joined') ?? 0, connected: n('connected') ?? 0, failed: n('failed') ?? 0, rxKBps: n('rxKBps') ?? 0, rxMsgs: n('rxMsgs') ?? 0, txMsgs: n('txMsgs') ?? 0, pulls: n('pulls') ?? 0,
       rttP50: n('rttP50') === null ? null : Math.round(n('rttP50')!), rttP95: n('rttP95') === null ? null : Math.round(n('rttP95')!), gapP95: n('gapP95'), botLag: n('botLag') ?? 0,
       lagP99: perf?.lagP99 ?? null, lagMax: perf?.lagMax ?? null, cpu: perf?.cpu ?? null, rssMb: g?.rssMb ?? null, players: g?.players.length ?? 0, srvMsgOut, ok: true,
+      cSgMin: cp?.sg[0] ?? null, cSgMax: cp?.sg[1] ?? null, cMgMin: cp?.mg[0] ?? null, cMgMax: cp?.mg[1] ?? null, cFps: cp?.fps ?? null, cPing: cp?.ping ?? null, cFm: cp?.fm ?? null,
     };
+    if (g?.engine) this.engine = g.engine;
     const why: string[] = [];
     if (s.lagP99 !== null && s.lagP99 > LIMITS.lagP99) why.push(`event loop ${s.lagP99} ms`);
     if (s.rttP95 !== null && s.rttP95 > LIMITS.rttP95) why.push(`RTT p95 ${s.rttP95} ms`);
@@ -156,6 +164,14 @@ export class LoadTest {
       maxOkBots: Math.max(0, ...ok.filter((s) => !this.degraded || s.at < this.degraded.at).map((s) => s.bots)),
       worst: { lagP99: max((s) => s.lagP99), rttP95: max((s) => s.rttP95), gapP95: max((s) => s.gapP95), cpu: max((s) => s.cpu), rssMb: max((s) => s.rssMb), rxMBps: Math.round(max((s) => s.rxKBps) / 102.4) / 10, botLag: max((s) => s.botLag) },
       stoppedEarly: this.stoppedEarly,
+      engine: this.engine,
+      client: (() => {
+        const c = this.samples.filter((s) => s.cSgMax !== null);
+        if (!c.length) return null;
+        const mx = (f: (s: Sample) => number | null) => Math.max(0, ...c.map((s) => f(s) ?? 0));
+        const mn = (f: (s: Sample) => number | null) => Math.min(...c.map((s) => f(s) ?? Infinity));
+        return { samples: c.length, sgMin: mn((s) => s.cSgMin), sgMax: mx((s) => s.cSgMax), mgMin: mn((s) => s.cMgMin), mgMax: mx((s) => s.cMgMax), fpsMin: mn((s) => (s.cFps ? s.cFps : null)), pingMax: mx((s) => s.cPing), fmMax: mx((s) => s.cFm) };
+      })(),
     };
   }
 

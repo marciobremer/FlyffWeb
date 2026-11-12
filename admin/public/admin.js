@@ -37,6 +37,23 @@ const samples = []; // { t, msgs, players }
 let lastCounts = null, lastLog = 0;
 const STATUS_TXT = { parado: 'parado', iniciando: 'iniciando…', rodando: 'rodando', parando: 'parando…', compilando: 'compilando…', erro: 'parou com erro' };
 
+let onlinePage = 0, onlinePlayers = [], onlineRunning = false;
+const ONLINE_PER_PAGE = 5;
+function renderOnline() {
+  const pages = Math.max(1, Math.ceil(onlinePlayers.length / ONLINE_PER_PAGE));
+  onlinePage = Math.min(onlinePage, pages - 1);
+  const slice = onlinePlayers.slice(onlinePage * ONLINE_PER_PAGE, (onlinePage + 1) * ONLINE_PER_PAGE);
+  $('onlineRows').innerHTML = slice.length
+    ? slice.map((p) => `<tr><td>${esc(p.name)}</td><td>${p.level}</td><td>#${p.accountId}</td><td>${p.p[0].toFixed(0)}, ${p.p[2].toFixed(0)}</td></tr>`).join('')
+    : `<tr><td colspan="4" class="empty">${onlineRunning ? 'Ninguém online.' : 'Servidor do jogo parado.'}</td></tr>`;
+  $('onlinePager').hidden = pages <= 1;
+  $('onlinePageInfo').textContent = `Página ${onlinePage + 1} de ${pages} · ${onlinePlayers.length} jogadores`;
+  $('onlinePrev').disabled = onlinePage === 0;
+  $('onlineNext').disabled = onlinePage >= pages - 1;
+}
+$('onlinePrev').addEventListener('click', () => { onlinePage--; renderOnline(); });
+$('onlineNext').addEventListener('click', () => { onlinePage++; renderOnline(); });
+
 async function refresh() {
   let s;
   try { s = await api('/status?since=' + lastLog); } catch (e) { say($('dashMsg'), 'Painel sem resposta: ' + e.message, true); return; }
@@ -79,9 +96,13 @@ async function refresh() {
   $('btnBuild').disabled = g.status === 'compilando';
   if (!g.distReady && !g.pid) say($('dashMsg'), 'O jogo ainda não foi compilado: clique em "Compilar" antes de iniciar.', true);
 
-  $('onlineRows').innerHTML = g.players.length
-    ? g.players.map((p) => `<tr><td>${esc(p.name)}</td><td>${p.level}</td><td>#${p.accountId}</td><td>${p.p[0].toFixed(0)}, ${p.p[2].toFixed(0)}</td></tr>`).join('')
-    : `<tr><td colspan="4" class="empty">${running ? 'Ninguém online.' : 'Servidor do jogo parado.'}</td></tr>`;
+  onlinePlayers = g.players; onlineRunning = running;
+  renderOnline();
+  const en = $('sEngine');
+  en.style.display = running && g.engine ? '' : 'none';
+  en.textContent = (g.engine || '').toUpperCase();
+  en.style.color = g.engine === 'rust' ? '#f97316' : '#34d399';
+  en.title = 'Motor dos mobs, IA e visão em uso';
 
   if (s.logs.length) {
     const box = $('logBox');
@@ -691,6 +712,8 @@ function ltRender(r) {
     v.innerHTML = `<h4 class="${bad ? 'ltbad' : 'ltok'}">${bad ? '✗' : '✓'} ${esc(head)}</h4>`
       + (bad ? `<p>Motivo: ${esc(sm.degradedWhy)}. Funcionou bem até <b>${sm.maxOkBots}</b> bots.</p>` : '')
       + `<p>Piores valores: event loop ${sm.worst.lagP99} ms · RTT p95 ${sm.worst.rttP95} ms · intervalo dos 'states' ${sm.worst.gapP95} ms · CPU ${sm.worst.cpu}% · RAM ${sm.worst.rssMb} MB · ${sm.worst.rxMBps} MB/s para os bots.</p>`
+      + (sm.engine ? `<p>Motor do jogo: <b>${esc(sm.engine)}</b>.</p>` : '')
+      + (sm.client ? `<p>Medido no navegador (?perf, ${sm.client.samples} s): intervalo entre 'states' <b>${sm.client.sgMin}–${sm.client.sgMax} ms</b> (mín–máx) · entre quaisquer mensagens <b>${sm.client.mgMin}–${sm.client.mgMax} ms</b> · fps mín. ${sm.client.fpsMin} · ping máx. ${sm.client.pingMax} ms · maior quadro ${sm.client.fmMax} ms.</p>` : `<p class="dim">Sem medidas do navegador: abra o jogo com <code>?perf</code> durante o teste para registrar o intervalo de 'states' e de mensagens.</p>`)
       + fails + botsBusy;
   }
 
@@ -750,7 +773,7 @@ function ltChart(c, S, span, series, limits = []) {
 function ltHistory(list) {
   $('ltRows').innerHTML = list.length ? list.map((r) => {
     const sm = r.summary, o = r.options, okRun = sm.degradedAt == null;
-    return `<tr><td>${fmtDate(r.startedAt)}</td><td>${sm.peakJoined}/${o.count}</td><td>${esc(ltScenario(o))}, ${o.duration} s</td>
+    return `<tr><td>${fmtDate(r.startedAt)}</td><td>${sm.peakJoined}/${o.count}</td><td>${esc(ltScenario(o))}, ${o.duration} s${sm.engine ? ' · ' + esc(sm.engine) : ''}${sm.client ? ' · states ' + sm.client.sgMin + '–' + sm.client.sgMax + ' ms' : ''}</td>
       <td class="${okRun ? 'ltok' : ''}">${okRun ? '✓ ' + sm.peakJoined : sm.maxOkBots}</td>
       <td class="${okRun ? '' : 'ltbad'}">${okRun ? '—' : '~' + sm.degradedAt}</td>
       <td>${sm.worst.lagP99} / ${sm.worst.rttP95} ms</td><td>${sm.worst.cpu}% / ${sm.worst.rssMb} MB</td>

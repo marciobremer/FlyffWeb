@@ -10,7 +10,7 @@ import { gradeOf } from '../shared/grade';
  * sexo e faixa de nível). A lista vem do servidor por páginas e carrega mais ao rolar; passar o mouse mostra a dica completa
  * do item. Qualquer jogador abre; o painel de GM (//gm) usa a mesma janela para escolher o item a criar.
  */
-export interface WikiRow { id: number; sym: string; name: string; icon: string; lv: number; job: number; sex: number; k1: number; parts: number; pack: number; gr: number }
+export interface WikiRow { id: number; sym: string; name: string; icon: string; lv: number; job: number; sex: number; k1: number; parts: number; pack: number; gr: number; k2: number }
 
 /** [id, rótulo, filhos?] — a árvore da janela (os ids são os do servidor, `ItemCatalog.wikiInCategory`) */
 const TREE: [string, string, [string, string][]?][] = [
@@ -28,7 +28,11 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string,
   return e;
 };
 
-export class WikiWindow extends GameWindow {
+/** número de pedido único entre todos os painéis (a janela da tecla Y e o painel dentro do //gm), para a resposta achar o dono */
+let reqSeq = 0;
+
+/** o conteúdo da Wikipedia (árvore + lista + filtros) em qualquer contêiner: a janela dos jogadores e a aba Items do painel de GM */
+export class WikiPanel {
   /** pede uma página ao servidor (false = desconectado) */
   query: (p: { req: number; q: string; cat: string; job: number; sex: number; lo: number; hi: number; sort: string; desc: boolean; off: number; n: number }) => boolean = () => false;
   /** pede a dica completa de um item */
@@ -41,6 +45,7 @@ export class WikiWindow extends GameWindow {
   private sort = 'name';
   private desc = false;
   private req = 0;
+  readonly root: HTMLElement;
   private rows: WikiRow[] = [];
   private total = 0;
   private loading = false;
@@ -58,9 +63,8 @@ export class WikiWindow extends GameWindow {
   private timer = 0;
   private sortBtns = new Map<string, HTMLButtonElement>();
 
-  constructor(parent: HTMLElement) {
-    super(parent, { id: 'wikiWnd', title: 'Wikipedia - Items', store: 'flyff.wnd.wiki', initial: { x: 120, y: 60, w: 760, h: 540 }, min: { w: 600, h: 380 } });
-    const b = this.body;
+  constructor(host: HTMLElement) {
+    const b = this.root = host;
     b.classList.add('wk');
 
     // ---- árvore de categorias ----
@@ -136,10 +140,8 @@ export class WikiWindow extends GameWindow {
     this.markSort();
   }
 
-  override show() {
-    super.show();
-    if (!this.rows.length && !this.loading) this.refresh();
-  }
+  /** ficou visível: carrega a primeira página se ainda não tem nada */
+  activate() { if (!this.rows.length && !this.loading) this.refresh(); }
 
   /** a dica completa chegou do servidor */
   setTip(v: ItemView, ev?: { clientX: number; clientY: number }) {
@@ -185,7 +187,7 @@ export class WikiWindow extends GameWindow {
   }
 
   private fetch(off: number) {
-    const req = ++this.req;
+    const req = this.req = ++reqSeq;
     this.loading = true;
     const ok = this.query({ req, q: this.q.value, cat: this.cat, job: Number(this.job.value), sex: Number(this.sex.value), lo: Number(this.lo.value) || 0, hi: Number(this.hi.value) || 0, sort: this.sort, desc: this.desc, off, n: PAGE });
     if (!ok) { this.loading = false; this.count.textContent = 'Sem conexão com o servidor.'; }
@@ -200,7 +202,7 @@ export class WikiWindow extends GameWindow {
     if (m.off !== start) return;
     const frag = document.createDocumentFragment();
     m.rows.forEach((r, k) => {
-      const row: WikiRow = { id: r[0] as number, sym: r[1] as string, name: r[2] as string, icon: r[3] as string, lv: r[4] as number, job: r[5] as number, sex: r[6] as number, k1: r[7] as number, parts: r[8] as number, pack: r[9] as number, gr: r[10] as number };
+      const row: WikiRow = { id: r[0] as number, sym: r[1] as string, name: r[2] as string, icon: r[3] as string, lv: r[4] as number, job: r[5] as number, sex: r[6] as number, k1: r[7] as number, parts: r[8] as number, pack: r[9] as number, gr: r[10] as number, k2: r[11] as number };
       this.rows.push(row);
       const img = el('img', { alt: '', width: 32, height: 32 });
       void itemIcon(row.icon).then((u) => { if (u) img.src = u; });
@@ -213,5 +215,18 @@ export class WikiWindow extends GameWindow {
     this.list.append(frag);
     this.count.textContent = this.total ? `${this.rows.length} / ${this.total}` : 'Nenhum item encontrado.';
     if (this.rows.length < this.total && this.list.scrollHeight <= this.list.clientHeight + 40) this.more(); // lista curta: completa a tela
+  }
+}
+
+/** a janela da Wikipedia (tecla Y, /wiki, menu) — qualquer jogador abre */
+export class WikiWindow extends GameWindow {
+  readonly panel: WikiPanel;
+  constructor(parent: HTMLElement) {
+    super(parent, { id: 'wikiWnd', title: 'Wikipedia - Items', store: 'flyff.wnd.wiki', initial: { x: 120, y: 60, w: 760, h: 540 }, min: { w: 600, h: 380 } });
+    this.panel = new WikiPanel(this.body);
+  }
+  override show() {
+    super.show();
+    this.panel.activate();
   }
 }

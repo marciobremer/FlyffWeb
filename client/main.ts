@@ -99,14 +99,20 @@ const mapLoading = (() => {
   };
 })();
 /** abre outro mundo (com a tela de carregamento) e espera o chão em volta de (x, z) */
-async function openWorld(world: string, x: number, z: number) {
-  if (world === curWorld) return;
+/** abre o mundo; devolve null se deu certo, senão o motivo da falha (o terreno antigo continua na tela) */
+async function openWorld(world: string, x: number, z: number): Promise<string | null> {
+  if (world === curWorld) return null;
   mapLoading.show(world);
   try {
     await view.open(world);
     curWorld = world;
     await view.loadTile(Math.floor(x / 512), Math.floor(z / 512));
-  } catch (e) { console.error('abrir mundo', world, e); }
+    return null;
+  } catch (e) {
+    console.error('abrir mundo', world, e);
+    const err = e instanceof Error ? e : new Error(String(e));
+    return `${err.message} @ ${(err.stack ?? '').split('\n')[1]?.trim() ?? '?'}`;
+  }
 }
 /** ponto de entrada padrão (Flaris) e palco da prévia do personagem, em coordenadas FlyFF */
 const FLARIS = { x: 6976, z: 3327 };
@@ -350,7 +356,10 @@ let menuNpc: { inst: MoverInstance; key: string } | null = null;
 net.onNpcMenu = (m) => {
   const opts: NpcMenuOption[] = [];
   if (m.shop) opts.push({ label: t('Comércio'), run: () => net.shopOpen(m.key) });
-  if (m.buff) opts.push({ label: t('Receber Buffs!'), run: () => net.npcBuff(m.key) });
+  if (m.buff) {
+    opts.push({ label: t('Receber Buffs!'), run: () => net.npcBuff(m.key, 'assist') }); // buffs de Assist liberados no seu nível
+    opts.push({ label: t('Buffs de Classe'), run: () => net.npcBuff(m.key, 'class') }); // buffs da sua classe liberados no seu nível
+  }
   if (m.tower) opts.push({ label: t('Heaven Tower'), run: () => towerWnd.show() });
   if (m.colosseum) opts.push({ label: t('Colosseum'), run: () => coloUi.open(characters.find((c) => c.slot === selectedSlot)?.level ?? 1) });
   if (m.craft) opts.push({ label: t('Craft'), run: () => craftWnd.show() }); // o servidor só deixa fabricar perto do NPC de craft
@@ -402,17 +411,23 @@ net.onBar = (slots) => actionBar.setItems(slots);
  * personagem no ponto de chegada com o mesmo visual e entra de novo no servidor.
  */
 let changingWorld = false;
-net.onChangeWorld = (w, p) => {
-  if (changingWorld) return;
+let changingSince = 0;
+net.onChangeWorld = (w, p, force) => {
+  // uma troca que travou (erro no meio) não pode bloquear as próximas: passou de 20 s, vale a nova
+  if (changingWorld && Date.now() - changingSince < 20_000) return;
   changingWorld = true;
+  changingSince = Date.now();
+  if (force) curWorld = ''; // o servidor mandou reabrir (ressincroniza quando a tela ficou em outro mapa)
   void (async () => {
+   try {
     const pl = view.player;
     const sex = pl?.sex ?? 'male', look = pl?.currentLook ?? { equip: lookNow };
     combat.stop(); ground.clear(); npcMenu.hide(); shopWnd.hide(); view.selectTarget(null);
     view.playerControl = false;
     net.pause();
     mapLoading.show(w);
-    if (w !== curWorld) { await openWorld(w, p[0], p[2]); mapLoading.show(w); }
+    let openErr: string | null = null;
+    if (w !== curWorld) { openErr = await openWorld(w, p[0], p[2]); mapLoading.show(w); }
     await view.spawnPlayer(p[0], p[2], p[1], sex, look, true);
     if (view.player) view.player.runSpeed = moveSpeed;
     const ch = characters.find((c) => c.slot === selectedSlot);
@@ -421,8 +436,13 @@ net.onChangeWorld = (w, p) => {
     view.playerControl = true;
     net.resume();
     mapLoading.hide();
-    chat.system(t('Você chegou em {name}.', { name: WORLD_LOADING[w]?.name ?? w }));
-    changingWorld = false;
+    if (openErr) chat.system(`Falha ao abrir o mapa ${w}: ${openErr}`);
+    else chat.system(t('Você chegou em {name}.', { name: WORLD_LOADING[w]?.name ?? w }));
+   } catch (e) {
+    console.error('troca de mundo', e);
+    chat.system(`Falha na troca de mapa (${w}): ${e instanceof Error ? e.message : String(e)}`);
+    view.playerControl = true; net.resume(); mapLoading.hide();
+   } finally { changingWorld = false; }
   })();
 };
 view.onSfxSound = (file, pos) => audio.play(file, pos);
@@ -681,13 +701,10 @@ craftWnd.notify = (text) => chat.system(text);
 net.onCraft = (m) => craftWnd.setAll((m.recipes ?? []) as never, m as never);
 net.onCraftResult = (m) => { if (m.denied) { craftWnd.hide(); chat.system(String(m.text ?? '')); return; } craftWnd.setStatus(m as never); craftWnd.result(!!m.ok, String(m.text ?? '')); };
 const wikiWnd = new WikiWindow(document.body);
-wikiWnd.query = (p) => net.wiki(p);
-wikiWnd.tipFor = (id) => { net.wikiTip(id); };
-wikiWnd.onPick = (r) => { if (gmPanel.visible) gmPanel.pickRow(r); };
-wikiWnd.onActivate = (r) => { if (gmPanel.visible) gmPanel.createRow(r); };
-net.onWiki = (m) => wikiWnd.setPage(m);
-net.onWikiTip = (v) => wikiWnd.setTip(v);
-gmPanel.openCatalog = () => wikiWnd.show();
+for (const w of [wikiWnd.panel, gmPanel.wiki]) { w.query = (p) => net.wiki(p); w.tipFor = (id) => { net.wikiTip(id); }; }
+net.onWiki = (m) => { wikiWnd.panel.setPage(m); gmPanel.wiki.setPage(m); };
+net.onWikiTip = (v) => { wikiWnd.panel.setTip(v); gmPanel.wiki.setTip(v); };
+hud.onWiki = () => wikiWnd.toggle();
 net.onFriends = (list) => friendsWnd.set(list);
 net.onFriendOn = (id, on) => friendsWnd.online(id, on);
 net.onFriendNew = (f) => friendsWnd.add(f);
@@ -707,7 +724,7 @@ const announcer = new Announcer(document.body);
 /** faixa de aviso no alto da tela (Level Up!) */
 const caption = new CaptionBanner(document.body);
 net.onAnnounce = (text, loops) => { announcer.show(text, loops); chat.system(`[Aviso] ${text}`); };
-net.onGmOpen = () => gmPanel.show();
+net.onGmOpen = (maps) => { if (maps) gmPanel.setMaps(maps); gmPanel.show(); };
 net.onGmItems = (list) => gmPanel.setResults(list);
 net.onGmStats = (m) => gmPanel.setStats(m);
 net.onTeleport = (p, revive) => { if (revive) { view.player?.revive(); deathScreen(false); } void view.teleportPlayer(p[0], p[2], p[1]); };
@@ -955,6 +972,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Escape') combat.stop();
   if (e.code === 'KeyI' && !e.repeat) inventory.toggle();
   else if (e.code === 'KeyH' && !e.repeat) charWnd.toggle();
+  else if (e.code === 'KeyT' && !e.repeat) hud.toggleStatus(); // janela de status (HP/MP/FP/Exp)
   else if (e.code === 'KeyK' && !e.repeat) skillWnd.toggle();
   else if (e.code === 'KeyU' && !e.repeat) petFilterWnd.toggle(); // filtro do pet coletor
   else if (e.code === 'KeyJ' && !e.repeat) itemTimeWnd.toggle(); // Duração do Item (a troca de classe abre sozinha no nível certo)
@@ -1122,8 +1140,12 @@ view.onStatus = (s) => { if (!view.data) { sayLogin(s); bootStep(s); } };
 /** na seleção/criação o personagem fica parado no palco, de frente, só com a animação de repouso */
 let previewing = false;
 const PERF = new URLSearchParams(location.search).has('perf');
-let perfAcc = 0, perfGap = 0;
+let perfAcc = 0, perfGap: [number, number] = [0, 0], perfAny: [number, number] = [0, 0], perfFrame = 0, perfFrameShown = 0;
+/** janela de personagem aberta: ping, FPS e mapa atualizam a cada 0,5 s */
+let charLiveAcc = 0;
 view.onFrame = (dt) => {
+  charLiveAcc += dt;
+  if (charLiveAcc >= 0.5 && charWnd.visible) { charLiveAcc = 0; charWnd.setLive(net.ping, view.fps, WORLD_LOADING[curWorld]?.name ?? curWorld); }
   // mostra a porta do servidor: cada servidor (ex.: 8080 do painel e 5173 de desenvolvimento) é um mundo separado
   // rodapé: fps, hora do jogo (relógio do servidor, dia e noite), ping, quem está online e a porta do servidor
   $('hud').textContent = inGame
@@ -1131,10 +1153,10 @@ view.onFrame = (dt) => {
     : `${view.fps.toFixed(0)} fps`;
   if (PERF) {
     // ?perf: chamadas de desenho, triângulos e o maior intervalo entre atualizações de posição (média de 1 s)
-    perfAcc += dt;
-    if (perfAcc >= 1) { perfAcc = 0; perfGap = net.takeStatesGap(); }
-    const inf = view.renderer.info.render;
-    $('hud').textContent += ` · s3tc ${hasS3tc() ? 'sim' : 'nao'} · maxTex ${view.renderer.capabilities.maxTextureSize} · ${inf.calls} calls · ${(inf.triangles / 1000).toFixed(0)}k tri · states gap ${perfGap} ms · ${remotes.count} jogadores`;
+    perfAcc += dt; perfFrame = Math.max(perfFrame, dt * 1000);
+    if (perfAcc >= 1) { perfAcc = 0; perfGap = net.takeStatesGap(); perfAny = net.takeAnyGap(); perfFrameShown = Math.round(perfFrame); perfFrame = 0; if (inGame) net.sendPerf({ sg: perfGap, mg: perfAny, fps: Math.round(view.fps), ping: net.ping === null ? null : Math.round(net.ping), fm: perfFrameShown }); }
+    const inf = view.sceneStats;
+    $('hud').textContent += ` · s3tc ${hasS3tc() ? 'sim' : 'nao'} · maxTex ${view.renderer.capabilities.maxTextureSize} · ${inf.calls} calls · ${(inf.triangles / 1000).toFixed(0)}k tri · states gap ${perfGap[0]}–${perfGap[1]} ms · msg gap ${perfAny[0]}–${perfAny[1]} ms · quadro máx ${perfFrameShown} ms · ${remotes.count} jogadores (${remotes.fusedCount} fundidos)`;
   }
   if (previewing) view.player?.preview(dt, 0);
   if (inGame) {
@@ -1567,7 +1589,6 @@ async function backToLogin() {
   hud.hide();
   coloUi.stop();
   inventory.hide(); inventory.clear(); delBox.hide(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); miniMap.hide(); worldMap.hide(); smithWnd.hide(); shopWnd.hide(); skillWnd.hide(); teleportWnd.hide(); towerWnd.hide(); questDlg.hide(); questLog.hide(); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
-  $('help').hidden = true;
   $('charScreen').hidden = true;
   $('loginScreen').hidden = false;
   $('loginScreen').classList.remove('leaving');
@@ -1691,7 +1712,6 @@ async function enter() {
   view.labelRenderer.domElement.hidden = false;
   view.playerControl = true;
   $('charScreen').hidden = true;
-  $('help').hidden = false;
   // janela de status: valores salvos 0 = personagem novo → cheio (máximos provisórios, ver hud.ts)
   const max = provisionalMax(ch.level);
   const status = { name: ch.name, level: ch.level, ...max, hp: ch.hp || max.maxHp, mp: ch.mp || max.maxMp, fp: ch.fp || max.maxFp, expPct: 0 };

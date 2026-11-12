@@ -165,4 +165,6 @@ export interface GameStats {
   perf?: { lagP50: number; lagP99: number; lagMax: number; cpu: number } | null;
   inventory?: { cached: number; pending: number }; dbQueries?: number; dbTransactions?: number; sessions: number; connections: number; msgIn: number; msgOut: number; sockets: number; mobs: number;
   players: { accountId: number; characterId: number; name: string; level: number; p: [number, number, number] }[];
+  /** motor de jogo em uso e a medida mais recente de um navegador com ?perf */
+  engine?: 'rust' | 'node'; clientPerf?: { at: number; sg: [number, number]; mg: [number, number]; fps: number; ping: number | null; fm: number } | null;
 }

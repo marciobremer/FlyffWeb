@@ -1,6 +1,6 @@
 import { query } from '../common/db/index';
 import { BAG_MAX, BAG_SLOTS, notifyInventory, type Inventory } from '../character/inventory';
-import { maxPiercing, maxUpgrade } from '../../shared/upgrade';
+import { acceptsElement, isCashEquip, maxPiercing, maxUpgrade } from '../../shared/upgrade';
 
 /**
  * Comandos de GM digitados no chat, começando com `//` (nunca vão para o chat dos outros).
@@ -348,10 +348,12 @@ export async function runGmCommand(ctx: GmContext, text: string): Promise<void> 
       else { ctx.reply(`I did not understand "${a}". E.g.: //give-item ${def.symbol} 1 +5 fire+3`); return; }
     }
     let left: number;
-    if (u > maxUpgrade(def.parts)) { ctx.reply(maxUpgrade(def.parts) ? `${def.name} goes up to +${maxUpgrade(def.parts)} at most.` : `${def.name} does not accept enchant.`); return; }
+    if (isCashEquip(def.kind2) && (u || e || p)) { ctx.reply(`${def.name} is a Cash Shop item: it does not accept enchant, element or piercing.`); return; }
+    if (e && !acceptsElement(def.parts, def.kind2)) { ctx.reply(`${def.name} does not accept an element.`); return; }
+    if (u > maxUpgrade(def.parts, def.kind2)) { ctx.reply(maxUpgrade(def.parts, def.kind2) ? `${def.name} goes up to +${maxUpgrade(def.parts, def.kind2)} at most.` : `${def.name} does not accept enchant.`); return; }
     if (r && def.kind1 !== 1) { ctx.reply('Rarity only applies to weapons.'); return; }
     if (r >= inv.catalog.rarity.length) { ctx.reply(`Rarity goes from 0 to ${inv.catalog.rarity.length - 1}.`); return; }
-    if (p > maxPiercing(def.parts)) { ctx.reply(maxPiercing(def.parts) ? `${def.name} opens at most ${maxPiercing(def.parts)} sockets.` : 'Only the suit opens piercing sockets.'); return; }
+    if (p > maxPiercing(def.parts, def.kind2)) { ctx.reply(maxPiercing(def.parts, def.kind2) ? `${def.name} opens at most ${maxPiercing(def.parts, def.kind2)} sockets.` : 'Only the suit opens piercing sockets.'); return; }
     try { left = await inv.add(t.id, def.id, count, { u, e, el, p, r }); } catch (err) { ctx.reply((err as Error).message); return; }
     const extra = `${u ? ` +${u}` : ''}${e ? ` (${ELEMENT_NAMES[e]} +${el})` : ''}${p ? ` [${p} socket${p > 1 ? 's' : ''}]` : ''}${r ? ` <${inv.catalog.rarity[r].name}>` : ''}`;
     log(`give-item ${t.name} ${def.symbol}${extra} ×${count - left}`);

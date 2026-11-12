@@ -191,6 +191,23 @@ pub struct Stats {
     pub rejects_range: u64,
     pub rejects_cooldown: u64,
     pub rejects_dead: u64,
+    /// --- diagnóstico de latência (máximos da janela desde o último `stats`; zerados a cada leitura) ---
+    /// maior intervalo entre dois inícios de tick (deveria ser ~tick_ms)
+    pub tick_gap_max_ms: f64,
+    /// maior atraso do início do tick sobre a hora prevista (fome do tick pela fase de entrada)
+    pub tick_late_max_ms: f64,
+    /// mais eventos tratados numa fase de entrada, e a maior duração dessa fase além do prazo
+    pub input_batch_max: u64,
+    pub input_phase_max_ms: f64,
+    /// maior duração de um único evento tratado (handle)
+    pub handle_max_ms: f64,
+    /// tempo em send_views: média e máximo
+    pub views_avg_ms: f64,
+    pub views_max_ms: f64,
+    /// escrita no link do Node: maior write+flush (ms), maior lote de quadros juntados, bytes escritos
+    pub link_write_max_ms: f64,
+    pub link_batch_max: u64,
+    pub link_bytes: u64,
 }
 
 pub fn encode(v: &impl Serialize) -> Vec<u8> {

@@ -22,6 +22,8 @@ export class GameHud {
   onQuests: () => void = () => {};
   /** abre o Mensageiro (amigos, tecla E) */
   onMessenger: () => void = () => {};
+  /** Wikipedia de itens (Y) */
+  onWiki: () => void = () => {};
   /** abre a janela de opções */
   onOptions: () => void = () => {};
   /** party (P) e lista de partys (L) */
@@ -38,13 +40,22 @@ export class GameHud {
     this.hide();
   }
 
-  show() { this.menuBtn.hidden = false; this.status.hidden = false; }
-  hide() { this.toggle(false); this.menuBtn.hidden = true; this.status.hidden = true; }
+  /** janela de status aberta? (X fecha, tecla T e o menu abrem/fecham; lembrado no navegador) */
+  private statusOn = (() => { try { return localStorage.getItem('flyff.statusOpen') !== '0'; } catch { return true; } })();
+  private inGame = false;
+  show() { this.inGame = true; this.menuBtn.hidden = false; this.status.hidden = !this.statusOn; }
+  hide() { this.inGame = false; this.toggle(false); this.menuBtn.hidden = true; this.status.hidden = true; }
+  /** abre/fecha a janela de status (tecla T) */
+  toggleStatus(on = !this.statusOn) {
+    this.statusOn = on;
+    try { localStorage.setItem('flyff.statusOpen', on ? '1' : '0'); } catch { /* sem armazenamento */ }
+    if (this.inGame) this.status.hidden = !on;
+  }
 
   // ---------- menu ----------
   private items(): MenuItem[] {
     return [
-      { label: t('Status'), key: 'T', icon: 'icon_MenuStatus.dds' },
+      { label: t('Status'), key: 'T', icon: 'icon_MenuStatus.dds', action: () => this.toggleStatus() },
       { label: t('Navegador'), key: 'N', icon: 'Icon_MenuNavigator.dds' },
       { label: t('Personagem'), key: 'H', icon: 'icon_MenuCharacter.dds', action: () => this.onCharacter() },
       { label: t('Inventário'), key: 'I', icon: 'icon_MenuInventory.dds', action: () => this.onInventory() },
@@ -61,6 +72,7 @@ export class GameHud {
       { label: t('Movimento'), key: 'O', icon: 'icon_MenuMotion.dds', action: () => this.onMotion() },
       { label: t('Mapa do Mundo'), key: 'M', icon: 'icon_MenuWorldmap.dds' },
       { label: t('Itens especiais'), icon: 'Icon_Folder.dds', sub: [t('Loja de itens'), t('Itens com tempo'), t('Lootbox')] },
+      { label: t('Wikipedia'), key: 'Y', icon: 'icon_MenuHelp.dds', action: () => this.onWiki() },
       { label: t('Mensageiro'), key: 'E', icon: 'icon_MenuMessenger.dds', action: () => this.onMessenger() },
       { label: t('Comunicação'), icon: 'icon_MenuMessenger.dds', sub: [t('Chat'), t('Correio')] },
       { label: t('Guilda'), key: 'G', icon: 'icon_MenuGuild.dds', action: () => this.onGuild() },
@@ -170,7 +182,18 @@ export class GameHud {
     this.title.className = 'st-title';
     this.face.className = 'st-face';
     this.face.alt = '';
-    w.append(this.title, this.face);
+    // X de fechar (o mesmo botão das outras janelas) e o quadradinho laranja ao lado do retrato, como no cliente original
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'gwnd-close st-close';
+    x.setAttribute('aria-label', 'Fechar janela');
+    x.textContent = '×';
+    x.addEventListener('pointerdown', (e) => e.stopPropagation()); // não arrasta a janela ao clicar no X
+    x.addEventListener('click', () => this.toggleStatus(false));
+    void themeImage('ButtWndExit.tga').then((u) => { if (u) { x.style.backgroundImage = `url(${u})`; x.classList.add('img'); } });
+    const mark = document.createElement('i');
+    mark.className = 'st-mark';
+    w.append(this.title, this.face, mark, x);
     for (const k of ['hp', 'mp', 'fp', 'exp'] as const) {
       const bar = document.createElement('div');
       bar.className = `st-bar st-${k}`;

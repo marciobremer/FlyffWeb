@@ -49,6 +49,9 @@ function projectWorlds(): Record<string, { id: number; define: string; start: [n
  */
 export function startWorld(server: http.Server, world = WORLD, extra: Pick<RealtimeOptions, 'resolveSession'> = {}) {
   startRustEngine(world); // GAME_ENGINE=rust: sobe o game-server (ou volta para o Node se faltar algo)
+  console.log(process.env.GAME_ENGINE === 'rust'
+    ? `[motor] RUST — mobs, IA e visão no game-server (link ${process.env.RUST_LINK_PORT ?? 9201}${Number(process.env.RUST_WS_PORT ?? 0) ? `, WebSocket direto :${process.env.RUST_WS_PORT}` : ''})`
+    : '[motor] NODE — mobs, IA e visão no próprio servidor Node');
   const sw = new ServerWorld(RES_DIR, world).load();
   const mobs = new MobWorld(sw);
   console.log(`Mundo ${world}: ${mobs.mobs.length} mobs em ${sw.respawns.length} respawns`);

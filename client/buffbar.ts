@@ -1,11 +1,12 @@
 import { itemIcon, skillIcon } from '../shared/tga';
+import { fxText } from './itemtip';
 
 /**
  * Barra de buffs: um ícone por buff ativo (o da skill) com o tempo que falta, sob a janela de status. O servidor manda a lista
  * (`buffs`: id, nome, ícone, nível, ms restantes) a cada mudança; o relógio corre aqui no cliente. Botão direito no ícone tira o buff;
  * clique (sem arrastar) alterna a barra entre horizontal e vertical (lembrado neste navegador).
  */
-export interface BuffView { id: number; name: string; icon: string; lv: number; left: number; /** buff de item (pergaminho): o ícone vem dos itens */ item?: number }
+export interface BuffView { id: number; name: string; icon: string; lv: number; left: number; /** buff de item (pergaminho): o ícone vem dos itens */ item?: number; /** descrição da skill e efeitos [DST, valor][] (dica) */ d?: string; fx?: [number, number][] }
 
 export class BuffBar {
   private el = document.createElement('div');
@@ -26,6 +27,12 @@ export class BuffBar {
       if (Number.isInteger(id)) this.onRemove(id);
     });
     this.restore();
+    // Ctrl + duplo clique no ícone tira o buff (como no original); o botão direito também continua tirando
+    for (const host of [this.el, this.itemEl]) host.addEventListener('dblclick', (e) => {
+      if (!e.ctrlKey) return;
+      const id = Number((e.target as HTMLElement).closest<HTMLElement>('.buff')?.dataset.id);
+      if (Number.isInteger(id)) { this.hideTip(); this.onRemove(id); }
+    });
     this.el.addEventListener('pointerdown', (e) => this.dragStart(e));
     // botão direito no ícone: tira o buff
     this.el.addEventListener('contextmenu', (e) => {
@@ -34,6 +41,41 @@ export class BuffBar {
       if (Number.isInteger(id)) this.onRemove(id);
     });
     addEventListener('resize', () => this.clamp());
+  }
+
+  // ---------- dica do buff: nome - nível, efeitos, descrição, como remover e o tempo que falta ----------
+  private tip = document.createElement('div');
+  private tipFor: { b: BuffView; end: number; time: HTMLElement } | null = null;
+  private tipTime: HTMLElement | null = null;
+  private showTip(b: BuffView, e: PointerEvent) {
+    const it = this.items.find((x) => x.b.id === b.id);
+    if (!it) return;
+    this.tipFor = it;
+    const t = this.tip;
+    t.className = 'item-tip buff-tip';
+    t.style.cssText = 'position:fixed;z-index:100000;pointer-events:none';
+    t.replaceChildren();
+    const line = (text: string, color?: string, bold = false) => { const l = document.createElement('div'); l.textContent = text; if (color) l.style.color = color; if (bold) l.style.fontWeight = '700'; t.appendChild(l); return l; };
+    line(b.item ? b.name : `${b.name} - Lvl ${b.lv}`, '#0a8a3a', true);
+    for (const [k, v] of b.fx ?? []) line(fxText(k, v), '#1a3fd0');
+    if (b.d) line(b.d);
+    line('[CTRL + Double Click to remove buff]', '#1a3fd0');
+    this.tipTime = line('');
+    this.updateTipTime();
+    if (!this.tip.isConnected) document.body.appendChild(t);
+    this.moveTip(e);
+  }
+  private moveTip(e: PointerEvent) {
+    if (!this.tip.isConnected || !this.tipFor) return;
+    const w = this.tip.offsetWidth, h = this.tip.offsetHeight;
+    this.tip.style.left = `${Math.max(4, Math.min(innerWidth - w - 4, e.clientX + 16))}px`;
+    this.tip.style.top = `${Math.max(4, Math.min(innerHeight - h - 4, e.clientY + 18))}px`;
+  }
+  private hideTip() { this.tipFor = null; this.tip.remove(); }
+  private updateTipTime() {
+    if (!this.tipFor || !this.tipTime) return;
+    const s = Math.max(0, Math.round((this.tipFor.end - performance.now()) / 1000));
+    this.tipTime.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   }
 
   /** pedido para tirar o buff (botão direito); quem trata manda ao servidor */
@@ -100,7 +142,9 @@ export class BuffBar {
       const d = document.createElement('div');
       d.className = 'buff';
       d.dataset.id = String(b.id);
-      d.title = b.item ? `${b.name} — botão direito remove` : `${b.name} nv ${b.lv} — clique: vertical/horizontal · botão direito remove`;
+      d.addEventListener('pointerenter', (e) => this.showTip(b, e));
+      d.addEventListener('pointermove', (e) => this.moveTip(e));
+      d.addEventListener('pointerleave', () => this.hideTip());
       const img = document.createElement('img');
       img.alt = b.name;
       void (b.item ? itemIcon(b.icon) : skillIcon(b.icon)).then((u) => { if (u) img.src = u; });
@@ -109,6 +153,7 @@ export class BuffBar {
       (b.item ? this.itemEl : this.el).appendChild(d);
       return { b, end: now + b.left, time };
     });
+    this.hideTip();
     this.tick();
     this.clamp();
     if (this.items.length && !this.timer) this.timer = window.setInterval(() => this.tick(), 500);
@@ -123,5 +168,6 @@ export class BuffBar {
       const s = Math.max(0, Math.round((it.end - now) / 1000));
       it.time.textContent = s >= 3600 ? `${Math.floor(s / 3600)}h` : s >= 60 ? `${Math.floor(s / 60)}m` : `${s}s`;
     }
+    this.updateTipTime();
   }
 }

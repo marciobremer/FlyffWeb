@@ -94,7 +94,7 @@ export class MiniMap extends GameWindow {
   private last = 0;
 
   constructor(parent: HTMLElement) {
-    super(parent, { id: 'navWnd', title: 'Navegador', store: 'flyff.wnd.navigator', initial: { x: -8, y: 8, w: 196, h: 222 }, min: { w: 150, h: 170 } });
+    super(parent, { id: 'navWnd', title: 'Navegador', store: 'flyff.wnd.navigator2', initial: { x: -8, y: 8, w: 184, h: 214 }, min: { w: 184, h: 214 }, resizable: false });
     this.body.classList.add('nav');
     this.canvas.className = 'nav-canvas';
     this.canvas.setAttribute('role', 'img');
@@ -119,7 +119,11 @@ export class MiniMap extends GameWindow {
       const x = v.x + (e.clientX - r.left - r.width / 2) / s, z = v.z - (e.clientY - r.top - r.height / 2) / s;
       this.onTeleport(Math.round(x), Math.round(z));
     });
-    this.body.append(this.canvas, zoom(1, 'Aproximar', '+'), zoom(-1, 'Afastar', '−'), this.coords);
+    const north = document.createElement('span');
+    north.className = 'nav-n';
+    north.textContent = 'N';
+    north.setAttribute('aria-hidden', 'true');
+    this.body.append(this.canvas, north, zoom(1, 'Aproximar', '+'), zoom(-1, 'Afastar', '−'), this.coords);
   }
 
   /** GM/admin pode teleportar com duplo clique (main.ts diz quem é) */

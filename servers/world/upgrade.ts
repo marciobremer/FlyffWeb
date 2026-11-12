@@ -327,7 +327,7 @@ export class UpgradeRules {
   pierceSize(x: InvEdit, s: number, safe: boolean): SmithResult {
     const it = this.bag(x, s), d = this.def(it);
     if (!it || !d) return refuse('Escolha a suit (na bolsa; a equipada não serve).');
-    const max = maxPiercing(d.parts);
+    const max = maxPiercing(d.parts, d.kind2);
     if (!max) return refuse(`${d.name} não abre furos: só a suit.`);
     const size = it.p?.length ?? 0;
     if (size >= max) return refuse(`${d.name} já tem todos os ${max} furos.`);

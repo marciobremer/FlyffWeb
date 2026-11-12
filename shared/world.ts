@@ -130,6 +130,8 @@ export class WorldView {
   radius = 3;
   /** opções (client/options.ts): afastar mais a câmera, câmera que não atravessa o cenário, escala dos alcances de detalhe (1 / .7 / .45) */
   camExpand = 1; cameraFix = true; detail = 1;
+  /** chamadas de desenho e triângulos da cena no último quadro (?perf) */
+  readonly sceneStats = { calls: 0, triangles: 0 };
   applyCamExpand() { if (this.gameCamera) this.controls.maxDistance = CAM_MAX_DIST * this.camExpand; }
   /** filtro anisotrópico das texturas que já estão na cena (as carregadas depois entram com o padrão) */
   setAnisotropy(n: number) {
@@ -798,7 +800,7 @@ export class WorldView {
     this.player.moveTo(g[0], g[2]);
     // marcador no chão do destino: o efeito do cliente (XI_GEN_MOVEMARK01, sfx_movemark.sfx) 5 cm acima do chão; sem ele, o anel simples
     const id = this.data?.defines.get('XI_GEN_MOVEMARK01'), file = id !== undefined ? this.sfxFile(id) : null;
-    if (file && this.layers.sfx) { this.moveMarker.visible = false; this.sfxMgr.play(file, [g[0], g[1] - 0.40, g[2]], 0); return; }
+    if (file && this.layers.sfx) { this.moveMarker.visible = false; this.sfxMgr.play(file, [g[0], g[1] - 0.10, g[2]], 0); return; }
     this.moveMarker.position.set(g[0], g[1] + 0.06, g[2]);
     this.moveMarker.visible = true;
   }
@@ -1289,6 +1291,7 @@ export class WorldView {
     if (this.layers.sky && !this.data?.wld.indoor) { this.sky.group.visible = true; r.render(this.skyScene, camera); }
     r.clearDepth();
     r.render(this.scene, camera);
+    this.sceneStats.calls = r.info.render.calls; this.sceneStats.triangles = r.info.render.triangles; // antes do pós-processamento (ele zera o contador)
     this.postfx.end(camera, (this.scene.fog as Fog).color);
     this.labelRenderer.render(this.scene, camera);
     if (this.moveMarker.visible && (!player?.target || !this.controlling)) this.moveMarker.visible = false;

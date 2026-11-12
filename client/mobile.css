@@ -4,7 +4,6 @@ body.mobile.ingame .mb { display: block; }
 body.mobile { touch-action: none; overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 body.mobile canvas { touch-action: none; }
 /* a dica de teclado do alto ocupa espaço à toa no celular */
-body.mobile #help { display: none !important; }
 /* janelas fixas menores: status do personagem (alto à esquerda) e mini mapa (alto à direita, abaixo da fileira de atalhos); chat escondido até tocar no ícone */
 body.mobile #statusWnd { transform: scale(.66); }
 body.mobile #navWnd { transform: scale(.55); transform-origin: top right; top: 54px !important; }

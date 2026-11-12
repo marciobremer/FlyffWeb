@@ -133,7 +133,7 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
         uptimeMs: game.startedAt ? Date.now() - game.startedAt : 0, latencyMs: st?.latencyMs ?? null,
         rssMb: st?.data.rssMb ?? null, sessions: st?.data.sessions ?? 0, players: st?.data.players ?? [],
         connections: st?.data.connections ?? 0, sockets: st?.data.sockets ?? 0, msgIn: st?.data.msgIn ?? 0, msgOut: st?.data.msgOut ?? 0,
-        mobs: st?.data.mobs ?? 0, dbQueries: st?.data.dbQueries ?? 0, dbTransactions: st?.data.dbTransactions ?? 0,
+        engine: st?.data.engine ?? null, mobs: st?.data.mobs ?? 0, dbQueries: st?.data.dbQueries ?? 0, dbTransactions: st?.data.dbTransactions ?? 0,
       },
       db,
       logs: game.logs.filter((l) => l.t > since),
