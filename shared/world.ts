@@ -788,7 +788,9 @@ export class WorldView {
     const g = this.groundPoint(ev);
     if (!g) return;
     this.player.moveTo(g[0], g[2]);
-    // marcador no chão do destino (root já espelha z: posição em coordenadas FlyFF)
+    // marcador no chão do destino: o efeito do cliente (XI_GEN_MOVEMARK01, sfx_movemark.sfx) 5 cm acima do chão; sem ele, o anel simples
+    const id = this.data?.defines.get('XI_GEN_MOVEMARK01'), file = id !== undefined ? this.sfxFile(id) : null;
+    if (file && this.layers.sfx) { this.moveMarker.visible = false; this.sfxMgr.play(file, [g[0], g[1] + 0.05, g[2]], 0); return; }
     this.moveMarker.position.set(g[0], g[1] + 0.06, g[2]);
     this.moveMarker.visible = true;
   }
