@@ -55,6 +55,13 @@ export class Combat {
 
   get attacking() { return this.targetId !== null; }
 
+  /** opção "Auto Attack Next Target": clicar em outro monstro enquanto ataca deixa ele de próximo alvo, atacado sozinho quando o atual morre */
+  private nextInst: MoverInstance | null = null;
+  queueNext(inst: MoverInstance) { this.nextInst = inst; }
+  /** opção "Automatic Attack" desligada: um golpe por clique, não contínuo */
+  autoAttack = true;
+  private stopAt = 0;
+
   /** começa a atacar o mob desta instância (se for um mob do servidor vivo) */
   start(inst: MoverInstance) {
     const id = this.view.moverMgr.externalIdOf(inst);
@@ -66,14 +73,23 @@ export class Combat {
   /** é o mob que está sendo atacado? */
   isTarget(inst: MoverInstance) { return this.targetId !== null && this.view.moverMgr.externalIdOf(inst) === this.targetId; }
 
-  stop() { this.queued = null; this.endChain(); if (this.targetId !== null) { this.targetId = null; this.view.player?.stop(); } }
+  stop() { this.nextInst = null; this.stopAt = 0; this.queued = null; this.endChain(); if (this.targetId !== null) { this.targetId = null; this.view.player?.stop(); } }
 
   /** a cada quadro: aproxima, vira e golpeia */
   frame(now: number) {
     const id = this.targetId, p = this.view.player;
     if (id === null || !p?.active) return;
+    if (this.stopAt && now >= this.stopAt) { this.stop(); return; }
     const info = this.view.moverMgr.externalInfo(id);
-    if (!info || info.s === 'dead' || p.dead || p.flying || this.view.moveKeysDown()) { this.stop(); return; }
+    if (info?.s === 'dead' || (!info && this.nextInst)) {
+      // o alvo morreu: segue para o próximo escolhido (Auto Attack Next Target), se ainda está vivo e na cena
+      const nx = this.nextInst;
+      this.stop();
+      const nid = nx ? this.view.moverMgr.externalIdOf(nx) : null;
+      if (nx && nid !== null && this.view.moverMgr.externalInfo(nid)?.s !== 'dead') this.start(nx);
+      return;
+    }
+    if (!info || p.dead || p.flying || this.view.moveKeysDown()) { this.stop(); return; }
     const [mx, , mz] = info.pos;
     const dist = Math.hypot(mx - p.pos[0], mz - p.pos[2]);
     const next = this.queued ?? this.chain[0], reach = next?.range ?? this.range; // magia: de longe, como o arco e a varinha
@@ -98,6 +114,7 @@ export class Combat {
         this.nextAtk = now + this.interval;
         p.attack();
         this.sendAttack(id);
+        if (!this.autoAttack) this.stopAt = now + 450; // Automatic Attack desligado: só este golpe
       }
     }
   }

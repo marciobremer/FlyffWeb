@@ -1176,10 +1176,21 @@ export class ChatWindow extends GameWindow {
     });
   }
 
+  /** opção "Message Time [H:M]": põe a hora no começo de cada linha */
+  timestamps = false;
+  private stamp(li: HTMLElement) {
+    if (!this.timestamps) return;
+    const d = new Date(), t = document.createElement('span');
+    t.className = 'chat-time';
+    t.textContent = `[${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}] `;
+    li.append(t);
+  }
+
   /** mensagem de jogador (texto puro, sem HTML) */
   message(name: string, text: string, mine = false) {
     const li = document.createElement('li');
     if (mine) li.className = 'mine';
+    this.stamp(li);
     if (/^\[Grito\] /.test(text)) li.classList.add('shout');
     const who = document.createElement('b');
     who.textContent = `${name}: `;
@@ -1190,7 +1201,8 @@ export class ChatWindow extends GameWindow {
   system(text: string) {
     const li = document.createElement('li');
     li.className = 'sys';
-    li.textContent = text;
+    this.stamp(li);
+    li.append(document.createTextNode(text));
     this.push(li);
   }
 

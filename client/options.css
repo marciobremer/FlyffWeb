@@ -8,6 +8,14 @@
 .op-cur.on { color: #1f6fd9; }
 .op-cur img { image-rendering: pixelated; }
 .op-sub { margin-top: 10px; }
+.op-pair { display: flex; gap: 22px; margin: 2px 0 2px 4px; }
+.op-radio.off, .op-row.off { color: #999; cursor: not-allowed; }
+.op-row.off input { opacity: .5; }
+.chat-time { color: #8fa6d8; }
+/* Window Effects > Translucency */
+body.translucent .gwnd.moving { opacity: .55; }
+/* Hide NPC Chat Bubbles */
+body.hide-npc-bubbles .chat-bubble.npc { display: none; }
 /* fonte da interface escolhida na aba Rendering */
 body.custom-font *:not(canvas):not(svg):not(kbd) { font-family: var(--game-font) !important; }
 /* Hide Chatbox / Round Buff Icons */

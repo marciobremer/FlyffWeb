@@ -738,6 +738,8 @@ export class NetClient {
   /** pede a lista de destinos do teleporte */
   teleports() { return this.raw({ t: 'teleports' }); }
   tower() { return this.raw({ t: 'tower' }); }
+  /** o que este jogador aceita receber (troca, mensagem privada, amizade, guild, party) */
+  prefs(allow: { trade: boolean; whisper: boolean; friend: boolean; guild: boolean; party: boolean }) { return this.raw({ t: 'prefs', ...allow }); }
   /** Colosseum: start (líder pede), join (aceita o convite), go (líder começa já) */
   colo(op: 'start' | 'join' | 'go', extra: { diff?: number; menu?: number } = {}) { return this.raw({ t: 'colo', op, ...extra }); }
   towerGo(k: number) { return this.raw({ t: 'towerGo', k }); }

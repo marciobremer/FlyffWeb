@@ -162,6 +162,7 @@ interface Conn { ws: WebSocket; player: PlayerView | null; accountId: number; di
   /** andamento das quests (servers/world/quests.ts) */ quests?: QuestLog;
   /** modo de batalha desligado (MOT_BASE_BATTLE): postura normal mesmo com arma; atacar liga de novo */ peace?: boolean; /** postura da arma equipada */ weaponMt?: number;
   /** ids dos amigos (Mensageiro) e pedidos de amizade recebidos (id de quem pediu → quando) */ friends?: Set<number>; friendReqs?: Map<number, number>;
+  /** opções da janela Option (Game / Audio): o que o jogador aceita receber (o cliente manda no join e a cada mudança) */ allow?: { trade: boolean; whisper: boolean; friend: boolean; guild: boolean; party: boolean };
   /** convites de party recebidos (id de quem convidou → quando) */ partyReqs?: Map<number, number>;
   /** trade aberto e pedidos de trade recebidos (id de quem pediu → quando) */ trade?: Trade | null; tradeReqs?: Map<number, number>;
   /** recebendo os buffs do Buff Pang (um a cada 0,5 s) */ buffing?: boolean;
@@ -847,6 +848,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         const o = liveConn(Number(msg.id));
         const why = tradeBlock(c, o);
         if (why) { reply(why); return; }
+        if (o!.allow?.trade === false) { reply(`${o!.player!.name} não está aceitando pedidos de troca.`); return; }
         o!.tradeReqs ??= new Map();
         if ((o!.tradeReqs.get(me.id) ?? 0) > Date.now() - TRADE_REQ_MS) { reply(`Você já pediu para negociar com ${o!.player!.name}. Aguarde a resposta.`); return; }
         o!.tradeReqs.set(me.id, Date.now());
@@ -949,6 +951,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         if (mine && mine.leader !== me.id) { reply('Só o líder da party pode convidar.'); return; }
         if (mine && mine.members.length >= PARTY_MAX) { reply(`A party está cheia (${PARTY_MAX}).`); return; }
         if (parties.of(id)) { reply(`${o.player.name} já está em uma party.`); return; }
+        if (o.allow?.party === false) { reply(`${o.player.name} não está aceitando convites de party.`); return; }
         o.partyReqs ??= new Map();
         if ((o.partyReqs.get(me.id) ?? 0) > Date.now() - PARTY_INVITE_MS) { reply(`Você já convidou ${o.player.name}. Aguarde a resposta.`); return; }
         o.partyReqs.set(me.id, Date.now());
@@ -1088,6 +1091,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         if (g.rank > 1) { reply('Só o mestre ou um kingpin convida para a guild.'); return; }
         if (!o?.player || id === me.id) { reply('Esse jogador não está online.'); return; }
         if (o.guild) { reply(`${o.player.name} já está em uma guild.`); return; }
+        if (o.allow?.guild === false) { reply(`${o.player.name} não está aceitando convites de guild.`); return; }
         const n = (await query<{ n: string }>('SELECT count(*) AS n FROM guild_members WHERE guild_id = $1', [g.id])).rows[0];
         if (Number(n.n) >= GUILD_MAX) { reply(`A guild está cheia (${GUILD_MAX}).`); return; }
         o.guildReqs ??= new Map();
@@ -1185,6 +1189,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       if (id === me.id) return;
       if (!o?.player) { reply('Esse jogador não está online.'); return; }
       if (c.friends.has(id)) { reply(`${o.player.name} já é seu amigo.`); return; }
+      if (o.allow?.friend === false) { reply(`${o.player.name} não está aceitando pedidos de amizade.`); return; }
       if (c.friends.size >= FRIENDS_MAX) { reply(`Sua lista de amigos está cheia (${FRIENDS_MAX}).`); return; }
       o.friendReqs ??= new Map();
       if ((o.friendReqs.get(me.id) ?? 0) > Date.now() - FRIEND_REQ_MS) { reply(`Você já pediu a amizade de ${o.player.name}. Aguarde a resposta.`); return; }
@@ -1237,6 +1242,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       return;
     }
     if (o === c) { send(c.ws, { t: 'chat', id: 0, name: '', text: 'Você não pode mandar mensagem para você mesmo.' }); return; }
+    if (o.allow?.whisper === false && !me.rank) { send(c.ws, { t: 'chat', id: 0, name: '', text: `${o.player.name} não está aceitando mensagens privadas.` }); return; }
     c.chatAt.push(now);
     send(o.ws, { t: 'pm', with: me.id, wname: me.name, from: me.id, name: me.name, text });
     send(c.ws, { t: 'pm', with: o.player.id, wname: o.player.name, from: me.id, name: me.name, text });
@@ -2972,6 +2978,9 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         npcBuff(c, msg.key.slice(0, 40));
       } else if (msg.t === 'buffOff' && c.player && Number.isInteger(msg.id)) {
         removeBuff(c, msg.id as number);
+      } else if (msg.t === 'prefs') {
+        // janela Option > Game / Audio: o que este jogador aceita receber (padrão: tudo)
+        c.allow = { trade: msg.trade !== false, whisper: msg.whisper !== false, friend: msg.friend !== false, guild: msg.guild !== false, party: msg.party !== false };
       } else if (msg.t === 'colo' && c.player) {
         // Colosseum: start (líder pede a partida), join (aceita o convite), go (líder começa já a primeira rodada)
         const party = parties.of(c.player.id), m = party ? coloMatches.get(party.id) : undefined;

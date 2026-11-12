@@ -298,6 +298,7 @@ view.onMoverClick = (inst, again) => {
   ground.cancel();
   npcGoing = null;
   if (inGame && view.isAttackable(inst) && again) combat.start(inst);
+  else if (inGame && view.isAttackable(inst) && combat.attacking && !combat.isTarget(inst) && optionsWnd.values.autoNext) combat.queueNext(inst); // Auto Attack Next Target: depois que o atual morrer, ataca este
   else if (!(inGame && view.isAttackable(inst) && combat.attacking && combat.isTarget(inst))) combat.stop();
   if (inGame && inst.owner === 'movers' && inst.source.characterKey) npcGoing = { inst, key: inst.source.characterKey.trim(), next: 0 };
 };
@@ -692,7 +693,7 @@ net.onFriendOn = (id, on) => friendsWnd.online(id, on);
 net.onFriendNew = (f) => friendsWnd.add(f);
 net.onFriendDel = (id) => friendsWnd.remove(id);
 net.onFriendReq = (id, name) => friendRequestPrompt(document.body, name, (ok) => net.friendAnswer(id, ok));
-net.onPm = (withId, withName, from, name, text) => friendsWnd.message(withId, withName, from, name, text, from === net.myId);
+net.onPm = (withId, withName, from, name, text) => { friendsWnd.message(withId, withName, from, name, text, from === net.myId); if (from !== net.myId && optionsWnd.values.msgAlarm) audio.beep(); };
 net.onChat = (id, name, text) => {
   if (id) {
     chat.message(name, text, id === net.myId);
@@ -860,7 +861,11 @@ net.onInv = (m) => {
   // mesmo cálculo do servidor (shared/look.ts): cash por cima, partes escondidas fora, enchant para o brilho
   void restyle(lookList(inventory.equippedPieces(), inventory.hidden));
 };
-net.onWelcome = (eq, mt) => { combatMt = mt; void restyle(eq); void view.player?.setCombat(mt); net.guild('guildInfo'); };
+net.onWelcome = (eq, mt) => {
+  combatMt = mt; void restyle(eq); void view.player?.setCombat(mt); net.guild('guildInfo');
+  const o = optionsWnd.values; // o servidor precisa saber o que este jogador aceita receber
+  net.prefs({ trade: o.trade, whisper: o.whisper, friend: o.friend, guild: o.guild, party: o.party });
+};
 // postura de combate (arma/escudo equipado, conforme a classe) e equipamento vindos do servidor
 net.onLook = (eq, mt) => { combatMt = mt; void restyle(eq); void view.player?.setCombat(mt); };
 /** caixinhas do inventário: esconde/mostra capacete, capa, máscara e roupas de cash (lembrado por personagem neste navegador) */
@@ -1205,9 +1210,15 @@ function applyOpts(o: Opts, key: keyof Opts | null) {
   if (is('hideChat')) document.body.classList.toggle('hide-chatbox', o.hideChat);
   if (is('hideHeal')) combat.showHeal = !o.hideHeal;
   if (is('roundBuffs')) document.body.classList.toggle('round-buffs', o.roundBuffs);
+  if (is('autoAttack')) combat.autoAttack = o.autoAttack;
+  if (is('hideNpcBubbles')) document.body.classList.toggle('hide-npc-bubbles', o.hideNpcBubbles);
+  if (is('msgTime')) chat.timestamps = o.msgTime;
+  if (is('translucency')) document.body.classList.toggle('translucent', o.translucency);
+  if (is('trade', 'whisper', 'friend', 'guild', 'party')) net.prefs({ trade: o.trade, whisper: o.whisper, friend: o.friend, guild: o.guild, party: o.party });
   if (is('winOpacity')) document.documentElement.style.setProperty('--wnd-alpha', String(o.winOpacity));
   if (is('showFps')) $('hud').style.visibility = o.showFps ? '' : 'hidden';
   if (is('volume', 'mute')) audio.setVolume(o.mute ? 0 : o.volume);
+  if (key === 'muteMin') muteHidden();
   // estas só valem quando a pessoa mexe (precisam de clique do usuário ou do personagem carregado)
   if (key === 'windowMode') { if (!o.windowMode) void document.documentElement.requestFullscreen?.().catch(() => {}); else if (document.fullscreenElement) void document.exitFullscreen().catch(() => {}); }
   if (key === 'viewMask') {
@@ -1217,7 +1228,9 @@ function applyOpts(o: Opts, key: keyof Opts | null) {
 }
 optionsWnd.onChange = applyOpts;
 // "Low Render (Minimized)": com a aba escondida desenha só uns quadros por segundo
-document.addEventListener('visibilitychange', () => { view.maxFps = optionsWnd.values.lowRender && document.hidden ? 5 : optionsWnd.values.fps; });
+document.addEventListener('visibilitychange', () => { view.maxFps = optionsWnd.values.lowRender && document.hidden ? 5 : optionsWnd.values.fps; muteHidden(); });
+/** "Mute Sound (Minimized)": sem som com a aba escondida */
+function muteHidden() { const o = optionsWnd.values; audio.setVolume(o.muteMin && document.hidden ? 0 : o.mute ? 0 : o.volume); }
 // "Show My Name": esconde o nome do próprio personagem
 setInterval(() => { const l = view.player?.inst?.label; if (l) l.element.style.visibility = optionsWnd.values.myName ? '' : 'hidden'; }, 500);
 optionsWnd.applyAll();

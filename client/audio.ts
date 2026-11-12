@@ -25,6 +25,18 @@ export class GameAudio {
     addEventListener('keydown', unlock, { once: true });
   }
 
+  /** bip curto (alarme de mensagem privada) */
+  beep() {
+    if (!this.volume) return;
+    try {
+      const ctx = new AudioContext(), o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = 880; g.gain.value = 0.15 * this.volume;
+      o.connect(g).connect(ctx.destination);
+      o.start(); o.stop(ctx.currentTime + 0.14);
+      setTimeout(() => void ctx.close(), 400);
+    } catch { /* sem áudio */ }
+  }
+
   setVolume(v: number) {
     this.volume = Math.min(1, Math.max(0, v));
     if (this.gain) this.gain.gain.value = this.volume;

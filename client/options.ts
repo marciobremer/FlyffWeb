@@ -16,6 +16,9 @@ export interface Opts {
   /** fonte da interface ('' = a do jogo), formato do dano (0 = junto, 1 = com espaços), pets (0 = todos, 1 = esconde os dos outros, 2 = esconde todos), tema do cursor (pasta de Data/Cursors) */
   font: string; dmgFormat: number; pets: number; cursor: string;
   hideChat: boolean; hideHeal: boolean; roundBuffs: boolean;
+  /** Custom */ autoNext: boolean; hideNpcBubbles: boolean; msgTime: boolean;
+  /** Game / Audio: o que aceita receber (true = aceita) */ trade: boolean; whisper: boolean; friend: boolean; guild: boolean; party: boolean;
+  autoAttack: boolean; msgAlarm: boolean; translucency: boolean; muteMin: boolean;
   /** Custom */ winOpacity: number; showFps: boolean;
   /** Game / Audio */ volume: number; mute: boolean;
 }
@@ -26,6 +29,8 @@ export const DEFAULT_OPTS: Opts = {
   windowMode: true, viewMask: true, camFix: true, reduceAA: true, aniso: true,
   quality: 'high', fps: 60, resScale: 1, winOpacity: 1, showFps: true, volume: 0.5, mute: false,
   font: '', dmgFormat: 0, pets: 0, cursor: 'CurDefault', hideChat: false, hideHeal: false, roundBuffs: false,
+  autoNext: true, hideNpcBubbles: true, msgTime: false,
+  trade: true, whisper: true, friend: true, guild: true, party: true, autoAttack: true, msgAlarm: true, translucency: false, muteMin: false,
 };
 
 const KEY = 'flyff.options.v1';
@@ -53,7 +58,7 @@ export class OptionsWindow extends GameWindow {
   private sync: (() => void)[] = [];
 
   constructor(parent: HTMLElement) {
-    super(parent, { id: 'optWnd', title: 'Option', store: 'flyff.wnd.options', initial: { x: 280, y: 90, w: 540, h: 470 }, min: { w: 540, h: 470 } });
+    super(parent, { id: 'optWnd', title: 'Option', store: 'flyff.wnd.options', initial: { x: 280, y: 60, w: 560, h: 560 }, min: { w: 540, h: 470 } });
     const b = this.body;
     b.classList.add('op');
     const pages = document.createElement('div');
@@ -124,12 +129,12 @@ export class OptionsWindow extends GameWindow {
     col.append(row);
   }
 
-  private check(col: HTMLElement, label: string, k: keyof Pick<Opts, 'lowRender' | 'expandCam' | 'npcNames' | 'damage' | 'myName' | 'otherNames' | 'weather' | 'windowMode' | 'viewMask' | 'camFix' | 'reduceAA' | 'aniso' | 'showFps' | 'mute' | 'hideChat' | 'hideHeal' | 'roundBuffs'> | 'night', title = '') {
+  private check(col: HTMLElement, label: string, k: keyof Pick<Opts, 'lowRender' | 'expandCam' | 'npcNames' | 'damage' | 'myName' | 'otherNames' | 'weather' | 'windowMode' | 'viewMask' | 'camFix' | 'reduceAA' | 'aniso' | 'showFps' | 'mute' | 'hideChat' | 'hideHeal' | 'roundBuffs' | 'autoNext' | 'hideNpcBubbles' | 'msgTime' | 'msgAlarm' | 'translucency' | 'muteMin'> | 'night' | 'off', title = '') {
     const lab = document.createElement('label');
     lab.className = 'op-check';
     if (title) lab.title = title;
     const c = document.createElement('input'); c.type = 'checkbox';
-    if (k === 'night') { c.disabled = true; lab.classList.add('off'); lab.title = 'Em breve'; }
+    if (k === 'night' || k === 'off') { c.disabled = true; lab.classList.add('off'); lab.title = title || 'Em breve'; }
     else {
       c.checked = this.values[k];
       c.addEventListener('change', () => this.set(k, c.checked));
@@ -233,17 +238,61 @@ export class OptionsWindow extends GameWindow {
   }
 
   private buildCustom(p: HTMLElement) {
-    this.head(p, '~ Custom ~');
+    this.head(p, '~ Custom Option ~');
     const col = document.createElement('div'); col.className = 'op-one'; p.append(col);
-    this.slider(col, 'Window opacity', 'winOpacity', 0.4, 1, 0.02);
-    this.check(col, 'Show FPS / ping', 'showFps');
+    this.check(col, 'Auto Attack Next Target', 'autoNext', 'Atacando um monstro, clique em outro: quando o atual morrer, o jogo ataca o próximo sozinho');
+    this.check(col, 'Block EXP Gain', 'off');
+    this.check(col, 'Hide Guildbuffs', 'off');
+    this.check(col, 'Hide NPC Chat Bubbles', 'hideNpcBubbles', 'Esconde os balões de fala dos NPCs');
+    this.check(col, 'Hide Trails', 'off');
+    this.check(col, 'Message Time [H:M]', 'msgTime', 'Mostra a hora no começo de cada linha do chat');
+    this.check(col, 'Monster <Lvl> Tag', 'off', 'O nível do monstro aparece só para GM/admin');
+    this.check(col, 'Print monsterhunt progress', 'off');
+    this.check(col, 'Skip Lootbox Confirm', 'off');
+    const sub = document.createElement('div'); sub.className = 'op-sub'; col.append(sub);
+    this.slider(sub, 'Window opacity', 'winOpacity', 0.4, 1, 0.02);
+    this.check(sub, 'Show FPS / ping', 'showFps');
+  }
+
+  /** par de botões Allow/Refuse etc. ligado a uma opção verdadeiro/falso (ou desativado, `k` nulo) */
+  private bool2(col: HTMLElement, label: string, k: 'trade' | 'whisper' | 'friend' | 'guild' | 'party' | 'autoAttack' | 'msgAlarm' | null, on: string, off: string, offByDefault = false) {
+    const l = document.createElement('div'); l.className = 'op-sel-lbl'; l.textContent = label; col.append(l);
+    const row = document.createElement('div'); row.className = 'op-pair'; col.append(row);
+    const mk = (name: string, v: boolean) => {
+      const lab = document.createElement('label'); lab.className = 'op-radio';
+      const r = document.createElement('input'); r.type = 'radio'; r.name = `op-${label}`;
+      if (k === null) { r.disabled = true; r.checked = v === !offByDefault; lab.classList.add('off'); lab.title = 'Em breve'; }
+      else { r.checked = this.values[k] === v; r.addEventListener('change', () => { if (r.checked) this.set(k, v); }); this.sync.push(() => { r.checked = this.values[k] === v; }); }
+      lab.append(r, document.createTextNode(name)); row.append(lab);
+    };
+    mk(on, true); mk(off, false);
   }
 
   private buildAudio(p: HTMLElement) {
-    this.head(p, '~ Game / Audio ~');
-    const col = document.createElement('div'); col.className = 'op-one'; p.append(col);
-    this.slider(col, 'Volume', 'volume');
-    this.check(col, 'Mute', 'mute');
+    this.head(p, '~ Game Option ~');
+    const cols = document.createElement('div'); cols.className = 'op-cols';
+    const left = document.createElement('div'), right = document.createElement('div');
+    cols.append(left, right); p.append(cols);
+    this.bool2(left, 'Trading', 'trade', 'Allow', 'Refuse');
+    this.bool2(left, 'Whispers & Messages', 'whisper', 'Allow', 'Disapprove');
+    this.bool2(left, 'Friend Invites', 'friend', 'Approve', 'Disapprove');
+    this.bool2(left, 'Duel Requests', null, 'ON', 'OFF');
+    this.bool2(left, 'Guild Invites', 'guild', 'ON', 'OFF');
+    this.bool2(left, 'Party Invites', 'party', 'Allow', 'Disapprove');
+    this.bool2(left, 'Automatic Attack', 'autoAttack', 'ON', 'OFF');
+    this.bool2(right, 'Allow Inventory View', null, 'Approve', 'Refuse', true);
+    this.bool2(right, 'Message Alarm', 'msgAlarm', 'ON', 'OFF');
+    const h = document.createElement('div'); h.className = 'op-sel-lbl'; h.textContent = 'Help Option'; right.append(h);
+    this.check(right, 'Beginner Guide', 'off');
+    this.check(right, 'Info Pang', 'off');
+    const w = document.createElement('div'); w.className = 'op-sel-lbl'; w.textContent = 'Window Effects'; right.append(w);
+    this.check(right, 'Translucency', 'translucency', 'As janelas ficam translúcidas enquanto você as arrasta');
+    const s = document.createElement('div'); s.className = 'op-sel-lbl'; s.textContent = 'Sound Option'; right.append(s);
+    this.slider(right, 'BGM', 'volume'); (right.lastElementChild as HTMLElement).classList.add('off'); (right.lastElementChild!.querySelector('input') as HTMLInputElement).disabled = true; right.lastElementChild!.setAttribute('title', 'Ainda não há música de fundo');
+    this.slider(right, 'Sound Effect', 'volume');
+    this.check(right, 'Battle Music', 'off');
+    this.check(right, 'Mute Sound (Minimized)', 'muteMin', 'Silencia os sons quando a aba fica escondida');
+    this.check(right, 'Mute Music (Minimized)', 'off');
   }
 
   private buildHotkeys(p: HTMLElement) {
