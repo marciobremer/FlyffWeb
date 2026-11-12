@@ -153,24 +153,24 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #14161a; col
 #taskMenu li.has-sub:hover > .submenu { display: block; }
 #taskMenu li.has-sub::after { content: ''; position: absolute; left: 100%; top: 0; width: 18px; height: 100%; } /* ponte: o mouse chega ao submenu sem fechar */
 #taskMenu .submenu li { height: 21px; }
-#statusWnd { transform: scale(1.2); transform-origin: 0 0; position: fixed; left: 6px; top: 6px; z-index: 6; width: 184px; height: 92px; background: none; touch-action: none; cursor: move; user-select: none; font: 12px/1 Tahoma, Verdana, system-ui, sans-serif; }
+#statusWnd { transform: scale(1.2); transform-origin: 0 0; position: fixed; left: 6px; top: 6px; z-index: 6; width: 196px; height: 108px; background: none; touch-action: none; cursor: move; user-select: none; font: 12px/1 Tahoma, Verdana, system-ui, sans-serif; }
 #statusWnd.dragging { opacity: .9; }
 /* moldura da WndStatus1.tga em 9 fatias (o miolo é limpo pelo hud.ts): estica sem borrar os cantos nem deixar fundo quadrado atrás deles */
 #statusWnd::before { content: ''; position: absolute; inset: 0; z-index: -1; border-style: solid; border-width: 22px 9px 9px; border-image: var(--st-frame, none) 22 9 9 fill / 22px 9px 9px stretch; }
-.st-title { position: absolute; left: 10px; right: 26px; top: 2px; height: 17px; line-height: 17px; color: #fff; font-weight: 700; font-size: 15px; text-shadow: -1px -1px 0 #c0261a, 1px -1px 0 #c0261a, -1px 1px 0 #c0261a, 1px 1px 0 #c0261a, 0 -1px 0 #c0261a, 0 1px 0 #c0261a, -1px 0 0 #c0261a, 1px 0 0 #c0261a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.st-face { position: absolute; left: 12px; top: 26px; width: 50px; height: 54px; object-fit: cover; border-radius: 4px; }
+.st-title { position: absolute; left: 10px; right: 26px; top: 2px; height: 17px; line-height: 17px; color: #fff; font-weight: 700; font-size: 11px; text-shadow: -1px -1px 0 #c0261a, 1px -1px 0 #c0261a, -1px 1px 0 #c0261a, 1px 1px 0 #c0261a, 0 -1px 0 #c0261a, 0 1px 0 #c0261a, -1px 0 0 #c0261a, 1px 0 0 #c0261a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-face { position: absolute; left: 12px; top: 28px; width: 52px; height: 64px; object-fit: cover; border-radius: 4px; }
 .st-face:not([src]) { display: none; }
-.st-bar { position: absolute; left: 94px; width: 80px; height: 12px; border-radius: 5px; overflow: hidden; background: rgb(120 90 70 / .16); box-shadow: 0 0 0 1px rgb(150 115 95 / .55) inset; }
-.st-lbl { position: absolute; left: 66px; width: 26px; font: 700 11px/12px Tahoma, Verdana, sans-serif; color: #3b3fa8; }
+.st-bar { position: absolute; left: 100px; width: 84px; height: 14px; border-radius: 5px; overflow: hidden; background: rgb(120 90 70 / .16); box-shadow: 0 0 0 1px rgb(150 115 95 / .55) inset; }
+.st-lbl { position: absolute; left: 70px; width: 28px; font: 700 10px/14px Tahoma, Verdana, sans-serif; color: #3b3fa8; }
 .st-bar i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; transition: width .2s; }
-.st-bar b { position: absolute; inset: 0; text-align: center; font-weight: 700; font-size: 10px; line-height: 12px; color: #fff; text-shadow: 0 0 2px #000, 0 0 1px #000; }
-.st-hp { top: 27px; } .st-hp i { background: linear-gradient(#ff9aa8, #e0405a); }
-.st-mp { top: 41px; } .st-mp i { background: linear-gradient(#9ab8ff, #4062d8); }
-.st-fp { top: 55px; } .st-fp i { background: linear-gradient(#a8f0a0, #3fae3a); }
-.st-exp { top: 69px; } .st-exp i { background: linear-gradient(#fff2a0, #d9b23a); }
+.st-bar b { position: absolute; inset: 0; text-align: center; font-weight: 700; font-size: 9px; line-height: 14px; color: #fff; text-shadow: 0 0 2px #000, 0 0 1px #000; }
+.st-hp { top: 28px; } .st-hp i { background: linear-gradient(#ff9aa8, #e0405a); }
+.st-mp { top: 45px; } .st-mp i { background: linear-gradient(#9ab8ff, #4062d8); }
+.st-fp { top: 62px; } .st-fp i { background: linear-gradient(#a8f0a0, #3fae3a); }
+.st-exp { top: 79px; } .st-exp i { background: linear-gradient(#fff2a0, #d9b23a); }
 
 .st-close { top: 3px; right: 7px; }
-.st-mark { position: absolute; left: 12px; top: 69px; width: 10px; height: 10px; box-sizing: border-box; border: 2px solid #f0902a; border-radius: 2px; background: #fff6e0; pointer-events: none; }
+.st-mark { position: absolute; left: 12px; top: 82px; width: 10px; height: 10px; box-sizing: border-box; border: 2px solid #f0902a; border-radius: 2px; background: #fff6e0; pointer-events: none; }
 
 /* aviso de conexão do multiplayer (topo, ao centro) */
 #netStatus { position: fixed; top: 34px; left: 50%; transform: translateX(-50%); z-index: 7; padding: 4px 12px; border-radius: 4px; background: rgb(0 0 0 / .55); color: #fff; font-size: 14px; pointer-events: none; }
@@ -290,6 +290,24 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 .chat-log li.shout b { color: #ff9a3c; }
 .chat-log.only-shout { background: rgb(88 30 110 / .6); }
 .chat-log li.sys { display: none; }
+/* avisos do sistema (SYS.EM): pequeno, quase transparente, no alto à esquerda (a região marcada); não pega o mouse nem atrapalha o jogo */
+.sys-feed { position: fixed; left: 10px; top: 8vh; width: min(340px, 42vw); height: 43vh; z-index: 30; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; justify-content: flex-end; align-items: flex-start; overflow: hidden; pointer-events: none; font: 12px/1.35 Tahoma, Verdana, system-ui, sans-serif; }
+.sys-feed[hidden] { display: none; }
+body:not(.ingame) .sys-feed { display: none; }
+.sys-feed li { max-width: 100%; margin-top: 1px; padding: 0 6px; border-radius: 3px; background: rgb(0 0 0 / .16); color: #ffd76a; text-shadow: 0 1px 1px #000; overflow-wrap: anywhere; transition: opacity 1.2s; }
+.sys-feed li.fade { opacity: 0; }
+/* janela "Avisos do Sistema" (botão direito no SYS.EM): todos os avisos desde que entrou */
+.gwnd.bare { filter: none; }
+.gwnd.bare .gwnd-title { display: none; }
+.gwnd.bare .gwnd-body { padding: 0; gap: 0; border: 0 !important; border-image: none !important; background: rgb(0 0 0 / .2) !important; border-radius: 4px; cursor: move; }
+.gwnd.bare .gwnd-grip.e { top: 0; }
+.gwnd.bare .gwnd-grip.se::after { display: none; }
+.gwnd.bare.moving { opacity: 1; }
+.gwnd-body.syslog .sl-list { flex: 1; min-height: 0; margin: 0; padding: 4px 8px; list-style: none; overflow-y: auto; scrollbar-width: none; background: none; font: 12px/1.4 Tahoma, Verdana, system-ui, sans-serif; color: #ffd76a; text-shadow: 0 1px 1px #000, 0 0 2px #000; user-select: none; overflow-wrap: anywhere; }
+.sl-list::-webkit-scrollbar { display: none; }
+.sl-list li { padding: 1px 0; }
+.sl-time { color: #c9b27a; }
+.sl-empty { color: #c9b27a; }
 .chat-log.show-sys li.sys { display: list-item; }
 .chat-log.only-shout li:not(.shout):not(.sys), .chat-log.only-shout:not(.show-sys) li.sys { display: none; }
 .chat-log.only-shout li.shout { display: list-item; }
@@ -547,7 +565,8 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 /* barra de buffs: ícones 2 px maiores; clique alterna entre horizontal e vertical */
 .buff-bar .buff { width: 30px; height: 30px; }
 .buff-bar .buff img { width: 28px; height: 28px; }
-.buff-bar.vertical { flex-direction: column; max-width: none; max-height: calc(100vh - 12px); }
+/* vertical: colunas de 9 buffs (como a horizontal quebra a linha a cada 9) */
+.buff-bar.vertical { display: grid; grid-auto-flow: column; grid-template-rows: repeat(9, 30px); max-width: none; max-height: none; }
 /* habilidades de party ligadas: no alto, à esquerda da janela do alvo (client/partybuffs.ts) */
 .party-buffs { position: fixed; top: 24px; right: calc(50% + 146px); z-index: 50; display: flex; gap: 3px; pointer-events: auto; }
 .party-buffs .buff { border-color: #4cff6a; }

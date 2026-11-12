@@ -218,5 +218,9 @@
   "Insígnias": "Badges",
   "Nenhuma fama obtida.": "No fame obtained.",
   "Insígnia padrão da classe": "Default Job Badge",
-  "Desativar insígnia": "Disable Badge"
+  "Desativar insígnia": "Disable Badge",
+  "Avisos do sistema ligados.": "System messages on.",
+  "Avisos do Sistema": "System Log",
+  "Nenhum aviso ainda.": "No messages yet.",
+  "Clique: liga/desliga os avisos · botão direito: histórico completo": "Click: turn messages on/off · right-click: full history"
 }

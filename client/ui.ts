@@ -33,6 +33,8 @@ export interface WindowOptions {
   id: string; title: string; store: string;
   /** posição/tamanho iniciais (x/y negativos contam da direita/de baixo) */
   initial: Rect; min: { w: number; h: number }; resizable?: boolean; closable?: boolean;
+  /** só o conteúdo, sem título, moldura nem botões: a janela se move arrastando pela área do texto (ex.: histórico do sistema) */
+  bare?: boolean;
 }
 
 export class GameWindow {
@@ -77,6 +79,7 @@ export class GameWindow {
 
     el.addEventListener('pointerdown', () => this.front(), true);
     this.dragBy(this.titleEl, (r, dx, dy) => ({ ...r, x: r.x + dx, y: r.y + dy }));
+    if (o.bare) { el.classList.add('bare'); this.dragBy(this.body, (r, dx, dy) => ({ ...r, x: r.x + dx, y: r.y + dy })); }
     if (o.resizable !== false) {
       for (const side of ['e', 's', 'se'] as const) {
         const g = document.createElement('div');
@@ -1078,6 +1081,15 @@ export class ActionBar {
 
 export class ChatWindow extends GameWindow {
   private log = document.createElement('ol');
+  /** avisos do sistema (botão SYS.EM): lista pequena e bem transparente no alto à esquerda, fora do chat; as linhas somem sozinhas */
+  private feed = document.createElement('ol');
+  private sysOn = true;
+  /** todos os avisos do sistema desde que entrou no jogo (a lista do SYS.EM some sozinha; esta fica, até 500) */
+  private history: { at: number; text: string }[] = [];
+  private static readonly MAX_HISTORY = 500;
+  private histWnd: GameWindow | null = null;
+  private histList = document.createElement('ol');
+  private histParent: HTMLElement;
   readonly input = document.createElement('input');
   onSend: (text: string) => boolean = () => false;
   /** aba Shout selecionada: o que se digita sai como grito (/shout), como no cliente oficial */
@@ -1087,8 +1099,13 @@ export class ChatWindow extends GameWindow {
   constructor(parent: HTMLElement) {
     super(parent, { id: 'chatWnd', title: 'Chat', store: 'flyff.wnd.chat', initial: { x: 6, y: -64, w: 380, h: 210 }, min: { w: 220, h: 120 }, closable: false });
     const b = this.body;
+    this.histParent = parent;
     b.classList.add('chat');
-    this.log.className = 'chat-log show-sys'; // o botão SYS.EM já começa ligado
+    this.log.className = 'chat-log';
+    this.feed.className = 'sys-feed';
+    this.feed.setAttribute('aria-live', 'polite');
+    this.feed.setAttribute('aria-label', 'Mensagens do sistema');
+    parent.appendChild(this.feed); // o botão SYS.EM já começa ligado
     this.log.setAttribute('aria-live', 'polite');
     this.log.setAttribute('aria-label', 'Mensagens do chat');
     const form = document.createElement('form');
@@ -1132,7 +1149,7 @@ export class ChatWindow extends GameWindow {
       if (mode) {
         t.classList.toggle('on', on);
         t.addEventListener('click', () => {
-          if (mode === 'sys') { t.classList.toggle('on'); this.log.classList.toggle('show-sys', t.classList.contains('on')); } // liga/desliga
+          if (mode === 'sys') { t.classList.toggle('on'); this.setSys(t.classList.contains('on')); } // liga/desliga
           else { this.log.classList.toggle('only-shout', mode === 'shout'); this.shoutTab = mode === 'shout'; for (const o of tabs.querySelectorAll('.chat-tab[data-mode="all"], .chat-tab[data-mode="shout"]')) o.classList.toggle('on', o === t); }
           this.log.scrollTop = this.log.scrollHeight;
         });
@@ -1143,6 +1160,12 @@ export class ChatWindow extends GameWindow {
     tab('Chat', true, 'all'); tab('Whisper', false, null); tab('Shout', false, 'shout'); tab('Group', false, null); tab('Guild', false, null);
     const gap = document.createElement('span'); gap.className = 'chat-gap'; tabs.appendChild(gap);
     tab('Lock', false, null, 'warm'); tab('Filter', false, null, 'warm'); tab('SYS.EM', true, 'sys', 'warm');
+    // botão direito no SYS.EM: janela com todos os avisos do sistema desde que entrou
+    const sysTab = tabs.querySelector<HTMLButtonElement>('.chat-tab[data-mode="sys"]');
+    if (sysTab) {
+      trAttr(sysTab, 'title', 'Clique: liga/desliga os avisos · botão direito: histórico completo');
+      sysTab.addEventListener('contextmenu', (e) => { e.preventDefault(); this.toggleHistory(); });
+    }
     b.append(this.log, tabs, form);
   }
 
@@ -1198,14 +1221,62 @@ export class ChatWindow extends GameWindow {
     this.push(li);
   }
 
+  /** aviso do sistema: aparece na lista do SYS.EM (alto à esquerda), até 8 linhas, e some depois de ~10 s; desligado, não aparece */
   system(text: string) {
     const li = document.createElement('li');
-    li.className = 'sys';
     this.stamp(li);
     li.append(document.createTextNode(text));
-    this.push(li);
+    this.history.push({ at: Date.now(), text });
+    if (this.history.length > ChatWindow.MAX_HISTORY) this.history.shift();
+    if (this.histWnd?.visible) this.addHistoryLine(this.history[this.history.length - 1]);
+    if (this.histWnd?.visible) return; // histórico aberto: os avisos aparecem só nele
+    this.feed.append(li);
+    while (this.feed.childElementCount > 8) this.feed.firstElementChild!.remove();
+    setTimeout(() => li.classList.add('fade'), 9000);
+    setTimeout(() => li.remove(), 10500);
   }
 
-  clear() { this.pending = []; this.log.replaceChildren(); }
+  private addHistoryLine(h: { at: number; text: string }) {
+    const list = this.histList;
+    const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 8;
+    const li = document.createElement('li');
+    const d = new Date(h.at), time = document.createElement('span');
+    time.className = 'sl-time';
+    time.textContent = `[${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}] `;
+    li.append(time, document.createTextNode(h.text));
+    list.appendChild(li);
+    if (atBottom) list.scrollTop = list.scrollHeight;
+  }
+
+  /** abre/fecha a janela "Avisos do Sistema" com o histórico completo (desde que entrou no jogo) */
+  toggleHistory() {
+    if (!this.histWnd) {
+      const w = new GameWindow(this.histParent, { id: 'sysLogWnd', title: 'Avisos do Sistema', store: 'flyff.wnd.syslog2', initial: { x: 10, y: 120, w: 360, h: 260 }, min: { w: 200, h: 90 }, closable: false, bare: true });
+      w.body.classList.add('syslog');
+      this.histList.className = 'sl-list';
+      this.histList.setAttribute('aria-label', 'Histórico de avisos do sistema');
+      w.body.appendChild(this.histList);
+      this.histWnd = w;
+    }
+    const w = this.histWnd;
+    if (w.visible) { w.hide(); this.feed.hidden = !this.sysOn; return; } // fechou: volta a lista que some sozinha
+    this.feed.replaceChildren();
+    this.feed.hidden = true; // aberto: a lista que some sozinha para de aparecer
+    this.histList.replaceChildren();
+    if (!this.history.length) { const li = document.createElement('li'); li.className = 'sl-empty'; li.textContent = t('Nenhum aviso ainda.'); this.histList.appendChild(li); }
+    else for (const h of this.history) this.addHistoryLine(h);
+    w.show();
+    this.histList.scrollTop = this.histList.scrollHeight;
+  }
+
+  /** botão SYS.EM: mostra/esconde a lista (os avisos continuam entrando e somem sozinhos); ao ligar confirma na própria lista */
+  private setSys(on: boolean) {
+    this.sysOn = on;
+    this.feed.hidden = !on || !!this.histWnd?.visible;
+    if (on) this.system(t('Avisos do sistema ligados.'));
+  }
+
+  override hide() { super.hide(); this.feed.replaceChildren(); }
+  clear() { this.pending = []; this.log.replaceChildren(); this.feed.replaceChildren(); this.history = []; this.histList.replaceChildren(); this.histWnd?.hide(); }
   focus() { if (!this.visible) this.show(); this.input.focus(); }
 }
