@@ -72,7 +72,7 @@ export function targetSprites(): Promise<{ blue: string; red: string } | null> {
         const g = c.getContext('2d', { willReadFrequently: true })!;
         g.drawImage(img, 0, y, 32, 32, 0, 0, 32, 32);
         const px = g.getImageData(0, 0, 32, 32);
-        for (let o = 0; o < px.data.length; o += 4) if (px.data[o] === 255 && px.data[o + 1] === 0 && px.data[o + 2] === 255) px.data[o + 3] = 0;
+        for (let o = 0; o < px.data.length; o += 4) if (px.data[o] > 235 && px.data[o + 1] < 25 && px.data[o + 2] > 235) px.data[o + 3] = 0; // com tolerância: o Brave (e outros) embaralha de leve a leitura do canvas e o magenta exato deixava pontinhos rosa
         g.putImageData(px, 0, 0);
         return c.toDataURL();
       };
