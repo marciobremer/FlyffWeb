@@ -920,8 +920,12 @@ export class WorldView {
   /** monstro de verdade (pode ser atacado); NPCs, guardas e cidadãos não */
   isAttackable(inst: MoverInstance) { return inst.owner === 'spawns' && !!this.data?.monsterMovers.has(inst.source.modelId); }
 
-  /** setas vermelhas: o alvo selecionado está sendo atacado */
-  setTargetEngaged(on: boolean) { this.selArrows.classList.toggle('hostile', on); }
+  /**
+   * Setas vermelhas no monstro que está sendo atacado (ou a caminho de atacar). Se o alvo selecionado for outro (o próximo da fila do
+   * "Auto Attack Next Target"), ele fica com as setas azuis e as duas marcações aparecem juntas.
+   */
+  setEngaged(inst: MoverInstance | null) { this.engaged = inst; if (!inst) this.atkArrows.hidden = true; }
+  private engaged: MoverInstance | null = null;
 
   /** ponto de tela (x, y) da metade de cima de um mover (para abrir menus ao lado dele); null fora da tela */
   screenOf(inst: MoverInstance): [number, number] | null {
@@ -935,6 +939,15 @@ export class WorldView {
   }
 
   /** as 4 setas da seleção (elementos de tela por cima do canvas) */
+  private atkArrows = (() => {
+    const box = document.createElement('div');
+    box.className = 'sel-arrows hostile';
+    box.hidden = true;
+    box.setAttribute('aria-hidden', 'true');
+    for (const k of ['tl', 'tr', 'bl', 'br']) { const a = document.createElement('i'); a.className = k; box.appendChild(a); }
+    document.body.appendChild(box);
+    return box;
+  })();
   private selArrows = (() => {
     const box = document.createElement('div');
     box.className = 'sel-arrows';
@@ -948,12 +961,8 @@ export class WorldView {
   })();
   private selV = new Vector3();
 
-  private updateSelection(_dt: number) {
-    const s = this.selected;
-    if (!s) return;
-    // outros jogadores (client/net.ts RemotePlayers) não ficam no moverMgr: valem enquanto estão na cena
-    if (s.owner === 'players' ? !s.group.parent : !this.moverMgr.isActive(s)) { this.selectTarget(null); return; }
-    // contorno do alvo na tela: as 8 quinas da caixa (raio × altura do modelo) projetadas pela câmera
+  /** posiciona as 4 setas de `box` em volta de `s` na tela (as 8 quinas da caixa do modelo projetadas pela câmera); some se ele está atrás da câmera */
+  private placeArrows(box: HTMLElement, s: MoverInstance) {
     const sc = s.tpl.entry.scale || 1, r = Math.max(0.35, s.tpl.radius * sc * 0.75), h = Math.max(0.8, (s.tpl.height + (s.tpl.lift ?? 0)) * sc);
     const base = new Vector3().setFromMatrixPosition(s.group.matrixWorld);
     const rect = this.canvas.getBoundingClientRect();
@@ -964,9 +973,20 @@ export class WorldView {
       const px = rect.left + (v.x + 1) / 2 * rect.width, py = rect.top + (1 - v.y) / 2 * rect.height;
       x0 = Math.min(x0, px); x1 = Math.max(x1, px); y0 = Math.min(y0, py); y1 = Math.max(y1, py);
     }
-    this.selArrows.hidden = behind;
-    if (behind) return;
-    Object.assign(this.selArrows.style, { left: `${x0}px`, top: `${y0}px`, width: `${x1 - x0}px`, height: `${y1 - y0}px` });
+    box.hidden = behind;
+    if (!behind) Object.assign(box.style, { left: `${x0}px`, top: `${y0}px`, width: `${x1 - x0}px`, height: `${y1 - y0}px` });
+  }
+
+  private updateSelection(_dt: number) {
+    const s = this.selected, e = this.engaged;
+    // o monstro atacado: setas vermelhas (se ele sumiu da cena, a marcação some)
+    if (e && this.moverMgr.isActive(e)) this.placeArrows(this.atkArrows, e); else { this.atkArrows.hidden = true; this.engaged = null; }
+    if (!s) return;
+    // outros jogadores (client/net.ts RemotePlayers) não ficam no moverMgr: valem enquanto estão na cena
+    if (s.owner === 'players' ? !s.group.parent : !this.moverMgr.isActive(s)) { this.selectTarget(null); return; }
+    // o selecionado é o mesmo que está sendo atacado: só as vermelhas; senão as azuis ficam nele (o próximo da fila)
+    if (s === this.engaged) { this.selArrows.hidden = true; return; }
+    this.placeArrows(this.selArrows, s);
   }
 
   // ---------- entrada (mouse/teclado) e cursores do cliente ----------

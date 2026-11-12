@@ -1139,7 +1139,7 @@ view.onFrame = (dt) => {
   if (previewing) view.player?.preview(dt, 0);
   if (inGame) {
     remotes.frame(dt);
-    view.setTargetEngaged(combat.attacking && !!view.target && view.isAttackable(view.target));
+    view.setEngaged(combat.attacking ? combat.targetInst : null);
     pets.update(dt);
     const p = view.player;
     combat.frame(performance.now());

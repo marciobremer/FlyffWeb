@@ -54,6 +54,8 @@ export class Combat {
   constructor(private view: WorldView) {}
 
   get attacking() { return this.targetId !== null; }
+  /** o monstro que está sendo atacado (ou a caminho de atacar), ou null */
+  get targetInst() { return this.targetId === null ? null : this.view.moverMgr.externalInfo(this.targetId)?.inst ?? null; }
 
   /** opção "Auto Attack Next Target": clicar em outro monstro enquanto ataca deixa ele de próximo alvo, atacado sozinho quando o atual morre */
   private nextInst: MoverInstance | null = null;
