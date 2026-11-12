@@ -1,4 +1,4 @@
-import { itemIcon, skillIcon, themeDds, themeImage, themeTiles } from '../shared/tga';
+import { coolTimeSheet, itemIcon, skillIcon, themeDds, themeImage, themeTiles } from '../shared/tga';
 import type { ItemView } from './net';
 import { hideItemTip, moveItemTip, setTipContext, setTipLookup, showItemTip } from './itemtip';
 import { InventoryPreview } from './invpreview';
@@ -837,6 +837,7 @@ export class ActionBar {
   constructor(parent: HTMLElement) {
     const el = this.el;
     el.id = 'actionBar';
+    void coolTimeSheet().then((u) => { if (u) document.documentElement.style.setProperty('--cool-sheet', `url(${u})`); }); // relógio de espera do cliente
     el.hidden = true;
     el.setAttribute('role', 'toolbar');
     el.setAttribute('aria-label', 'Atalhos (teclas 1 a 0); arraste itens da bolsa para cá');
@@ -1000,11 +1001,28 @@ export class ActionBar {
       if (it?.id !== id || (it.k ?? 'item') !== kind) return;
       const cd = s.querySelector<HTMLElement>('.ab-cd');
       if (!cd) return;
-      cd.style.animation = 'none';
-      void cd.offsetWidth;
-      cd.style.animation = `abCooldown ${ms}ms linear forwards`;
+      // as 128 peças Icon_CoolTime_xxx do cliente: o quadro acompanha o tempo passado de ESTA espera (cada skill/item tem a sua)
+      this.cds.set(cd, { t0: performance.now(), ms });
+      cd.style.visibility = 'visible';
+      cd.style.backgroundPositionX = '0%';
     });
+    void coolTimeSheet().then((u) => { if (u) document.documentElement.style.setProperty('--cool-sheet', `url(${u})`); });
+    if (this.cds.size && !this.cdRaf) this.cdRaf = requestAnimationFrame(this.cdTick);
   }
+
+  /** esperas em andamento (elemento do atalho → início e duração) */
+  private cds = new Map<HTMLElement, { t0: number; ms: number }>();
+  private cdRaf = 0;
+  private cdTick = () => {
+    this.cdRaf = 0;
+    const now = performance.now();
+    for (const [el, c] of this.cds) {
+      const f = (now - c.t0) / Math.max(1, c.ms);
+      if (f >= 1) { el.style.visibility = 'hidden'; this.cds.delete(el); continue; }
+      el.style.backgroundPositionX = `${(Math.min(127, Math.floor(f * 128)) / 127) * 100}%`;
+    }
+    if (this.cds.size) this.cdRaf = requestAnimationFrame(this.cdTick);
+  };
 
   /** aperta o atalho: efeito e usa o item */
   use(k: number) {

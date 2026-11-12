@@ -416,8 +416,8 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 .ab-slot.empty-stack img { filter: grayscale(1) brightness(.6); }
 .ab-slot.drop { box-shadow: 0 0 0 2px #ffd76a inset; }
 .ab-slot kbd { z-index: 1; }
-.ab-cd { position: absolute; inset: 0; pointer-events: none; background: rgb(0 0 0 / .6); clip-path: inset(100% 0 0 0); }
-@keyframes abCooldown { from { clip-path: inset(0 0 0 0); } to { clip-path: inset(100% 0 0 0); } }
+/* espera (cooldown) como no cliente: véu branco 47% + o relógio de Icon_CoolTime_000…127 (faixa de 128 quadros em --cool-sheet) */
+.ab-cd { position: absolute; inset: 0; pointer-events: none; visibility: hidden; background: var(--cool-sheet, none) no-repeat 0 0 / 12800% 100%, rgb(255 255 255 / .47); image-rendering: auto; }
 /* cura (números verdes/azuis subindo) */
 .dmg.heal { color: #5aff7a; font-size: 18px; }
 .dmg.healmp { color: #7ab8ff; font-size: 16px; }

@@ -55,6 +55,46 @@ export function themeImage(file: string): Promise<string | null> {
   return p;
 }
 
+let coolSheet: Promise<string | null> | null = null;
+/**
+ * Cooldown do cliente (RenderRadar de WndManager.cpp): as 128 peças 16×16 de `Data/Icon/Icon_CoolTime_000…127.tga` (magenta = transparente,
+ * branco = ainda travado) montadas em 128 quadros de 32×32 numa faixa só (4096×32): cada quarto do ícone (cima-direita, baixo-direita,
+ * baixo-esquerda, cima-esquerda, no sentido horário) usa a peça do seu quarto — as anteriores já limpas (31/63/95), a atual no ponto
+ * e as seguintes em branco (0/32/64/96). O quadro `i` vale `i/127` do tempo passado; o branco fica a 78% (alfa 200 do cliente).
+ */
+export function coolTimeSheet(): Promise<string | null> {
+  coolSheet ??= Promise.all(Array.from({ length: 128 }, (_, i) => fetchBuf(`/res/Data/Icon/Icon_CoolTime_${String(i).padStart(3, '0')}.tga`)
+    .then((b) => { try { return b ? decodeTga(b) : null; } catch { return null; } }))).then((imgs) => {
+    if (imgs.some((im) => !im)) return null;
+    const piece = imgs.map((im) => {
+      const c = document.createElement('canvas');
+      c.width = im!.width; c.height = im!.height;
+      const px = new ImageData(new Uint8ClampedArray(im!.data), im!.width, im!.height);
+      for (let o = 0; o < px.data.length; o += 4) {
+        const magenta = px.data[o] === 255 && px.data[o + 1] === 0 && px.data[o + 2] === 255;
+        px.data[o] = px.data[o + 1] = px.data[o + 2] = 255;
+        px.data[o + 3] = magenta ? 0 : 200;
+      }
+      c.getContext('2d')!.putImageData(px, 0, 0);
+      return c;
+    });
+    const sheet = document.createElement('canvas');
+    sheet.width = 128 * 32; sheet.height = 32;
+    const g = sheet.getContext('2d')!;
+    // cada quarto: [x, y] no quadro de 32×32, na ordem do relógio
+    const at: [number, number][] = [[16, 0], [16, 16], [0, 16], [0, 0]];
+    for (let f = 0; f < 128; f++) {
+      const q = Math.floor(f / 32);
+      for (let k = 0; k < 4; k++) {
+        const idx = k < q ? k * 32 + 31 : k === q ? f : k * 32;
+        g.drawImage(piece[idx], f * 32 + at[k][0], at[k][1], 16, 16);
+      }
+    }
+    return sheet.toDataURL();
+  });
+  return coolSheet;
+}
+
 /**
  * Junta peças do tema numa imagem só (grade `cols`×`rows`, mesma ordem dos arquivos), para usar como `border-image` no CSS —
  * ex.: moldura de janela `WndTile00–11` (3×4) ou caixa de texto `WndEditTile00–08` (3×3). Todas as peças têm o tamanho da primeira.
