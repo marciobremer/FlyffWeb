@@ -325,8 +325,8 @@ export class SfxInstance {
       }
       default: {
         const r = key.rotate.map(rad) as V3;
-        // SFXPARTBILLTYPE_NORMAL: o quad do original fica deitado (plano XZ) — círculos mágicos e anéis de skill ficam no chão; a rotação da chave vem depois
-        const m = rowScale(...s).multiply(this.fullPose ? new Matrix4() : rowRotX(rad(90))).multiply(rowYPR(r[1], r[0], r[2])).multiply(this.matRot).multiply(rowTrans(...trans));
+        // SFXPARTBILLTYPE_NORMAL: o quad do original fica deitado (plano XZ) — círculos mágicos e anéis de skill ficam no chão; a rotação da chave vem depois; se a chave já traz pitch 90° (marca de clique), o autor deitou o quad e não se soma outra
+        const m = rowScale(...s).multiply(this.fullPose || Math.abs(key.rotate[0] % 180) === 90 ? new Matrix4() : rowRotX(rad(90))).multiply(rowYPR(r[1], r[0], r[2])).multiply(this.matRot).multiply(rowTrans(...trans));
         mesh.matrix.copy(this.rowToLocal(m));
       }
     }
