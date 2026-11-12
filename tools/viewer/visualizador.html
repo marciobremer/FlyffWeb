@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visualizador de arquivos</title>
+<style>
+  :root { --bg: #14181f; --panel: #1d232d; --line: #2e3745; --text: #e6ebf3; --dim: #93a0b4; --accent: #5aa0ff; --cell: 140px; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, "Segoe UI", sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  h1 { margin: 0 8px 0 0; font-size: 15px; font-weight: 700; }
+  button, select, input[type=search] { font: inherit; color: var(--text); background: #2a3342; border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; }
+  button { cursor: pointer; }
+  button:hover { background: #34405a; }
+  label { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); }
+  input[type=range] { width: 120px; }
+  #count { margin-left: auto; color: var(--dim); }
+  #drop { margin: 14px; padding: 60px 20px; text-align: center; border: 2px dashed var(--line); border-radius: 12px; color: var(--dim); font-size: 15px; }
+  body.dragging #drop, body.dragging main { outline: 3px dashed var(--accent); outline-offset: -6px; }
+  main { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--cell), 1fr)); gap: 10px; padding: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; cursor: zoom-in; }
+  .card:hover { border-color: var(--accent); }
+  .thumb { height: var(--cell); display: flex; align-items: center; justify-content: center; padding: 6px; }
+  .thumb canvas { max-width: 100%; max-height: 100%; image-rendering: auto; }
+  .thumb canvas.px { image-rendering: pixelated; }
+  .name { padding: 4px 8px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+  .meta { padding: 0 8px 6px; color: var(--dim); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .err .thumb { color: #ff8a8a; font-size: 11px; text-align: center; }
+  /* fundos dos quadros */
+  .bg-checker .thumb, .bg-checker #bigwrap { background: conic-gradient(#3a4253 25%, #2b3240 0 50%, #3a4253 0 75%, #2b3240 0) 0 0 / 16px 16px; }
+  .bg-dark .thumb, .bg-dark #bigwrap { background: #0b0d11; }
+  .bg-light .thumb, .bg-light #bigwrap { background: #f2f2f2; }
+  .bg-green .thumb, .bg-green #bigwrap { background: #3f7a3f; }
+  #modal { position: fixed; inset: 0; z-index: 20; display: none; flex-direction: column; background: rgb(0 0 0 / .8); }
+  #modal.open { display: flex; }
+  #bar { display: flex; gap: 12px; align-items: center; padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  #bar b { font-size: 14px; }
+  #bar span { color: var(--dim); }
+  #bigwrap { flex: 1; min-height: 0; overflow: auto; display: flex; padding: 20px; }
+  #big { margin: auto; image-rendering: pixelated; }
+</style>
+</head>
+<body class="bg-checker">
+<header>
+  <h1>Visualizador de arquivos</h1>
+  <button id="pickFiles">Escolher arquivos…</button>
+  <button id="pickDir">Escolher pasta…</button>
+  <button id="clear">Limpar</button>
+  <input id="filter" type="search" placeholder="Filtrar por nome…" size="18">
+  <label>Tamanho <input id="size" type="range" min="64" max="320" value="140"></label>
+  <label>Fundo
+    <select id="bg"><option value="checker">Xadrez</option><option value="dark">Escuro</option><option value="light">Claro</option><option value="green">Verde</option></select>
+  </label>
+  <label title="Pixels rosa (255, 0, 255) viram transparentes, como o jogo faz nos .bmp e .tga"><input id="key" type="checkbox" checked> Magenta transparente</label>
+  <label><input id="px" type="checkbox"> Pixels nítidos</label>
+  <span id="count"></span>
+</header>
+<div id="drop">Arraste aqui arquivos ou pastas inteiras: <b>.cur .ico .ani .dds .tga .bmp .png .jpg .gif .webp</b><br><small>Tudo é decodificado no próprio navegador; nenhum arquivo sai do seu computador.</small></div>
+<main id="grid"></main>
+<div id="modal">
+  <div id="bar"><b id="mname"></b><span id="minfo"></span><span style="margin-left:auto"></span><button id="mdl">Baixar PNG</button><button id="mclose">Fechar (Esc)</button></div>
+  <div id="bigwrap"><canvas id="big"></canvas></div>
+</div>
+<input id="fileInput" type="file" multiple hidden>
+<input id="dirInput" type="file" webkitdirectory hidden>
+
+<script>
+'use strict';
+// ---------------------------------------------------------------- decodificadores (devolvem { w, h, data: Uint8ClampedArray RGBA, info })
+const u16 = (d, o) => d.getUint16(o, true), u32 = (d, o) => d.getUint32(o, true);
+
+function decodeTga(buf) {
+  const d = new DataView(buf), id = d.getUint8(0), cmType = d.getUint8(1), type = d.getUint8(2);
+  const cmFirst = u16(d, 3), cmLen = u16(d, 5), cmBits = d.getUint8(7);
+  const w = u16(d, 12), h = u16(d, 14), bpp = d.getUint8(16), desc = d.getUint8(17);
+  if (![1, 2, 3, 9, 10, 11].includes(type)) throw new Error('tipo de TGA ' + type + ' não suportado');
+  if (!w || !h) throw new Error('TGA vazio');
+  let p = 18 + id;
+  const bytes = Math.ceil(bpp / 8);
+  let pal = null;
+  if (cmType === 1) {
+    const eb = Math.ceil(cmBits / 8);
+    pal = [];
+    for (let i = 0; i < cmLen; i++, p += eb) pal.push(readPx(d, p, cmBits));
+  }
+  const raw = new Uint8Array(w * h * bytes);
+  const src = new Uint8Array(buf);
+  if (type >= 9) { // RLE
+    let o = 0;
+    while (o < raw.length && p < src.length) {
+      const hd = src[p++], n = (hd & 0x7f) + 1;
+      if (hd & 0x80) { for (let k = 0; k < n && o < raw.length; k++) for (let b = 0; b < bytes; b++) raw[o++] = src[p + b]; p += bytes; }
+      else { const len = Math.min(n * bytes, raw.length - o); raw.set(src.subarray(p, p + len), o); o += len; p += n * bytes; }
+    }
+  } else raw.set(src.subarray(p, p + raw.length));
+  const out = new Uint8ClampedArray(w * h * 4), rd = new DataView(raw.buffer);
+  const flipY = !(desc & 0x20), flipX = !!(desc & 0x10);
+  for (let y = 0; y < h; y++) {
+    const sy = flipY ? h - 1 - y : y;
+    for (let x = 0; x < w; x++) {
+      const sx = flipX ? w - 1 - x : x, so = (sy * w + sx) * bytes, o = (y * w + x) * 4;
+      let c;
+      if (pal) c = pal[rd.getUint8(so) - cmFirst] || [0, 0, 0, 255];
+      else if (type === 3 || type === 11) { const g = rd.getUint8(so); c = [g, g, g, bpp === 16 ? rd.getUint8(so + 1) : 255]; }
+      else c = readPx(rd, so, bpp);
+      out[o] = c[0]; out[o + 1] = c[1]; out[o + 2] = c[2]; out[o + 3] = c[3];
+    }
+  }
+  return { w, h, data: out, info: `TGA ${bpp} bits${type >= 9 ? ' RLE' : ''}` };
+}
+function readPx(d, o, bits) {
+  if (bits === 32) return [d.getUint8(o + 2), d.getUint8(o + 1), d.getUint8(o), d.getUint8(o + 3)];
+  if (bits === 24) return [d.getUint8(o + 2), d.getUint8(o + 1), d.getUint8(o), 255];
+  if (bits === 16 || bits === 15) { const v = d.getUint16(o, true); return [((v >> 10) & 31) * 255 / 31, ((v >> 5) & 31) * 255 / 31, (v & 31) * 255 / 31, bits === 16 && !(v & 0x8000) ? 0 : 255]; }
+  const g = d.getUint8(o); return [g, g, g, 255];
+}
+
+function decodeDds(buf) {
+  const d = new DataView(buf);
+  if (buf.byteLength < 128 || u32(d, 0) !== 0x20534444) throw new Error('não é DDS');
+  const h = u32(d, 12), w = u32(d, 16), mips = u32(d, 28) || 1, flags = u32(d, 80);
+  const four = String.fromCharCode(d.getUint8(84), d.getUint8(85), d.getUint8(86), d.getUint8(87));
+  const bits = u32(d, 88), rm = u32(d, 92), gm = u32(d, 96), bm = u32(d, 100), am = u32(d, 104);
+  const out = new Uint8ClampedArray(w * h * 4);
+  const info = (n) => `DDS ${n} · ${mips} mip${mips > 1 ? 's' : ''}`;
+  if (flags & 0x4) { // FOURCC
+    const kind = four === 'DXT1' ? 1 : four === 'DXT3' ? 3 : four === 'DXT5' ? 5 : four === 'DXT2' ? 3 : four === 'DXT4' ? 5 : 0;
+    if (!kind) throw new Error('formato ' + (four.trim() ? four : 'D3DFMT ' + u32(d, 84)) + ' não suportado');
+    dxt(d, 128, w, h, kind, out);
+    return { w, h, data: out, info: info(four) };
+  }
+  const bytes = bits / 8;
+  if (flags & 0x40) { // RGB
+    if (![2, 3, 4].includes(bytes)) throw new Error('RGB de ' + bits + ' bits não suportado');
+    const ch = [rm, gm, bm, flags & 0x1 ? am : 0].map((m) => ({ m, s: ctz(m), n: pop(m) }));
+    let o = 128;
+    for (let i = 0; i < w * h; i++, o += bytes) {
+      let px = 0;
+      for (let b = 0; b < bytes; b++) px |= d.getUint8(o + b) << (8 * b);
+      px >>>= 0;
+      for (let c = 0; c < 4; c++) { const { m, s, n } = ch[c]; out[i * 4 + c] = n ? Math.round((((px & m) >>> s) * 255) / ((1 << n) - 1)) : c === 3 ? 255 : 0; }
+    }
+    return { w, h, data: out, info: info(`RGB ${bits} bits`) };
+  }
+  if (flags & 0x20000) { // luminância
+    let o = 128;
+    for (let i = 0; i < w * h; i++, o += bytes) { const g = d.getUint8(o); out.set([g, g, g, 255], i * 4); }
+    return { w, h, data: out, info: info('luminância') };
+  }
+  throw new Error('formato DDS não reconhecido');
+}
+function ctz(m) { let s = 0; while (m && !(m & 1)) { m >>>= 1; s++; } return s; }
+function pop(m) { let n = 0; while (m) { n += m & 1; m >>>= 1; } return n; }
+function dxt(d, off, w, h, kind, out) {
+  const bw = Math.ceil(w / 4), bh = Math.ceil(h / 4), bb = kind === 1 ? 8 : 16;
+  const c = new Uint8Array(16), al = new Uint8Array(16);
+  const c565 = (v, o) => { c[o] = ((v >> 11) & 31) * 255 / 31; c[o + 1] = ((v >> 5) & 63) * 255 / 63; c[o + 2] = (v & 31) * 255 / 31; c[o + 3] = 255; };
+  let p = off;
+  for (let by = 0; by < bh; by++) for (let bx = 0; bx < bw; bx++, p += bb) {
+    if (p + bb > d.byteLength) return;
+    if (kind === 3) for (let i = 0; i < 16; i++) al[i] = ((d.getUint8(p + (i >> 1)) >> ((i & 1) * 4)) & 15) * 17;
+    else if (kind === 5) {
+      const a0 = d.getUint8(p), a1 = d.getUint8(p + 1), pal = [a0, a1];
+      if (a0 > a1) for (let k = 1; k < 7; k++) pal.push(((7 - k) * a0 + k * a1) / 7);
+      else { for (let k = 1; k < 5; k++) pal.push(((5 - k) * a0 + k * a1) / 5); pal.push(0, 255); }
+      let bitsv = 0, nb = 0, q = p + 2;
+      for (let i = 0; i < 16; i++) { if (nb < 3) { bitsv |= d.getUint8(q++) << nb; nb += 8; } al[i] = pal[bitsv & 7]; bitsv >>= 3; nb -= 3; }
+    }
+    const cp = kind === 1 ? p : p + 8;
+    const c0 = d.getUint8(cp) | (d.getUint8(cp + 1) << 8), c1 = d.getUint8(cp + 2) | (d.getUint8(cp + 3) << 8);
+    c565(c0, 0); c565(c1, 4);
+    if (c0 > c1 || kind !== 1) for (let k = 0; k < 3; k++) { c[8 + k] = (2 * c[k] + c[4 + k]) / 3; c[12 + k] = (c[k] + 2 * c[4 + k]) / 3; c[11] = c[15] = 255; }
+    else { for (let k = 0; k < 3; k++) { c[8 + k] = (c[k] + c[4 + k]) / 2; c[12 + k] = 0; } c[11] = 255; c[15] = 0; }
+    const idx = d.getUint8(cp + 4) | (d.getUint8(cp + 5) << 8) | (d.getUint8(cp + 6) << 16) | (d.getUint8(cp + 7) << 24);
+    for (let i = 0; i < 16; i++) {
+      const x = bx * 4 + (i & 3), y = by * 4 + (i >> 2);
+      if (x >= w || y >= h) continue;
+      const k = ((idx >>> (i * 2)) & 3) * 4, o = (y * w + x) * 4;
+      out[o] = c[k]; out[o + 1] = c[k + 1]; out[o + 2] = c[k + 2]; out[o + 3] = kind === 1 ? c[k + 3] : al[i];
+    }
+  }
+}
+
+// ICO / CUR / BMP / PNG / JPG / GIF / WEBP: o navegador decodifica
+const MIME = { cur: 'image/x-icon', ico: 'image/x-icon', bmp: 'image/bmp', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
+async function decodeNative(buf, ext, tryMime) {
+  const bmp = await createImageBitmap(new Blob([buf], { type: tryMime || MIME[ext] }));
+  const c = document.createElement('canvas');
+  c.width = bmp.width; c.height = bmp.height;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(bmp, 0, 0);
+  const im = g.getImageData(0, 0, c.width, c.height);
+  return { w: c.width, h: c.height, data: im.data, info: ext.toUpperCase() };
+}
+// .ani (cursor animado): RIFF ACON com um ICO/CUR por quadro — mostra o primeiro quadro e diz quantos há
+async function decodeAni(buf) {
+  const d = new DataView(buf), icons = [];
+  // alguns .ani do jogo são na verdade um .cur comum (sem o envelope RIFF)
+  if (String.fromCharCode(d.getUint8(0), d.getUint8(1), d.getUint8(2), d.getUint8(3)) !== 'RIFF') { const r = await decodeNative(buf, 'cur'); r.info = 'ANI (cursor simples)'; return r; }
+  const walk = (o, end) => {
+    while (o + 8 <= end) {
+      const id = String.fromCharCode(d.getUint8(o), d.getUint8(o + 1), d.getUint8(o + 2), d.getUint8(o + 3)), size = u32(d, o + 4);
+      if (id === 'RIFF' || id === 'LIST') walk(o + 12, Math.min(end, o + 8 + size));
+      else if (id === 'icon') icons.push(buf.slice(o + 8, o + 8 + size));
+      o += 8 + size + (size & 1);
+    }
+  };
+  walk(0, buf.byteLength);
+  if (!icons.length) throw new Error('.ani sem quadros');
+  const r = await decodeNative(icons[0], 'cur');
+  r.info = `ANI · ${icons.length} quadro${icons.length > 1 ? 's' : ''}`;
+  return r;
+}
+
+async function decode(file) {
+  const buf = await file.arrayBuffer();
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (ext === 'tga') return decodeTga(buf);
+  if (ext === 'dds') return decodeDds(buf);
+  if (ext === 'ani') return decodeAni(buf);
+  if (MIME[ext]) return decodeNative(buf, ext);
+  throw new Error('extensão .' + ext + ' não suportada');
+}
+const KNOWN = /\.(cur|ico|ani|dds|tga|bmp|png|jpe?g|gif|webp)$/i;
+
+// ---------------------------------------------------------------- interface
+const grid = document.getElementById('grid'), $ = (id) => document.getElementById(id);
+const items = [];
+let observer;
+
+function addFiles(files) {
+  const list = [...files].filter((f) => KNOWN.test(f.name));
+  for (const f of list) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = '<div class="thumb"></div><div class="name"></div><div class="meta">…</div>';
+    const rel = f.webkitRelativePath || f.name;
+    card.querySelector('.name').textContent = f.name;
+    card.title = rel;
+    const it = { file: f, rel, card, img: null, canvas: null, started: false };
+    card.addEventListener('click', () => open(it));
+    items.push(it);
+    grid.appendChild(card);
+    observer.observe(card);
+    card._it = it;
+  }
+  update();
+}
+
+function update() {
+  const q = $('filter').value.trim().toLowerCase();
+  let shown = 0;
+  for (const it of items) { const ok = !q || it.rel.toLowerCase().includes(q); it.card.style.display = ok ? '' : 'none'; if (ok) shown++; }
+  $('count').textContent = items.length ? `${shown} de ${items.length} arquivos` : '';
+  $('drop').style.display = items.length ? 'none' : '';
+}
+
+/** monta o canvas do item (aplica o magenta transparente se ligado) */
+function paint(it, canvas, scale = 1) {
+  const { w, h, data } = it.img;
+  const key = $('key').checked;
+  const out = new Uint8ClampedArray(data);
+  if (key) for (let i = 0; i < out.length; i += 4) if (out[i] === 255 && out[i + 1] === 0 && out[i + 2] === 255) out[i + 3] = 0;
+  canvas.width = w; canvas.height = h;
+  canvas.getContext('2d').putImageData(new ImageData(out, w, h), 0, 0);
+  if (scale !== 1) { canvas.style.width = w * scale + 'px'; canvas.style.height = h * scale + 'px'; }
+}
+
+async function render(it) {
+  if (it.started) return;
+  it.started = true;
+  try {
+    it.img = await decode(it.file);
+    const c = document.createElement('canvas');
+    it.canvas = c;
+    paint(it, c);
+    c.classList.toggle('px', $('px').checked || it.img.w <= 64);
+    const t = it.card.querySelector('.thumb');
+    t.replaceChildren(c);
+    it.card.querySelector('.meta').textContent = `${it.img.w}×${it.img.h} · ${it.img.info}`;
+  } catch (e) {
+    it.card.classList.add('err');
+    it.card.querySelector('.thumb').textContent = e.message || String(e);
+    it.card.querySelector('.meta').textContent = (it.file.size / 1024).toFixed(1) + ' KB';
+  }
+}
+
+observer = new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) { observer.unobserve(e.target); void render(e.target._it); } }, { rootMargin: '400px' });
+
+// janela grande
+let current = null;
+async function open(it) {
+  await render(it);
+  if (!it.img) return;
+  current = it;
+  const big = $('big');
+  const z = Math.max(1, Math.min(8, Math.floor(Math.min((innerWidth - 80) / it.img.w, (innerHeight - 140) / it.img.h))));
+  paint(it, big, z);
+  $('mname').textContent = it.rel;
+  $('minfo').textContent = `${it.img.w}×${it.img.h} · ${it.img.info} · ${(it.file.size / 1024).toFixed(1)} KB · zoom ${z}×`;
+  $('modal').classList.add('open');
+}
+$('mclose').onclick = () => $('modal').classList.remove('open');
+addEventListener('keydown', (e) => { if (e.key === 'Escape') $('modal').classList.remove('open'); });
+$('modal').addEventListener('click', (e) => { if (e.target === $('modal') || e.target === $('bigwrap')) $('modal').classList.remove('open'); });
+$('mdl').onclick = () => {
+  if (!current) return;
+  const c = document.createElement('canvas');
+  paint(current, c);
+  c.toBlob((b) => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = current.file.name.replace(/\.[^.]+$/, '') + '.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); });
+};
+
+// controles
+$('pickFiles').onclick = () => $('fileInput').click();
+$('pickDir').onclick = () => $('dirInput').click();
+$('fileInput').onchange = (e) => { addFiles(e.target.files); e.target.value = ''; };
+$('dirInput').onchange = (e) => { addFiles(e.target.files); e.target.value = ''; };
+$('clear').onclick = () => { items.length = 0; grid.replaceChildren(); update(); };
+$('filter').oninput = update;
+$('size').oninput = (e) => document.documentElement.style.setProperty('--cell', e.target.value + 'px');
+$('bg').onchange = (e) => { document.body.className = 'bg-' + e.target.value; };
+$('key').onchange = () => { for (const it of items) if (it.img && it.canvas) paint(it, it.canvas); };
+$('px').onchange = () => { for (const it of items) if (it.canvas) it.canvas.classList.toggle('px', $('px').checked || it.img.w <= 64); };
+
+// arrastar e soltar (arquivos e pastas inteiras)
+async function entries(dt) {
+  const out = [];
+  const walk = async (e) => {
+    if (e.isFile) out.push(await new Promise((res) => e.file(res)));
+    else if (e.isDirectory) {
+      const r = e.createReader();
+      for (;;) { const batch = await new Promise((res) => r.readEntries(res)); if (!batch.length) break; for (const c of batch) await walk(c); }
+    }
+  };
+  const list = [...dt.items].map((i) => (i.webkitGetAsEntry ? i.webkitGetAsEntry() : null));
+  if (list.some(Boolean)) { for (const e of list) if (e) await walk(e); }
+  else out.push(...dt.files);
+  return out;
+}
+let depth = 0;
+addEventListener('dragenter', (e) => { e.preventDefault(); depth++; document.body.classList.add('dragging'); });
+addEventListener('dragleave', (e) => { e.preventDefault(); if (--depth <= 0) { depth = 0; document.body.classList.remove('dragging'); } });
+addEventListener('dragover', (e) => e.preventDefault());
+addEventListener('drop', async (e) => { e.preventDefault(); depth = 0; document.body.classList.remove('dragging'); addFiles(await entries(e.dataTransfer)); });
+window.__viewer = { addFiles, decode };
+update();
+</script>
+</body>
+</html>
