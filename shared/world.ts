@@ -957,9 +957,9 @@ export class WorldView {
   }
 
   // ---------- entrada (mouse/teclado) e cursores do cliente ----------
-  /** Data/Cursors/CurDefault1 (hotspot 0,0): espada sobre mob, balão sobre NPC, seta no resto */
+  /** Data/Cursors/CurDefault (hotspot 0,0): espada sobre mob, balão sobre NPC, seta no resto */
   private cursors = (() => {
-    const c = (f: string, fb: string) => `url("/res/Data/Cursors/CurDefault1/${f}") 0 0, ${fb}`;
+    const c = (f: string, fb: string) => `url("/res/Data/Cursors/CurDefault/${f}") 0 0, ${fb}`;
     return { base: c('curBase.cur', 'default'), attack: c('curAttack.cur', 'crosshair'), npc: c('curNPC.cur', 'pointer') };
   })();
   private hoverAt: { clientX: number; clientY: number } | null = null;

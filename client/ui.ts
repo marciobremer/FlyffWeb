@@ -211,10 +211,10 @@ export function askBox(host: HTMLElement, text: string, okLabel: string): { done
 /** PARTS_UPPER_BODY: a suit, única peça com piercing */
 const SUIT_PART = 2;
 /**
- * Martelo do modo de piercing: o cursor CUR_HAMMER do Neuz é o `anvil` de Data/Cursors; o do tema CurDefault6 é o .ani animado
+ * Martelo do modo de piercing: o cursor CUR_HAMMER do Neuz é o `anvil` de Data/Cursors; o do tema padrão (CurDefault) é o anvil.cur
  * (2 quadros, levanta e bate). Carregado na 1ª vez; sem ele, fica o SVG reserva (cabo de madeira, cabeça de ferro).
  */
-const HAMMER_ANI = '/res/Data/Cursors/CurDefault6/anvil.ani';
+const HAMMER_ANI = '/res/Data/Cursors/CurDefault/anvil.cur';
 let hammerAni: Promise<AniCursor | null> | null = null;
 /** último ponto do mouse na tela: o martelo aparece ali na hora, sem esperar o mouse mexer */
 const mouse = { x: innerWidth / 2, y: innerHeight / 2 };

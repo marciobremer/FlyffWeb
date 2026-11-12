@@ -51,6 +51,8 @@ export async function loadAniCursor(url: string): Promise<AniCursor | null> {
   let buf: ArrayBuffer;
   try { const r = await fetch(url); if (!r.ok) return null; buf = await r.arrayBuffer(); } catch { return null; }
   const v = new DataView(buf);
+  // .cur comum (o tema padrão CurDefault não tem .ani): um quadro só
+  if (v.byteLength >= 6 && v.getUint16(0, true) === 0 && v.getUint16(2, true) === 2) { const one = decodeCur(buf); return one ? { frames: [one.url], ms: [1000], hotspot: one.hotspot, size: one.size } : null; }
   if (v.byteLength < 12 || tag(v, 0) !== 'RIFF' || tag(v, 8) !== 'ACON') return null;
   let rate = 10, rates: number[] = [], seq: number[] = [];
   const icons: ArrayBuffer[] = [];
