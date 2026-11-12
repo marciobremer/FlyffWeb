@@ -23,6 +23,7 @@ import { WaterSystem } from './water';
 import { Sky } from './sky';
 import { computeEnvironment, findContinent, type Environment } from './environment';
 import { attachSetSfx } from './setSfx';
+import { targetSprites } from './tga';
 import { defaultFilter, PostFx } from './postfx';
 import { defaultShadow, inOpenArea, type ShadowSettings } from './worldedits';
 import { PropLayer } from './props';
@@ -931,6 +932,8 @@ export class WorldView {
     box.setAttribute('aria-hidden', 'true');
     for (const k of ['tl', 'tr', 'bl', 'br']) { const a = document.createElement('i'); a.className = k; box.appendChild(a); }
     document.body.appendChild(box);
+    // as imagens das setas (icon_target.dds do cliente: azul = selecionado, vermelha = atacando)
+    void targetSprites().then((t) => { if (t) { document.documentElement.style.setProperty('--sel-blue', `url(${t.blue})`); document.documentElement.style.setProperty('--sel-red', `url(${t.red})`); } });
     return box;
   })();
   private selV = new Vector3();

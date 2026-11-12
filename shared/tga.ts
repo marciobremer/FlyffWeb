@@ -55,6 +55,35 @@ export function themeImage(file: string): Promise<string | null> {
   return p;
 }
 
+let targetP: Promise<{ blue: string; red: string } | null> | null = null;
+/**
+ * Setas de seleção do cliente (CWndWorld::RenderFocusObj + icon_target.inc): `Data/Icon/icon_target.dds` (64×64, magenta = transparente) tem a
+ * seta azul na peça de cima à esquerda (selecionado) e a vermelha logo abaixo (atacando), cada uma 32×32; o jogo desenha a mesma seta nos 4
+ * cantos do alvo, espelhada (n, h, v, hv). Devolve as duas como imagens (data URL).
+ */
+export function targetSprites(): Promise<{ blue: string; red: string } | null> {
+  targetP ??= iconImage('icon_target.dds').then((url) => new Promise((resolve) => {
+    if (!url) { resolve(null); return; }
+    const img = new Image();
+    img.onload = () => {
+      const cell = (y: number) => {
+        const c = document.createElement('canvas');
+        c.width = c.height = 32;
+        const g = c.getContext('2d', { willReadFrequently: true })!;
+        g.drawImage(img, 0, y, 32, 32, 0, 0, 32, 32);
+        const px = g.getImageData(0, 0, 32, 32);
+        for (let o = 0; o < px.data.length; o += 4) if (px.data[o] === 255 && px.data[o + 1] === 0 && px.data[o + 2] === 255) px.data[o + 3] = 0;
+        g.putImageData(px, 0, 0);
+        return c.toDataURL();
+      };
+      resolve({ blue: cell(0), red: cell(32) });
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  }));
+  return targetP;
+}
+
 let coolSheet: Promise<string | null> | null = null;
 /**
  * Cooldown do cliente (RenderRadar de WndManager.cpp): as 128 peças 16×16 de `Data/Icon/Icon_CoolTime_000…127.tga` (magenta = transparente,

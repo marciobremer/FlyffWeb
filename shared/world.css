@@ -43,10 +43,11 @@
 /* seleção do alvo como no FlyFF Universe: 4 setas nos cantos do contorno na tela, com a ponta para dentro, pulsando de leve */
 .sel-arrows { position: fixed; z-index: 3; pointer-events: none; }
 /* setas da seleção: a seta do cursor do jogo (curBase.cur, aponta para cima e para a esquerda) nos 4 cantos, apontando para o alvo; vermelhas quando está atacando */
-.sel-arrows i { position: absolute; width: 32px; height: 32px; background: url("/res/Data/Cursors/CurDefault/curBase.cur") no-repeat 0 0 / 32px 32px; image-rendering: pixelated; filter: drop-shadow(0 1px 1px rgb(0 0 0 / .55)); animation: selPulse 0.9s ease-in-out infinite alternate; }
-.sel-arrows.hostile i { filter: hue-rotate(150deg) saturate(2.2) brightness(1.05) drop-shadow(0 1px 1px rgb(0 0 0 / .55)); }
-.sel-arrows .tl { left: -30px; top: -30px; transform: rotate(180deg); --dx: 5px; --dy: 5px; }
-.sel-arrows .tr { right: -30px; top: -30px; transform: rotate(-90deg); --dx: -5px; --dy: 5px; }
-.sel-arrows .bl { left: -30px; bottom: -30px; transform: rotate(90deg); --dx: 5px; --dy: -5px; }
-.sel-arrows .br { right: -30px; bottom: -30px; --dx: -5px; --dy: -5px; }
+.sel-arrows i { position: absolute; width: 32px; height: 32px; background: var(--sel-blue, none) no-repeat 0 0 / 32px 32px; }
+.sel-arrows.hostile i { background-image: var(--sel-red, none); }
+/* a mesma seta do cliente (icon_target.dds) nos 4 cantos, espelhada: n, h, v, hv */
+.sel-arrows .tl { left: -32px; top: -32px; }
+.sel-arrows .tr { right: -32px; top: -32px; transform: scaleX(-1); }
+.sel-arrows .bl { left: -32px; bottom: -32px; transform: scaleY(-1); }
+.sel-arrows .br { right: -32px; bottom: -32px; transform: scale(-1, -1); }
 @keyframes selPulse { to { translate: var(--dx) var(--dy); } }
