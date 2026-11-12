@@ -295,8 +295,8 @@ view.onMoverClick = (inst, again) => {
   if (info) view.setTargetHp(info.hp / 1000);
   ground.cancel();
   npcGoing = null;
-  if (inGame && inst.owner === 'spawns' && again) combat.start(inst);
-  else if (!(inGame && inst.owner === 'spawns' && combat.attacking && combat.isTarget(inst))) combat.stop();
+  if (inGame && view.isAttackable(inst) && again) combat.start(inst);
+  else if (!(inGame && view.isAttackable(inst) && combat.attacking && combat.isTarget(inst))) combat.stop();
   if (inGame && inst.owner === 'movers' && inst.source.characterKey) npcGoing = { inst, key: inst.source.characterKey.trim(), next: 0 };
 };
 // celular: joystick, ataque, pulo e atalhos na tela (client/mobile.ts; só liga em aparelho de toque ou com ?mobile)
@@ -304,13 +304,13 @@ view.onMoverClick = (inst, again) => {
 const attackNearest = () => {
   const p = view.player;
   if (!inGame || !p) return;
-  const inst = view.moverMgr.nearestHostile(p.pos[0], p.pos[2], 25);
+  const inst = view.moverMgr.nearestHostile(p.pos[0], p.pos[2], 25, (i) => view.isAttackable(i));
   if (!inst) { chat.system(t('Nenhum monstro por perto.')); return; }
   view.selectTarget(inst);
   combat.start(inst);
 };
 const mobileUi = setupMobile(view, {
-  attack: () => { const tg = view.target; if (inGame && tg?.owner === 'spawns') combat.start(tg); else attackNearest(); },
+  attack: () => { const tg = view.target; if (inGame && tg && view.isAttackable(tg)) combat.start(tg); else attackNearest(); },
   autoStep: () => { if (inGame && !combat.attacking) attackNearest(); },
 });
 view.onGroundClick = () => { combat.stop(); ground.cancel(); npcGoing = null; };
@@ -1125,6 +1125,7 @@ view.onFrame = (dt) => {
   if (previewing) view.player?.preview(dt, 0);
   if (inGame) {
     remotes.frame(dt);
+    view.setTargetEngaged(combat.attacking && !!view.target && view.isAttackable(view.target));
     pets.update(dt);
     const p = view.player;
     combat.frame(performance.now());

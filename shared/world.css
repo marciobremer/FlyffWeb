@@ -42,10 +42,11 @@
 .chat-bubble::after { content: ''; position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%); border: 6px solid transparent; border-bottom: 0; border-top-color: rgb(240 240 236 / .95); }
 /* seleção do alvo como no FlyFF Universe: 4 setas nos cantos do contorno na tela, com a ponta para dentro, pulsando de leve */
 .sel-arrows { position: fixed; z-index: 3; pointer-events: none; }
-.sel-arrows i { position: absolute; width: 16px; height: 16px; background: linear-gradient(135deg, #f4f8ff, #a9bcdf); clip-path: polygon(0 0, 100% 45%, 55% 55%, 45% 100%); filter: drop-shadow(0 0 1px #24324f) drop-shadow(0 1px 1px rgb(0 0 0 / .6)); animation: selPulse 0.9s ease-in-out infinite alternate; }
-.sel-arrows.hostile i { background: linear-gradient(135deg, #fff2f0, #e7a09a); }
-.sel-arrows .tl { left: -18px; top: -18px; transform: scale(-1, -1); --dx: 4px; --dy: 4px; }
-.sel-arrows .tr { right: -18px; top: -18px; transform: scaleY(-1); --dx: -4px; --dy: 4px; }
-.sel-arrows .bl { left: -18px; bottom: -18px; transform: scaleX(-1); --dx: 4px; --dy: -4px; }
-.sel-arrows .br { right: -18px; bottom: -18px; --dx: -4px; --dy: -4px; }
+/* setas da seleção: a seta do cursor do jogo (curBase.cur, aponta para cima e para a esquerda) nos 4 cantos, apontando para o alvo; vermelhas quando está atacando */
+.sel-arrows i { position: absolute; width: 32px; height: 32px; background: url("/res/Data/Cursors/CurDefault1/curBase.cur") no-repeat 0 0 / 32px 32px; image-rendering: pixelated; filter: drop-shadow(0 1px 1px rgb(0 0 0 / .55)); animation: selPulse 0.9s ease-in-out infinite alternate; }
+.sel-arrows.hostile i { filter: hue-rotate(150deg) saturate(2.2) brightness(1.05) drop-shadow(0 1px 1px rgb(0 0 0 / .55)); }
+.sel-arrows .tl { left: -30px; top: -30px; transform: rotate(180deg); --dx: 5px; --dy: 5px; }
+.sel-arrows .tr { right: -30px; top: -30px; transform: rotate(-90deg); --dx: -5px; --dy: 5px; }
+.sel-arrows .bl { left: -30px; bottom: -30px; transform: rotate(90deg); --dx: 5px; --dy: -5px; }
+.sel-arrows .br { right: -30px; bottom: -30px; --dx: -5px; --dy: -5px; }
 @keyframes selPulse { to { translate: var(--dx) var(--dy); } }

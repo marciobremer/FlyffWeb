@@ -765,10 +765,10 @@ export class MoverManager {
 
   /** posição (FlyFF), HP (milésimos), estado e instância de um mob do servidor */
   /** monstro vivo mais perto de (x, z) até `max` unidades (botão de ataque/AUTO do celular); null se não há */
-  nearestHostile(x: number, z: number, max: number): MoverInstance | null {
+  nearestHostile(x: number, z: number, max: number, ok: (i: MoverInstance) => boolean = () => true): MoverInstance | null {
     let best: MoverInstance | null = null, bd = max;
     for (const e of this.external.values()) {
-      if (e.gone || e.pet || !e.inst || e.s === 'dead') continue;
+      if (e.gone || e.pet || !e.inst || e.s === 'dead' || !ok(e.inst)) continue;
       const d = Math.hypot(e.cur[0] - x, e.cur[2] - z);
       if (d < bd) { bd = d; best = e.inst; }
     }

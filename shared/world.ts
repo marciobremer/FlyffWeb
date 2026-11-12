@@ -896,14 +896,21 @@ export class WorldView {
     const d = this.data;
     if (!inst || !d) { this.selRing.visible = false; this.selArrows.hidden = true; this.targetWnd.hide(); return; }
     inst.label?.element.classList.add('selected');
-    const hostile = inst.owner === 'spawns';
+    const hostile = this.isAttackable(inst);
     const id = inst.source.modelId;
     const name = inst.label?.element.dataset.name ?? inst.label?.element.textContent ?? d.moverNames.get(id) ?? inst.tpl.entry.name;
     this.targetWnd.show({ name, level: hostile ? d.moverLevel.get(id) : undefined, hp: 1, hostile });
-    // seleção como no FlyFF Universe: 4 setas nos cantos do alvo (updateSelection as posiciona a cada quadro)
-    this.selArrows.classList.toggle('hostile', hostile);
+    // 4 setas do jogo nos cantos do alvo (updateSelection as posiciona a cada quadro): azuis ao selecionar; ficam vermelhas só quando
+    // o personagem passa a atacar o alvo (segundo clique) — NPC e monstro de cidade nunca ficam vermelhos
+    this.selArrows.classList.remove('hostile');
     this.selArrows.hidden = false;
   }
+
+  /** monstro de verdade (pode ser atacado); NPCs, guardas e cidadãos não */
+  isAttackable(inst: MoverInstance) { return inst.owner === 'spawns' && !!this.data?.monsterMovers.has(inst.source.modelId); }
+
+  /** setas vermelhas: o alvo selecionado está sendo atacado */
+  setTargetEngaged(on: boolean) { this.selArrows.classList.toggle('hostile', on); }
 
   /** ponto de tela (x, y) da metade de cima de um mover (para abrir menus ao lado dele); null fora da tela */
   screenOf(inst: MoverInstance): [number, number] | null {
@@ -1021,7 +1028,7 @@ export class WorldView {
     let kind = 'base';
     if (this.hoverAt && !this.inputBlocked() && !this.down) {
       const m = this.moverAt(this.hoverAt);
-      if (m) kind = m.owner === 'spawns' ? 'attack' : 'npc';
+      if (m) kind = this.isAttackable(m) ? 'attack' : 'npc';
     }
     if (kind !== this.hoverKind) { this.hoverKind = kind; this.canvas.style.cursor = this.cursors[kind as keyof typeof this.cursors]; }
   }
