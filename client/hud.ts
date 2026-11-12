@@ -22,6 +22,8 @@ export class GameHud {
   onQuests: () => void = () => {};
   /** abre o Mensageiro (amigos, tecla E) */
   onMessenger: () => void = () => {};
+  /** abre a janela de opções */
+  onOptions: () => void = () => {};
   /** party (P) e lista de partys (L) */
   onParty: () => void = () => {};
   /** guild (G) */
@@ -65,7 +67,7 @@ export class GameHud {
       { label: t('Comunidade'), icon: 'icon_MenuGuild.dds', sub: [t('Casal'), t('Ranking PvP')] },
       { label: t('Eventos'), key: 'U', icon: 'icon_MenuNotice.dds' },
       { label: t('Ajuda'), icon: 'icon_MenuHelp.dds', sub: [t('Ajuda'), t('Dicas'), t('FAQ')] },
-      { label: t('Opções'), icon: 'icon_MenuOption.dds' },
+      { label: t('Opções'), icon: 'icon_MenuOption.dds', action: () => this.onOptions() },
       { label: t('Desconectar'), icon: 'icon_MenuLogout.dds', action: () => this.onDisconnect() },
       { label: t('Sair'), icon: 'icon_MenuQuit.dds' },
     ];

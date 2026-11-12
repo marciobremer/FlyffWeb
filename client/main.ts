@@ -8,6 +8,7 @@ import { keyedImage, themeImage, themeTiles } from '../shared/tga';
 import { hasS3tc } from '../shared/dds';
 import { setupMobile } from './mobile';
 import { ColosseumUi } from './colosseum';
+import { OptionsWindow, type Opts } from './options';
 import { hairColorOf, hairRgb, type Sex } from '../shared/humans';
 import { CharStage } from './charpreview';
 import { fmtGameHour, gameHour } from '../shared/gameclock';
@@ -38,14 +39,14 @@ import { TeleportWindow } from './teleport';
 import { QuestDialogWindow, QuestLogWindow } from './quests';
 import { Rain } from './weather';
 import { MotionWindow } from './motionwnd';
-import { lookSymbol } from '../shared/look';
+import { hideBit, lookSymbol } from '../shared/look';
 import { FriendsWindow, friendRequestPrompt } from './friends';
 import { WikiWindow } from './wiki';
 import { PartyListWindow, PartyWindow } from './party';
 import { GuildWindow } from './guild';
 import { NpcMenu, type NpcMenuOption } from './npcmenu';
 import { GameAudio } from './audio';
-import type { MoverInstance } from '../shared/movers';
+import { MoverInstance } from '../shared/movers';
 import { OT } from '../shared/formats/types';
 import { PLAYER_LABEL_LIFT, rankOf } from '../shared/rank';
 import { lookList, type LookPiece } from '../shared/look';
@@ -909,7 +910,7 @@ coloUi.onJoin = () => { net.colo('join'); };
 coloUi.onGo = () => { net.colo('go'); };
 net.onColo = (m) => coloUi.handle(m);
 const rain = new Rain(view);
-net.onWeather = (on) => { if (on !== rain.raining) chat.system(on ? t('Começou a chover.') : t('A chuva parou.')); rain.set(on); };
+net.onWeather = (on) => { if (on !== rain.raining) chat.system(on ? t('Começou a chover.') : t('A chuva parou.')); lastRain = on; rain.set(on && optionsWnd.values.weather); };
 net.onQuestDialog = (d) => questDlg.open(d);
 net.onQuests = (list) => questLog.set(list);
 net.onPet = (a, m) => pets.set(a, m);
@@ -1102,11 +1103,11 @@ function applyQuality(q: string) {
   view.invalidate();
 }
 applyQuality($<HTMLSelectElement>('quality').value);
-$('quality').addEventListener('change', () => { prefs.quality = $<HTMLSelectElement>('quality').value; savePrefs(); applyQuality(prefs.quality); });
+$('quality').addEventListener('change', () => { prefs.quality = $<HTMLSelectElement>('quality').value; savePrefs(); optionsWnd.values.quality = prefs.quality as Opts['quality']; applyOpts(optionsWnd.values, 'quality'); });
 /** limite de FPS (padrão 60: telas de 120 Hz desenhariam o dobro e esquentam notebooks) */
 $<HTMLSelectElement>('fps').value = String(prefs.fps ?? 60);
 view.maxFps = Number($<HTMLSelectElement>('fps').value) || 0;
-$('fps').addEventListener('change', () => { prefs.fps = Number($<HTMLSelectElement>('fps').value) || 0; savePrefs(); view.maxFps = prefs.fps; });
+$('fps').addEventListener('change', () => { prefs.fps = Number($<HTMLSelectElement>('fps').value) || 0; savePrefs(); optionsWnd.values.fps = prefs.fps; applyOpts(optionsWnd.values, 'fps'); });
 
 // ---------- carregamento do mundo (atrás da tela de login) ----------
 const loginBtn = $<HTMLButtonElement>('loginBtn');
@@ -1145,6 +1146,74 @@ view.onFrame = (dt) => {
   }
 };
 view.start();
+/**
+ * Janela de opções (menu "Opções"): cada opção chama `applyOpts` — chave nula = aplicar todas (ao iniciar).
+ * Qualidade/sombra/resolução ficam juntas em `applyVideo`, porque uma mexe na outra.
+ */
+const optionsWnd = new OptionsWindow(document.body);
+hud.onOptions = () => optionsWnd.toggle();
+optionsWnd.values.quality = (prefs.quality as Opts['quality'] | undefined) ?? optionsWnd.values.quality;
+optionsWnd.values.fps = prefs.fps ?? optionsWnd.values.fps;
+let lastRain = false;
+const gammaSvg = (() => {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('width', '0'); svg.setAttribute('height', '0'); svg.style.position = 'absolute';
+  svg.innerHTML = '<filter id="opt-gamma" color-interpolation-filters="sRGB"><feComponentTransfer><feFuncR id="og-r" type="gamma" exponent="1"/><feFuncG id="og-g" type="gamma" exponent="1"/><feFuncB id="og-b" type="gamma" exponent="1"/></feComponentTransfer></filter>';
+  document.body.append(svg);
+  return svg;
+})();
+function applyVideo(o: Opts) {
+  const low = o.quality === 'low';
+  view.radius = Math.min([3, 2, 1][o.field], low ? 2 : 3);
+  view.settings = { ...view.settings, shadows: o.quality === 'high' && o.shadow < 2 };
+  view.setShadow({ ...view.shadowQuality, res: [2048, 1024, 512][o.shadow] });
+  view.renderer.setPixelRatio((low || !o.reduceAA ? 1 : Math.min(devicePixelRatio, 2)) * o.resScale);
+  view.resize();
+  view.invalidate();
+}
+function applyColor(o: Opts) {
+  // Gamma 0.5 = normal; Brightness e Shade (contraste) 0.5 = normal
+  const e = Math.pow(2, (0.5 - o.gamma) * 2).toFixed(3);
+  for (const id of ['og-r', 'og-g', 'og-b']) gammaSvg.querySelector(`#${id}`)?.setAttribute('exponent', e);
+  const normal = o.gamma === 0.5 && o.brightness === 0.5 && o.shade === 0.5;
+  view.canvas.style.filter = normal ? '' : `brightness(${(0.6 + o.brightness * 0.8).toFixed(3)}) contrast(${(0.8 + o.shade * 0.4).toFixed(3)}) url(#opt-gamma)`;
+}
+function applyOpts(o: Opts, key: keyof Opts | null) {
+  const all = key === null, is = (...ks: (keyof Opts)[]) => all || (key !== null && ks.includes(key));
+  if (is('quality', 'field', 'shadow', 'resScale', 'reduceAA')) {
+    if (key === 'quality' || all) { prefs.quality = o.quality; savePrefs(); $<HTMLSelectElement>('quality').value = o.quality; }
+    applyVideo(o);
+  }
+  if (is('fps')) { prefs.fps = o.fps; savePrefs(); $<HTMLSelectElement>('fps').value = String(o.fps); view.maxFps = o.fps; }
+  if (is('objRange')) view.moverMgr.radius = [900, 600, 350][o.objRange];
+  if (is('objDetail')) { view.detail = view.moverMgr.detail = [1, 0.7, 0.45][o.objDetail]; }
+  if (is('itemFx')) MoverInstance.itemFx = o.itemFx;
+  if (is('bgFx')) view.layers = { ...view.layers, sfx: o.bgFx > 0.05 };
+  if (is('gamma', 'brightness', 'shade')) applyColor(o);
+  if (is('expandCam')) { view.camExpand = o.expandCam ? 1.8 : 1; view.applyCamExpand(); }
+  if (is('camFix')) view.cameraFix = o.camFix;
+  if (is('npcNames')) document.body.classList.toggle('hide-npc-names', !o.npcNames);
+  if (is('damage')) combat.showDamage = o.damage;
+  if (is('otherNames')) remotes.showNames = o.otherNames;
+  if (is('weather')) rain.set(lastRain && o.weather);
+  if (is('aniso')) view.setAnisotropy(o.aniso ? 8 : 1);
+  if (is('winOpacity')) document.documentElement.style.setProperty('--wnd-alpha', String(o.winOpacity));
+  if (is('showFps')) $('hud').style.visibility = o.showFps ? '' : 'hidden';
+  if (is('volume', 'mute')) audio.setVolume(o.mute ? 0 : o.volume);
+  // estas só valem quando a pessoa mexe (precisam de clique do usuário ou do personagem carregado)
+  if (key === 'windowMode') { if (!o.windowMode) void document.documentElement.requestFullscreen?.().catch(() => {}); else if (document.fullscreenElement) void document.exitFullscreen().catch(() => {}); }
+  if (key === 'viewMask') {
+    const bit = hideBit(12), cur = inventory.hidden, next = o.viewMask ? cur & ~bit : cur | bit;
+    if (next !== cur) { inventory.setHide(next); inventory.onHide(next); }
+  }
+}
+optionsWnd.onChange = applyOpts;
+// "Low Render (Minimized)": com a aba escondida desenha só uns quadros por segundo
+document.addEventListener('visibilitychange', () => { view.maxFps = optionsWnd.values.lowRender && document.hidden ? 5 : optionsWnd.values.fps; });
+// "Show My Name": esconde o nome do próprio personagem
+setInterval(() => { const l = view.player?.inst?.label; if (l) l.element.style.visibility = optionsWnd.values.myName ? '' : 'hidden'; }, 500);
+optionsWnd.applyAll();
 // testes: com `?debug` no endereço, o console enxerga o mundo e a rede (window.__flyff)
 if (new URLSearchParams(location.search).has('debug')) (window as unknown as Record<string, unknown>).__flyff = { view, net, combat, inventory, pets };
 

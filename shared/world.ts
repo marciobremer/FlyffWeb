@@ -128,6 +128,14 @@ export class WorldView {
   settings: WorldSettings = { hour: 12, worldLight: true, worldFog: false, shadows: true, sunTilt: 30 };
   /** raio (em tiles) carregado em volta do alvo da câmera */
   radius = 3;
+  /** opções (client/options.ts): afastar mais a câmera, câmera que não atravessa o cenário, escala dos alcances de detalhe (1 / .7 / .45) */
+  camExpand = 1; cameraFix = true; detail = 1;
+  applyCamExpand() { if (this.gameCamera) this.controls.maxDistance = CAM_MAX_DIST * this.camExpand; }
+  /** filtro anisotrópico das texturas que já estão na cena (as carregadas depois entram com o padrão) */
+  setAnisotropy(n: number) {
+    const v = Math.min(n, this.renderer.capabilities.getMaxAnisotropy());
+    this.scene.traverse((o) => { const m = (o as Mesh).material as Material | Material[] | undefined; for (const mat of Array.isArray(m) ? m : m ? [m] : []) { const t = (mat as MeshLambertMaterial).map; if (t && t.anisotropy !== v) { t.anisotropy = v; t.needsUpdate = true; } } });
+  }
   colorMode: ColorMode = 'textures';
   /** WASD/clique controlam o personagem (senão WASD voa com a câmera livre) */
   playerControl = true;
@@ -1056,7 +1064,7 @@ export class WorldView {
     this.gameCamera = on;
     const c = this.controls, deg = Math.PI / 180;
     c.minDistance = on ? CAM_MIN_DIST : 0;
-    c.maxDistance = on ? CAM_MAX_DIST : Infinity;
+    c.maxDistance = on ? CAM_MAX_DIST * this.camExpand : Infinity;
     c.minPolarAngle = on ? (90 - CAM_PITCH_MAX_DEG) * deg : 0;
     c.maxPolarAngle = on ? (90 - CAM_PITCH_MIN_DEG) * deg : Math.PI * 0.98;
     c.enablePan = !on; // com pan, o alvo voltava ao personagem a cada quadro e a câmera se afastava sem limite
@@ -1223,7 +1231,7 @@ export class WorldView {
       }
     }
     controls.update();
-    if (this.gameCamera) this.constrainCamera(dt);
+    if (this.gameCamera && this.cameraFix) this.constrainCamera(dt);
     // primeira pessoa (vale o zoom que o jogador pediu, não o encurtamento por obstáculo): com a câmera dentro da cabeça o personagem some (senão se vê o interior do modelo)
     if (player?.inst) { const fp = this.gameCamera && this.camWantR > 0 && this.camWantR < CAM_FIRST_PERSON; if (player.inst.group.visible === fp) player.inst.group.visible = !fp; }
     this.stream(now);

@@ -276,6 +276,8 @@ export class RemotePlayers {
   }
 
   /** a cada quadro: aproxima posição/rumo do último recebido (meia-vida ~60 ms) e anima */
+  /** opção "Show Others Name" */
+  showNames = true;
   private lodN = 0;
   frame(dt: number) {
     const k = 1 - Math.exp(-dt * 12);
@@ -295,7 +297,7 @@ export class RemotePlayers {
         const ground = r.s.startsWith('fly') ? null : this.world.sampleHeight(c[0], c[2]);
         r.inst.place([c[0], ground === null ? c[1] : Math.max(c[1], ground), c[2]], r.curH);
         // fora da visão não desenha nem anima; longe anima a cada 2 ou 4 quadros; nome até 90 m e sombra até 45 m
-        const d = r.inst.cull(fr, cam, 90, 45, 45);
+        const dd = this.world.detail, d = r.inst.cull(fr, cam, this.showNames ? 90 * dd : 0, 45 * dd, 45 * dd);
         if (d < 0) continue;
         r.acc = (r.acc ?? 0) + dt;
         const every = d > 90 ? 4 : d > 45 ? 2 : 1;

@@ -107,6 +107,7 @@ export class Combat {
    * o CDamageNum do original: sobe rápido, treme, espera e some crescendo. `big` = crítico.
    */
   damage(pos: [number, number, number], n: number, mine: boolean, big = false, small = false) {
+    if (!this.showDamage) return;
     void atlas();
     const cell = (big ? 40 : small ? 24 : 32), k = cell / 50, adv = cell * 0.72, row = mine ? 0 : 128;
     const el = document.createElement('div');
@@ -142,7 +143,10 @@ export class Combat {
   }
 
   /** número de dano subindo de um ponto (FlyFF x, y, z) */
+  /** opção "Display Damage": desligada, os números de dano e o MISS não aparecem (cura e avisos continuam) */
+  showDamage = true;
   popup(pos: [number, number, number], text: string, kind: 'mob' | 'me' | 'crit' | 'miss' | 'other' | 'heal' | 'healmp' | 'healfp' | 'notice') {
+    if (!this.showDamage && (kind === 'mob' || kind === 'me' || kind === 'crit' || kind === 'miss' || kind === 'other')) return;
     const el = document.createElement('div');
     el.className = `dmg ${kind}`;
     el.textContent = text;

@@ -245,6 +245,9 @@ export class MoverInstance {
   /** efeito que anda junto com a animação (ex.: brilho do enchant — shared/enchantGlow.ts) */
   effect: { update(dt: number): void; dispose(): void; /** liga/desliga de longe (LOD) */ setVisible?(v: boolean): void } | null = null;
   private fxOn = true;
+  private fxShown = true;
+  /** opção "Item effect" (0 a 1): abaixo de 5% desliga o brilho do enchant de todos */
+  static itemFx = 1;
   private time = Math.random() * 10;
   /** multiplicador de velocidade do movimento atual */
   private rate = 1;
@@ -329,7 +332,9 @@ export class MoverInstance {
   /** Avança a animação (perSlerp quadros por tique do Neuz — 62,5/s —, como CModel::MoveFrame). */
   update(dt: number) {
     for (const m of this.lightMeshes) m.visible = NIGHT;
-    if (this.fxOn) this.effect?.update(dt);
+    const fx = this.fxOn && MoverInstance.itemFx > 0.05;
+    if (fx !== this.fxShown) { this.fxShown = fx; this.effect?.setVisible?.(fx); }
+    if (fx) this.effect?.update(dt);
     const mo = this.motion;
     if (!mo || mo.frameCount < 2) return;
     this.time += dt * this.rate;
@@ -847,6 +852,8 @@ export class MoverManager {
   }
 
   private lodN = 0;
+  /** escala dos alcances de nome/sombra (opção "Object Detail": 1, .7, .45) */
+  detail = 1;
   update(dt: number, camera?: Vector3, frustum?: Frustum) {
     this.lodN++;
     for (const [inst, w] of this.wander) this.patrol(inst, w, dt);
@@ -856,7 +863,7 @@ export class MoverManager {
       if (inst.owner === 'movers') this.npcIdle(inst, now);
       if (frustum && camera) {
         // fora da visão não anima; longe anima a cada 2 quadros (o tempo acumulado segue igual)
-        const d = inst.cull(frustum, camera, this.labelDistance, 60);
+        const d = inst.cull(frustum, camera, this.labelDistance * this.detail, 60 * this.detail);
         if (d < 0) continue;
         inst.lodDt += dt;
         if (d > 60 && (this.lodN + inst.lodId) & 1) continue;
