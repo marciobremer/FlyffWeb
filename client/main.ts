@@ -298,7 +298,7 @@ view.onMoverClick = (inst, again) => {
   ground.cancel();
   npcGoing = null;
   if (inGame && view.isAttackable(inst) && again) combat.start(inst);
-  else if (inGame && view.isAttackable(inst) && combat.attacking && !combat.isTarget(inst) && optionsWnd.values.autoNext) combat.queueNext(inst); // Auto Attack Next Target: depois que o atual morrer, ataca este
+  else if (inGame && view.isAttackable(inst) && combat.attacking && !combat.isTarget(inst) && optionsWnd.values.autoNext) { combat.queueNext(inst); chat.system(t('Próximo alvo: {name}', { name: inst.label?.element.dataset.name ?? '?' })); } // Auto Attack Next Target: depois que o atual morrer, ataca este
   else if (!(inGame && view.isAttackable(inst) && combat.attacking && combat.isTarget(inst))) combat.stop();
   if (inGame && inst.owner === 'movers' && inst.source.characterKey) npcGoing = { inst, key: inst.source.characterKey.trim(), next: 0 };
 };
