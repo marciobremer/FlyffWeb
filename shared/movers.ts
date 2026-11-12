@@ -329,6 +329,9 @@ export class MoverInstance {
     this.pose(0);
   }
 
+  /** longe demais (opção Object Range): some por inteiro — corpo, nome e balão — e não anima */
+  hideFar() { this.group.visible = false; if (this.label) this.label.visible = false; if (this.bubble) this.bubble.visible = false; }
+
   /** corte/LOD: tempo acumulado sem animar e a fase do quadro em que anima quando está longe */
   lodDt = 0;
   lodId = Math.floor(Math.random() * 2);
@@ -348,7 +351,7 @@ export class MoverInstance {
     if (this.label) this.label.visible = vis && d < labelMax;
     if (this.bubble) this.bubble.visible = vis;
     const fx = d < fxMax;
-    if (fx !== this.fxOn) { this.fxOn = fx; this.effect?.setVisible?.(fx); } // brilho do enchant (partículas) só de perto
+    if (fx !== this.fxOn) { this.fxOn = fx; this.effect?.setVisible?.(fx && MoverInstance.itemFx > 0.05); } // brilho do enchant (partículas) só de perto e com a opção "Item effect" ligada
     const shadow = d < shadowMax;
     if (shadow !== this.shadowOn) { this.shadowOn = shadow; this.group.traverse((o) => { if ((o as Mesh).isMesh) (o as Mesh).castShadow = shadow; }); }
     return vis ? d : -1;
@@ -358,7 +361,9 @@ export class MoverInstance {
   update(dt: number) {
     for (const m of this.lightMeshes) m.visible = NIGHT;
     const fx = this.fxOn && MoverInstance.itemFx > 0.05;
-    if (fx !== this.fxShown) { this.fxShown = fx; this.effect?.setVisible?.(fx); }
+    // todo quadro (é só ligar/desligar um flag): assim o brilho volta mesmo se o efeito foi recriado (trocou equipamento) enquanto estava desligado
+    this.fxShown = fx;
+    this.effect?.setVisible?.(fx);
     if (fx) this.effect?.update(dt);
     const mo = this.motion;
     if (!mo || mo.frameCount < 2) return;
@@ -670,7 +675,13 @@ export class MoverManager {
   }
 
   /** (x, z) em coordenadas FlyFF. */
+  /** opção "Object Range": mobs, NPCs e pets além desta distância do personagem (alvo da câmera) não são desenhados (Infinity = todos) */
+  drawRadius = Infinity;
+  private focusX = 0;
+  private focusZ = 0;
+
   refresh(x: number, z: number) {
+    this.focusX = x; this.focusZ = z;
     const near = this.candidates
       .filter((c) => this.enabled(c.owner) && Math.hypot(c.obj.pos[0] - x, c.obj.pos[2] - z) < this.radius)
       .map((c) => ({ c, d: Math.hypot(c.obj.pos[0] - x, c.obj.pos[2] - z) }))
@@ -888,8 +899,10 @@ export class MoverManager {
     for (const [inst, w] of this.wander) this.patrol(inst, w, dt);
     if (this.external.size) this.updateExternal(dt);
     const now = performance.now();
+    const far = this.drawRadius;
     for (const inst of this.active.values()) {
       if (inst.owner === 'movers') this.npcIdle(inst, now);
+      if (far !== Infinity && Math.hypot(inst.pos[0] - this.focusX, inst.pos[2] - this.focusZ) > far) { inst.hideFar(); continue; }
       if (frustum && camera) {
         // fora da visão não anima; longe anima a cada 2 quadros (o tempo acumulado segue igual)
         const d = inst.cull(frustum, camera, this.labelDistance * this.detail, 60 * this.detail);

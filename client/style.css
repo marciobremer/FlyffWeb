@@ -153,14 +153,14 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #14161a; col
 #taskMenu li.has-sub:hover > .submenu { display: block; }
 #taskMenu li.has-sub::after { content: ''; position: absolute; left: 100%; top: 0; width: 18px; height: 100%; } /* ponte: o mouse chega ao submenu sem fechar */
 #taskMenu .submenu li { height: 21px; }
-#statusWnd { transform: scale(1.2); transform-origin: 0 0; position: fixed; left: 6px; top: 6px; z-index: 6; width: 196px; height: 108px; background: none; touch-action: none; cursor: move; user-select: none; font: 12px/1 Tahoma, Verdana, system-ui, sans-serif; }
+#statusWnd { transform: scale(1.2); transform-origin: 0 0; position: fixed; left: 6px; top: 6px; z-index: 6; width: 244px; height: 108px; background: none; touch-action: none; cursor: move; user-select: none; font: 12px/1 Tahoma, Verdana, system-ui, sans-serif; }
 #statusWnd.dragging { opacity: .9; }
 /* moldura da WndStatus1.tga em 9 fatias (o miolo é limpo pelo hud.ts): estica sem borrar os cantos nem deixar fundo quadrado atrás deles */
 #statusWnd::before { content: ''; position: absolute; inset: 0; z-index: -1; border-style: solid; border-width: 22px 9px 9px; border-image: var(--st-frame, none) 22 9 9 fill / 22px 9px 9px stretch; }
 .st-title { position: absolute; left: 10px; right: 26px; top: 2px; height: 17px; line-height: 17px; color: #fff; font-weight: 700; font-size: 11px; text-shadow: -1px -1px 0 #c0261a, 1px -1px 0 #c0261a, -1px 1px 0 #c0261a, 1px 1px 0 #c0261a, 0 -1px 0 #c0261a, 0 1px 0 #c0261a, -1px 0 0 #c0261a, 1px 0 0 #c0261a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .st-face { position: absolute; left: 12px; top: 28px; width: 52px; height: 64px; object-fit: cover; border-radius: 4px; }
 .st-face:not([src]) { display: none; }
-.st-bar { position: absolute; left: 100px; width: 84px; height: 14px; border-radius: 5px; overflow: hidden; background: rgb(120 90 70 / .16); box-shadow: 0 0 0 1px rgb(150 115 95 / .55) inset; }
+.st-bar { position: absolute; left: 100px; width: 132px; height: 14px; border-radius: 5px; overflow: hidden; background: rgb(120 90 70 / .16); box-shadow: 0 0 0 1px rgb(150 115 95 / .55) inset; }
 .st-lbl { position: absolute; left: 70px; width: 28px; font: 700 10px/14px Tahoma, Verdana, sans-serif; color: #3b3fa8; }
 .st-bar i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; transition: width .2s; }
 .st-bar b { position: absolute; inset: 0; text-align: center; font-weight: 700; font-size: 9px; line-height: 14px; color: #fff; text-shadow: 0 0 2px #000, 0 0 1px #000; }

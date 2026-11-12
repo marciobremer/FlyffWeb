@@ -19,14 +19,14 @@ const DST: Record<number, string> = {
   11: 'Velocidade de movimento', 14: 'Bloqueio corpo a corpo', 17: 'Maestria de fogo', 19: 'Maestria elétrica', 20: 'Maestria de vento',
   21: 'Dano de knuckle', 22: 'Dano em PvP', 24: 'Velocidade de ataque', 25: 'Dano de espada', 26: 'Defesa', 29: 'Refletir dano', 34: 'Dano de machado',
   35: 'HP máx.', 36: 'MP máx.', 37: 'FP máx.', 41: 'Recuperação de HP', 47: 'Precisão', 51: 'Velocidade de ataque', 52: 'HP máx.', 53: 'MP máx.', 54: 'FP máx.',
-  55: 'Ataque da arma', 62: 'Magia extra', 63: 'Dano', 64: 'Estado especial', 65: 'Esquiva', 66: 'Ataque', 67: 'Experiência', 68: 'Pulo', 72: 'Defesa',
+  55: 'Ataque da arma', 58: 'Cura automática de HP', 62: 'Magia extra', 63: 'Dano', 64: 'Estado especial', 65: 'Esquiva', 66: 'Ataque', 67: 'Experiência', 68: 'Pulo', 72: 'Defesa',
   73: 'Consumo de MP', 75: 'Velocidade de conjuração', 77: 'Dano crítico', 79: 'Dano em monstros', 80: 'Dano em PvP', 83: 'Ataque', 92: 'Caixa de presente',
   99: 'Chance de drop', 101: 'Dano de fogo (PvE)', 102: 'Dano de água (PvE)', 103: 'Dano elétrico (PvE)', 104: 'Dano de vento (PvE)', 105: 'Dano de terra (PvE)',
   108: 'Dano em atordoados', 109: 'Dano em cegos', 110: 'Dano em envenenados', 111: 'Dano em lentos', 112: 'Dano em sangrando', 118: 'Drop de penya',
   10003: 'Todos os atributos',
 };
 /** DST em percentual (IsDst_Rate do original) */
-const PCT = new Set([8, 9, 11, 14, 17, 19, 20, 24, 29, 47, 51, 52, 53, 54, 65, 66, 67, 72, 73, 75, 77, 79, 80, 99, 101, 102, 103, 104, 105, 108, 109, 110, 111, 112]);
+const PCT = new Set([8, 9, 11, 14, 17, 19, 20, 24, 29, 47, 51, 52, 53, 54, 58, 65, 66, 67, 72, 73, 75, 77, 79, 80, 99, 101, 102, 103, 104, 105, 108, 109, 110, 111, 112]);
 /**
  * "FOR +5", "Ataque +10%" — velocidade de ataque (DST_ATTACKSPEED) aparece como valor/20 %, como o original; o resto, como a
  * dica do original (IsDst_Rate), com o valor cru — inclusive a velocidade de movimento (DST_SPEED 5 = "+5%")

@@ -1259,6 +1259,13 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
    * os buffs da própria classe (a 1ª e a 2ª: um Blade recebe os de Mercenary e de Blade) liberados no nível; 'npc' = os SetBuffSkill do
    * NPC (como antes). Os dois primeiros valem no nível máximo de cada skill e na duração dela (dwSkillTime).
    */
+  /** duração mínima dos buffs do Buff Pang (Get Buffed! / Class Buffs): 1 hora, mesmo para skills que duram menos (Prevention: 10 min) */
+  const BUFF_PANG_MS = 60 * 60_000;
+  /** buffs só para quem lança, em si mesmo (Prevention do Assist): o Buff Pang não dá e nenhuma skill de grupo/alvo pode aplicar em outro jogador */
+  const SELF_ONLY_BUFFS = new Set(['SI_ASS_HEAL_PREVENTION']);
+  /** skills que só valem com a arma equipada elementada (+1 ou mais em qualquer elemento): Empower Weapon do Mercenary — também no Buff Pang */
+  const NEEDS_WEAPON_ELEMENT = new Set(['SI_MER_SUP_IMPOWERWEAPON']);
+  const weaponHasElement = (f: { wElem: [number, number] }) => f.wElem[0] > 0 && f.wElem[1] >= 1;
   function npcBuff(c: Conn, key: string, mode = 'npc') {
     const shops = W(c).shops;
     const p = c.player, cb = c.cb, k = key.toLowerCase();
@@ -1276,18 +1283,18 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (mode === 'assist' || mode === 'class') {
       const lineage = skillCat.lineage(cb.f.job);
       const mine = (job: number) => (mode === 'assist' ? job === 3 : job !== 0 && lineage.has(job));
-      const picked = [...skillCat.byId.values()].filter((s) => mine(s.job) && s.kind === 'buff' && !s.hostile && p.level >= s.reqLevel).sort((a, b) => a.job - b.job || a.reqLevel - b.reqLevel || a.id - b.id);
+      const picked = [...skillCat.byId.values()].filter((s) => mine(s.job) && s.kind === 'buff' && !s.hostile && !SELF_ONLY_BUFFS.has(s.symbol) && !(NEEDS_WEAPON_ELEMENT.has(s.symbol) && !weaponHasElement(cb.f)) && p.level >= s.reqLevel).sort((a, b) => a.job - b.job || a.reqLevel - b.reqLevel || a.id - b.id);
       for (const s of picked) {
         const { L, dst } = effects(s);
         if (!L || !(L.time > 0) || !dst.length) continue; // só buff com duração e efeito (cura instantânea fica de fora)
-        give.push({ skill: s.id, ms: L.time, lv: s.max, dst, fx: s.sfx[2] >= 0 ? s.sfx[2] : s.sfx[4], snd: s.snd[1] >= 0 ? s.snd[1] : s.snd[0] });
+        give.push({ skill: s.id, ms: Math.max(L.time, BUFF_PANG_MS), lv: s.max, dst, fx: s.sfx[2] >= 0 ? s.sfx[2] : s.sfx[4], snd: s.snd[1] >= 0 ? s.snd[1] : s.snd[0] });
       }
       if (!give.length) { reply(c, mode === 'assist' ? 'Não há buffs de Assist liberados para o seu nível.' : 'Não há buffs da sua classe liberados para o seu nível.'); return; }
     } else {
       for (const b of list) {
         if (p.level < b.minLv || p.level > b.maxLv) continue;
         const s = skillCat.byId.get(b.skill);
-        if (!s) continue;
+        if (!s || SELF_ONLY_BUFFS.has(s.symbol)) continue;
         const { L, dst } = effects(s);
         if (!L || !dst.length) continue;
         // efeito em quem recebe (dwSfxObj3; sem ele, o do lançador) e o som do acerto (dwSndAttack2; sem ele, o de lançar)
@@ -1306,7 +1313,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       void inventory?.state(p.id).then((st) => { if (!c.cb) return; refreshFighter(c, st); send(c.ws, buffsMsg(c)); send(c.ws, statsMsg(c)); });
       if (i === give.length - 1) {
         c.buffing = false;
-        reply(c, mode === 'npc' ? `Você recebeu ${give.length} buff(s) no nível máximo por ${Math.round(give[0].ms / 60000)} minutos.` : `Você recebeu ${give.length} buff(s) ${mode === 'assist' ? 'de Assist' : 'da sua classe'} no nível máximo.`);
+        reply(c, mode === 'npc' ? `Você recebeu ${give.length} buff(s) no nível máximo por ${Math.round(give[0].ms / 60000)} minutos.` : `Você recebeu ${give.length} buff(s) ${mode === 'assist' ? 'de Assist' : 'da sua classe'} no nível máximo por 1 hora.`);
       }
     }, i * gap));
   }
@@ -1901,6 +1908,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (s.kind === 'other') { reply(c, `${s.name} ainda não pode ser lançada.`); return; }
     if (!skillCat!.weaponOk(s, cb.f.weapon)) { reply(c, `${s.name} precisa de ${WEAPON_NAMES[s.weapon![0]] ?? 'outra arma'} equipada.`); return; }
     if (s.shield && !cb.f.shield) { reply(c, `${s.name} precisa de um escudo equipado.`); return; }
+    if (NEEDS_WEAPON_ELEMENT.has(s.symbol) && !weaponHasElement(cb.f)) { reply(c, `${s.name} precisa de uma arma com elemento (+1 ou mais) equipada.`); return; }
     const now = Date.now();
     if ((cb.skillReady.get(skillId) ?? 0) > now) return;
     const L = s.levels[lv - 1];

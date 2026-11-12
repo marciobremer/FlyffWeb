@@ -9,6 +9,7 @@ import './options.css';
 export interface Opts {
   /** 0 = High, 1 = Middle, 2 = Low */
   field: number; objRange: number; objDetail: number; shadow: number;
+  /** Distance Blur: 0 = desligado, 1 = leve, 2 = forte (desfoca o que está longe da câmera) */ farBlur: number;
   itemFx: number; bgFx: number; gamma: number; brightness: number; shade: number;
   lowRender: boolean; expandCam: boolean; npcNames: boolean; damage: boolean; myName: boolean; otherNames: boolean; weather: boolean;
   windowMode: boolean; viewMask: boolean; camFix: boolean; reduceAA: boolean; aniso: boolean;
@@ -24,7 +25,7 @@ export interface Opts {
 }
 
 export const DEFAULT_OPTS: Opts = {
-  field: 0, objRange: 0, objDetail: 0, shadow: 0, itemFx: 0.85, bgFx: 0.9, gamma: 0.5, brightness: 0.5, shade: 0.5,
+  field: 0, objRange: 0, objDetail: 0, shadow: 0, farBlur: 1, itemFx: 0.85, bgFx: 0.9, gamma: 0.5, brightness: 0.5, shade: 0.5,
   lowRender: false, expandCam: false, npcNames: true, damage: true, myName: true, otherNames: true, weather: true,
   windowMode: true, viewMask: true, camFix: true, reduceAA: true, aniso: true,
   quality: 'high', fps: 60, resScale: 1, winOpacity: 1, showFps: true, volume: 0.5, mute: false,
@@ -169,6 +170,7 @@ export class OptionsWindow extends GameWindow {
     this.radio3(left, 'Object Range', 'objRange');
     this.radio3(left, 'Object Detail', 'objDetail');
     this.radio3(left, 'Shadow Detail', 'shadow');
+    this.select(left, 'Distance Blur', 'farBlur', [['Off', 0], ['Light', 1], ['Strong', 2]]);
     this.slider(left, 'Item effect', 'itemFx');
     this.slider(left, 'BG effect', 'bgFx');
     this.slider(left, 'Gamma', 'gamma');
@@ -190,7 +192,7 @@ export class OptionsWindow extends GameWindow {
   }
 
   /** lista suspensa (rótulo azul em cima, como na aba Rendering do cliente) */
-  private select<K extends 'font' | 'dmgFormat' | 'pets'>(col: HTMLElement, label: string, k: K, options: [string, string | number][]) {
+  private select<K extends 'font' | 'dmgFormat' | 'pets' | 'farBlur'>(col: HTMLElement, label: string, k: K, options: [string, string | number][]) {
     const l = document.createElement('div'); l.className = 'op-sel-lbl'; l.textContent = label;
     const s = document.createElement('select'); s.className = 'op-sel';
     options.forEach(([name, v], i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = name; s.append(o); });

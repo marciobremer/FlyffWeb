@@ -130,6 +130,8 @@ export class WorldView {
   radius = 3;
   /** opções (client/options.ts): afastar mais a câmera, câmera que não atravessa o cenário, escala dos alcances de detalhe (1 / .7 / .45) */
   camExpand = 1; cameraFix = true; detail = 1;
+  /** opção "Object Range": distância (unidades do mundo) além da qual os objetos do cenário de um pedaço de terreno não são desenhados (Infinity = todos) */
+  objRangeDist = Infinity;
   /** chamadas de desenho e triângulos da cena no último quadro (?perf) */
   readonly sceneStats = { calls: 0, triangles: 0 };
   applyCamExpand() { if (this.gameCamera) this.controls.maxDistance = CAM_MAX_DIST * this.camExpand; }
@@ -318,6 +320,29 @@ export class WorldView {
   }
 
   // ---------- tiles ----------
+  /**
+   * Costura do terreno: nos dados originais algumas bordas de pedaços vizinhos têm alturas diferentes (até ~16 unidades, ex.: 12|13 na
+   * linha 6 do WdMadrigal) e aparece uma rachadura/degrau. Com isto ligado (só o jogo; o editor não mexe nas alturas), o pedaço que
+   * acabou de carregar ajusta a borda para bater com a dos vizinhos já carregados e suaviza para dentro (FEATHER células).
+   */
+  stitchSeams = false;
+  private stitch(land: Landscape, x: number, y: number) {
+    const N = MAP_SIZE + 1, h = land.heights, FEATHER = 8, MAX_FIX = 40; // diferença maior que isso é de propósito (sem dado/oceano): não mexe
+    const sides: [dx: number, dy: number][] = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+    for (const [dx, dy] of sides) {
+      const nb = this.tiles.get(key(x + dx, y + dy))?.land.heights;
+      if (!nb) continue;
+      // índice do vértice i da borda (own) e o do vizinho que está no mesmo lugar do mundo; `k` = distância (células) para dentro
+      const own = (i: number, k: number) => (dx === -1 ? i * N + k : dx === 1 ? i * N + (MAP_SIZE - k) : dy === -1 ? k * N + i : (MAP_SIZE - k) * N + i);
+      const other = (i: number) => (dx === -1 ? i * N + MAP_SIZE : dx === 1 ? i * N : dy === -1 ? MAP_SIZE * N + i : i);
+      const diff = new Float32Array(N);
+      let max = 0;
+      for (let i = 0; i < N; i++) { diff[i] = nb[other(i)] - h[own(i, 0)]; max = Math.max(max, Math.abs(diff[i])); }
+      if (max < 0.05 || max > MAX_FIX) continue;
+      for (let i = 0; i < N; i++) for (let k = 0; k < FEATHER; k++) h[own(i, k)] += diff[i] * (1 - k / FEATHER);
+    }
+  }
+
   async loadTile(x: number, y: number, token = this.loadToken) {
     const k = key(x, y);
     const d = this.data;
@@ -326,6 +351,7 @@ export class WorldView {
     try {
       const land = await d.loadTile(x, y);
       if (!land || token !== this.loadToken || !this.data) return;
+      if (this.stitchSeams) this.stitch(land, x, y);
       const group = new Group();
       const objGroup = new Group(), sfxGroup = new Group();
       const terrain = buildTerrain(land, d.wld.mpu, this.colorMode, this.terrainTex);
@@ -363,9 +389,18 @@ export class WorldView {
     this.applyTileVisibility(view);
   }
 
+  /** o pedaço de terreno tem alguma parte dentro do alcance de objetos (Object Range) a partir do alvo da câmera? */
+  private tileInObjRange(v: TileView) {
+    const d = this.data;
+    if (!d || this.objRangeDist === Infinity) return true;
+    const s = MAP_SIZE * d.wld.mpu, px = this.controls.target.x, pz = -this.controls.target.z;
+    const dx = Math.max(v.x * s - px, 0, px - (v.x + 1) * s), dz = Math.max(v.y * s - pz, 0, pz - (v.y + 1) * s);
+    return Math.hypot(dx, dz) <= this.objRangeDist;
+  }
+
   private applyTileVisibility(v: TileView) {
     v.terrain.visible = this.layers.terrain;
-    v.objGroup.visible = this.layers.objs;
+    v.objGroup.visible = this.layers.objs && this.tileInObjRange(v);
     v.sfxGroup.visible = this.layers.sfx;
     this.sfxFxGroup.visible = this.layers.sfx;
     v.waterGroup.visible = this.layers.water;
@@ -510,6 +545,7 @@ export class WorldView {
     this.camera.far = Math.max(3000, (r + 2) * s * 1.6);
     this.camera.updateProjectionMatrix();
     this.moverMgr.refresh(this.controls.target.x, -this.controls.target.z);
+    this.tiles.forEach((t) => { t.objGroup.visible = this.layers.objs && this.tileInObjRange(t); }); // Object Range
     if (this.layers.sfx) {
       const cands: { obj: WorldObject; file: string }[] = [];
       // brilho dos lampiões (sfx_light*.sfx): só à noite, como as partes "luz" dos modelos. O Titanium deixa sempre aceso

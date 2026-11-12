@@ -24,6 +24,7 @@ uniform sampler2D tColor;
 uniform sampler2D tDepth;
 uniform vec2 texel;
 uniform float cNear, cFar, strength, outline, saturation;
+uniform float blurAmt, blurStart, blurRange;
 uniform vec3 haze;
 varying vec2 vUv;
 
@@ -38,6 +39,29 @@ void main() {
   float raw = texture2D(tDepth, vUv).x;
   bool sky = raw >= 0.99999;
   float d = lin(vUv);
+
+  // desfoque à distância (profundidade de campo simples): quanto mais longe da câmera, mais "sem foco". Os pontos vizinhos
+  // que estão bem mais perto que este não entram na média (senão o objeto da frente "escorre" sobre o fundo)
+  if (blurAmt > 0.0 && !sky) {
+    float f = smoothstep(blurStart, blurStart + blurRange, d) * blurAmt;
+    if (f > 0.02) {
+      float rad = f * 3.5;
+      vec3 acc = src;
+      float wsum = 1.0;
+      for (int i = 0; i < 12; i++) {
+        float a = float(i) * 2.39996;
+        float r = sqrt((float(i) + 0.5) / 12.0) * rad;
+        vec2 uv2 = vUv + vec2(cos(a), sin(a)) * r * texel;
+        float w = lin(uv2) >= d * 0.85 ? 1.0 : 0.0;
+        acc += texture2D(tColor, uv2).rgb * w;
+        wsum += w;
+      }
+      src = acc / wsum;
+    }
+  }
+  // só o desfoque (sem o visual "zelda"): termina aqui
+  if (strength <= 0.0) { gl_FragColor = vec4(src, 1.0); return; }
+
   vec3 c = src;
 
   // brilho suave: média das partes claras ao redor (dois anéis)
@@ -93,6 +117,8 @@ void main() {
 
 export class PostFx {
   settings: FilterSettings = defaultFilter();
+  /** desfoque à distância (opção "Distance Blur"): amount 0 = desligado; começa a `start` unidades da câmera e chega ao máximo em start + range */
+  readonly blur = { amount: 0, start: 150, range: 350 };
   private rt: WebGLRenderTarget | null = null;
   private readonly scene = new Scene();
   private readonly cam = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -100,7 +126,7 @@ export class PostFx {
     vertexShader: vert, fragmentShader: frag, depthTest: false, depthWrite: false,
     uniforms: {
       tColor: { value: null }, tDepth: { value: null }, texel: { value: new Vector2() },
-      cNear: { value: 1 }, cFar: { value: 1000 }, strength: { value: 1 }, outline: { value: 1 }, saturation: { value: 1 }, haze: { value: new Color(0.66, 0.8, 0.95) },
+      cNear: { value: 1 }, cFar: { value: 1000 }, strength: { value: 1 }, outline: { value: 1 }, saturation: { value: 1 }, blurAmt: { value: 0 }, blurStart: { value: 150 }, blurRange: { value: 350 }, haze: { value: new Color(0.66, 0.8, 0.95) },
     },
   });
 
@@ -110,7 +136,8 @@ export class PostFx {
     this.scene.add(quad);
   }
 
-  get active() { return this.settings.filter !== 'none' && this.settings.strength > 0; }
+  private get look() { return this.settings.filter !== 'none' && this.settings.strength > 0; }
+  get active() { return this.look || this.blur.amount > 0; }
 
   /** Começa o quadro: com filtro ativo, desenha numa textura do tamanho da tela; sem filtro, direto na tela. */
   begin() {
@@ -134,7 +161,8 @@ export class PostFx {
     u.tColor.value = this.rt.texture; u.tDepth.value = this.rt.depthTexture;
     u.texel.value.set(1 / this.rt.width, 1 / this.rt.height);
     u.cNear.value = camera.near; u.cFar.value = camera.far;
-    u.strength.value = Math.min(1, Math.max(0, this.settings.strength));
+    u.strength.value = this.look ? Math.min(1, Math.max(0, this.settings.strength)) : 0; // 0 = só o desfoque
+    u.blurAmt.value = this.blur.amount; u.blurStart.value = this.blur.start; u.blurRange.value = this.blur.range;
     u.outline.value = this.settings.outline ? 1 : 0;
     u.saturation.value = this.settings.saturation ?? 1;
     if (haze) u.haze.value.copy(haze).lerp(new Color(0.62, 0.78, 0.97), 0.5);

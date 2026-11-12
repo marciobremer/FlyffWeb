@@ -129,6 +129,7 @@ interface Account { username: string; authority: string }
 interface LoginReply { token: string; account: Account; characters: CharacterInfo[] }
 
 const view = new WorldView($<HTMLCanvasElement>('view'));
+view.stitchSeams = true; // costura do terreno: bordas de pedaços vizinhos com alturas diferentes nos dados originais são ajustadas (o editor não liga)
 view.playerControl = false;
 /** mobs vêm do servidor: todos os jogadores veem os mesmos */
 view.serverMobs = true;
@@ -1213,8 +1214,9 @@ function applyOpts(o: Opts, key: keyof Opts | null) {
     applyVideo(o);
   }
   if (is('fps')) { prefs.fps = o.fps; savePrefs(); $<HTMLSelectElement>('fps').value = String(o.fps); view.maxFps = o.fps; }
-  if (is('objRange')) view.moverMgr.radius = [900, 600, 350][o.objRange];
+  if (is('objRange')) { view.moverMgr.radius = [900, 600, 350][o.objRange]; view.objRangeDist = [Infinity, 1100, 700][o.objRange]; view.moverMgr.drawRadius = [Infinity, 110, 70][o.objRange]; view.invalidate(); }
   if (is('objDetail')) { view.detail = view.moverMgr.detail = [1, 0.7, 0.45][o.objDetail]; }
+  if (is('farBlur', 'quality')) view.postfx.blur.amount = o.quality === 'low' ? 0 : [0, 0.6, 1][o.farBlur] ?? 0; // desfoque do que está longe da câmera
   if (is('itemFx')) MoverInstance.itemFx = o.itemFx;
   if (is('bgFx')) view.layers = { ...view.layers, sfx: o.bgFx > 0.05 };
   if (is('gamma', 'brightness', 'shade')) applyColor(o);
