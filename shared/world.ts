@@ -877,14 +877,16 @@ export class WorldView {
   private moverVisible(inst: MoverInstance) {
     if (inst.owner === 'players' || inst.owner === 'pets') return true; // jogadores e pets têm a própria checagem
     const cam = this.camera.position, base = new Vector3().setFromMatrixPosition(inst.group.matrixWorld);
-    if (base.distanceTo(cam) > this.moverMgr.labelDistance + 10) return false;
+    if (base.distanceTo(cam) > this.moverMgr.labelDistance + 40) return false; // clicável um pouco além de onde o nome aparece
     const chest = base.clone();
     chest.y += Math.max(0.6, (inst.tpl.height + (inst.tpl.lift ?? 0)) * (inst.tpl.entry.scale || 1) * 0.7);
+    // só um morro DE VERDADE na frente esconde o monstro: o trecho final (os últimos 20% perto dele) não conta, senão correr em subida
+    // ou clicar num monstro na encosta era recusado pela própria elevação do chão sob o monstro
     const N = 16;
-    for (let i = 1; i < N; i++) {
+    for (let i = 1; i < N * 0.8; i++) {
       const t = i / N, x = cam.x + (chest.x - cam.x) * t, y = cam.y + (chest.y - cam.y) * t, z = cam.z + (chest.z - cam.z) * t;
       const h = this.sampleHeight(x, -z);
-      if (h !== null && h > y + 0.3) return false; // morro na frente
+      if (h !== null && h > y + 0.8) return false; // morro na frente
     }
     return true;
   }
