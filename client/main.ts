@@ -14,7 +14,7 @@ import { CharStage } from './charpreview';
 import { fmtGameHour, gameHour } from '../shared/gameclock';
 import { GameHud, provisionalMax } from './hud';
 import { type SkillFx, NetClient, RemotePlayers } from './net';
-import { ActionBar, ChatWindow, InventoryWindow, type BarItem } from './ui';
+import { ActionBar, ChatWindow, InventoryWindow, setHammerTheme, type BarItem } from './ui';
 import { CraftWindow } from './craft';
 import { ItemTimeWindow } from './itemtime';
 import { setFailStack, setRarities, setTipPlayer, setTipStaff } from './itemtip';
@@ -1198,6 +1198,13 @@ function applyOpts(o: Opts, key: keyof Opts | null) {
   if (is('otherNames')) remotes.showNames = o.otherNames;
   if (is('weather')) rain.set(lastRain && o.weather);
   if (is('aniso')) view.setAnisotropy(o.aniso ? 8 : 1);
+  if (is('font')) { document.body.classList.toggle('custom-font', !!o.font); document.documentElement.style.setProperty('--game-font', `"${o.font}", Tahoma, Verdana, sans-serif`); }
+  if (is('dmgFormat')) combat.spaces = o.dmgFormat === 1;
+  if (is('pets')) { pets.mode = o.pets; pets.selfId = () => net.myId; }
+  if (is('cursor')) { view.setCursorTheme(o.cursor); setHammerTheme(o.cursor); }
+  if (is('hideChat')) document.body.classList.toggle('hide-chatbox', o.hideChat);
+  if (is('hideHeal')) combat.showHeal = !o.hideHeal;
+  if (is('roundBuffs')) document.body.classList.toggle('round-buffs', o.roundBuffs);
   if (is('winOpacity')) document.documentElement.style.setProperty('--wnd-alpha', String(o.winOpacity));
   if (is('showFps')) $('hud').style.visibility = o.showFps ? '' : 'hidden';
   if (is('volume', 'mute')) audio.setVolume(o.mute ? 0 : o.volume);

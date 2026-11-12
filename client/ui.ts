@@ -214,8 +214,10 @@ const SUIT_PART = 2;
  * Martelo do modo de piercing: o cursor CUR_HAMMER do Neuz é o `anvil` de Data/Cursors; o do tema padrão (CurDefault) é o anvil.cur
  * (2 quadros, levanta e bate). Carregado na 1ª vez; sem ele, fica o SVG reserva (cabo de madeira, cabeça de ferro).
  */
-const HAMMER_ANI = '/res/Data/Cursors/CurDefault/anvil.cur';
+let HAMMER_ANI = '/res/Data/Cursors/CurDefault/anvil.cur';
 let hammerAni: Promise<AniCursor | null> | null = null;
+/** troca o tema do cursor (martelo incluso) — opção "Cursors" */
+export function setHammerTheme(theme: string) { HAMMER_ANI = `/res/Data/Cursors/${theme}/anvil.cur`; hammerAni = null; }
 /** último ponto do mouse na tela: o martelo aparece ali na hora, sem esperar o mouse mexer */
 const mouse = { x: innerWidth / 2, y: innerHeight / 2 };
 addEventListener('pointermove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; }, { capture: true, passive: true });

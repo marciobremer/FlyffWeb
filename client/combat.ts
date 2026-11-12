@@ -115,12 +115,16 @@ export class Combat {
     const inner = document.createElement('div');
     inner.className = 'dmgnum-in';
     inner.style.height = `${cell}px`;
-    for (const ch of String(Math.max(0, Math.round(n)))) {
+    const text = String(Math.max(0, Math.round(n))), gap = this.spaces ? cell * 0.4 : 0;
+    let extra = 0;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i], more = this.spaces && i < text.length - 1 && (text.length - i - 1) % 3 === 0 ? gap : 0;
+      extra += more;
       const d = document.createElement('i');
-      d.style.cssText = `width:${cell}px;height:${cell}px;margin-right:${adv - cell}px;background-size:${1024 * k}px ${256 * k}px;background-position:${-Number(ch) * 50 * k}px ${-row * k}px`;
+      d.style.cssText = `width:${cell}px;height:${cell}px;margin-right:${adv - cell + more}px;background-size:${1024 * k}px ${256 * k}px;background-position:${-Number(ch) * 50 * k}px ${-row * k}px`;
       inner.append(d);
     }
-    inner.style.width = `${adv * (String(Math.round(n)).length - 1) + cell}px`;
+    inner.style.width = `${adv * (text.length - 1) + cell + extra}px`;
     el.append(inner);
     void atlas().then((u) => { if (u) inner.style.setProperty('--atlas', `url(${u})`); });
     const obj = new CSS2DObject(el);
@@ -145,8 +149,12 @@ export class Combat {
   /** número de dano subindo de um ponto (FlyFF x, y, z) */
   /** opção "Display Damage": desligada, os números de dano e o MISS não aparecem (cura e avisos continuam) */
   showDamage = true;
+  /** opção "Hide Healing Numbers" e formato do dano com espaços ("Render Damage") */
+  showHeal = true;
+  spaces = false;
   popup(pos: [number, number, number], text: string, kind: 'mob' | 'me' | 'crit' | 'miss' | 'other' | 'heal' | 'healmp' | 'healfp' | 'notice') {
     if (!this.showDamage && (kind === 'mob' || kind === 'me' || kind === 'crit' || kind === 'miss' || kind === 'other')) return;
+    if (!this.showHeal && (kind === 'heal' || kind === 'healmp' || kind === 'healfp')) return;
     const el = document.createElement('div');
     el.className = `dmg ${kind}`;
     el.textContent = text;

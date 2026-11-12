@@ -1,4 +1,18 @@
 /* janela Option (client/options.ts) */
+/* aba Rendering: lista suspensa, lista de cursores e subtítulo */
+.op-sel-lbl { margin: 8px 0 4px; font-weight: 700; color: #1f6fb0; font-size: 13px; }
+.op-sel { width: 100%; padding: 3px 4px; border: 1px solid #b8b8b8; border-radius: 2px; background: #fff; color: #222; font: 12px Tahoma, Verdana, sans-serif; }
+.op-curlist { height: 108px; overflow: auto; border: 1px solid #b8b8b8; background: #fff; }
+.op-cur { display: flex; align-items: center; gap: 8px; width: 100%; padding: 1px 8px; border: 0; background: transparent; color: #222; font: 12px Tahoma, sans-serif; text-align: left; cursor: pointer; }
+.op-cur:hover { background: #eef3ff; }
+.op-cur.on { color: #1f6fd9; }
+.op-cur img { image-rendering: pixelated; }
+.op-sub { margin-top: 10px; }
+/* fonte da interface escolhida na aba Rendering */
+body.custom-font *:not(canvas):not(svg):not(kbd) { font-family: var(--game-font) !important; }
+/* Hide Chatbox / Round Buff Icons */
+body.hide-chatbox #chatWnd { display: none !important; }
+body.round-buffs .buff { border-radius: 50% !important; overflow: hidden; }
 /* opção "Window opacity" (aba Custom) */
 .gwnd { opacity: var(--wnd-alpha, 1); }
 /* opção "Show NPC Name" desligada: some o nome de NPCs e monstros */

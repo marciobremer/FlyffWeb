@@ -15,6 +15,9 @@ const RESTART = 0.8;
 
 export class Pets {
   private list = new Map<number, Pet>();
+  /** opção "Pet Options": 0 = todos, 1 = esconde os dos outros, 2 = esconde todos; `selfId` = id do próprio jogador */
+  mode = 0;
+  selfId: () => number = () => 0;
   constructor(private view: WorldView, private ownerPos: (id: number) => [number, number, number] | null) {}
 
   /** o pet do jogador `owner` apareceu (mover = MI_*) ou sumiu (0) */
@@ -41,6 +44,7 @@ export class Pets {
     for (const [owner, p] of this.list) {
       const o = this.ownerPos(owner);
       const has = mm.externalInfo(-owner);
+      if (this.mode === 2 || (this.mode === 1 && owner !== this.selfId())) { if (has) mm.removeExternal(-owner); continue; }
       if (!o) { if (has) mm.removeExternal(-owner); continue; } // dono fora da vista: o pet some junto
       if (!has) {
         // (re)aparece: ao chamar, ao trocar de mapa ou depois de limpar os mobs

@@ -13,6 +13,9 @@ export interface Opts {
   lowRender: boolean; expandCam: boolean; npcNames: boolean; damage: boolean; myName: boolean; otherNames: boolean; weather: boolean;
   windowMode: boolean; viewMask: boolean; camFix: boolean; reduceAA: boolean; aniso: boolean;
   /** Rendering */ quality: 'high' | 'medium' | 'low'; fps: number; resScale: number;
+  /** fonte da interface ('' = a do jogo), formato do dano (0 = junto, 1 = com espaços), pets (0 = todos, 1 = esconde os dos outros, 2 = esconde todos), tema do cursor (pasta de Data/Cursors) */
+  font: string; dmgFormat: number; pets: number; cursor: string;
+  hideChat: boolean; hideHeal: boolean; roundBuffs: boolean;
   /** Custom */ winOpacity: number; showFps: boolean;
   /** Game / Audio */ volume: number; mute: boolean;
 }
@@ -22,6 +25,7 @@ export const DEFAULT_OPTS: Opts = {
   lowRender: false, expandCam: false, npcNames: true, damage: true, myName: true, otherNames: true, weather: true,
   windowMode: true, viewMask: true, camFix: true, reduceAA: true, aniso: true,
   quality: 'high', fps: 60, resScale: 1, winOpacity: 1, showFps: true, volume: 0.5, mute: false,
+  font: '', dmgFormat: 0, pets: 0, cursor: 'CurDefault', hideChat: false, hideHeal: false, roundBuffs: false,
 };
 
 const KEY = 'flyff.options.v1';
@@ -29,6 +33,9 @@ export const loadOpts = (): Opts => {
   try { return { ...DEFAULT_OPTS, ...(JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Opts>) }; } catch { return { ...DEFAULT_OPTS }; }
 };
 
+const FONTS: [string, string][] = [['Default (Tahoma)', ''], ['Arial', 'Arial'], ['Verdana', 'Verdana'], ['Segoe UI', 'Segoe UI'], ['Trebuchet MS', 'Trebuchet MS'], ['Georgia', 'Georgia'], ['Courier New', 'Courier New'], ['Comic Sans MS', 'Comic Sans MS']];
+/** temas de cursor de Data/Cursors (o CurDefault6 só tem o martelo animado, fica de fora) */
+const CURSORS: [string, string][] = [['Default Cursors', 'CurDefault'], ['Titanium Cursors', 'CurTitanium'], ['Custom Cursors #1', 'CurCustom1'], ['Custom Cursors #2', 'CurCustom2'], ['Cursors 1', 'CurDefault1'], ['Cursors 2', 'CurDefault2'], ['Cursors 3', 'CurDefault3'], ['Cursors 4', 'CurDefault4'], ['Cursors 5', 'CurDefault5']];
 const TABS = ['Video', 'Rendering', 'Custom', 'Game / Audio', 'Hotkeys'];
 const HOTKEYS: [string, string][] = [
   ['W A S D / setas', 'Andar'], ['Espaço', 'Pular'], ['X', 'Andar / correr'], ['Clique no chão', 'Andar até lá'], ['Clique no monstro (duas vezes)', 'Selecionar / atacar'],
@@ -117,7 +124,7 @@ export class OptionsWindow extends GameWindow {
     col.append(row);
   }
 
-  private check(col: HTMLElement, label: string, k: keyof Pick<Opts, 'lowRender' | 'expandCam' | 'npcNames' | 'damage' | 'myName' | 'otherNames' | 'weather' | 'windowMode' | 'viewMask' | 'camFix' | 'reduceAA' | 'aniso' | 'showFps' | 'mute'> | 'night', title = '') {
+  private check(col: HTMLElement, label: string, k: keyof Pick<Opts, 'lowRender' | 'expandCam' | 'npcNames' | 'damage' | 'myName' | 'otherNames' | 'weather' | 'windowMode' | 'viewMask' | 'camFix' | 'reduceAA' | 'aniso' | 'showFps' | 'mute' | 'hideChat' | 'hideHeal' | 'roundBuffs'> | 'night', title = '') {
     const lab = document.createElement('label');
     lab.className = 'op-check';
     if (title) lab.title = title;
@@ -177,13 +184,52 @@ export class OptionsWindow extends GameWindow {
     this.check(right, 'Night Mode', 'night');
   }
 
+  /** lista suspensa (rótulo azul em cima, como na aba Rendering do cliente) */
+  private select<K extends 'font' | 'dmgFormat' | 'pets'>(col: HTMLElement, label: string, k: K, options: [string, string | number][]) {
+    const l = document.createElement('div'); l.className = 'op-sel-lbl'; l.textContent = label;
+    const s = document.createElement('select'); s.className = 'op-sel';
+    options.forEach(([name, v], i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = name; s.append(o); });
+    const show = () => { s.value = String(Math.max(0, options.findIndex(([, v]) => v === this.values[k]))); };
+    show();
+    s.addEventListener('change', () => this.set(k, options[Number(s.value)][1] as never));
+    this.sync.push(show);
+    col.append(l, s);
+  }
+
+  /** lista de temas de cursor, com a seta de cada um ao lado do nome; o escolhido fica em azul */
+  private cursorList(col: HTMLElement) {
+    const l = document.createElement('div'); l.className = 'op-sel-lbl'; l.textContent = 'Cursors'; col.append(l);
+    const box = document.createElement('div'); box.className = 'op-curlist'; box.setAttribute('role', 'listbox'); col.append(box);
+    const rows = CURSORS.map(([name, folder]) => {
+      const r = document.createElement('button'); r.type = 'button'; r.className = 'op-cur'; r.setAttribute('role', 'option');
+      const img = document.createElement('img'); img.alt = ''; img.width = img.height = 20; img.src = `/res/Data/Cursors/${folder}/curBase.cur`;
+      r.append(img, document.createTextNode(name));
+      r.addEventListener('click', () => { this.set('cursor', folder); show(); });
+      box.append(r);
+      return [r, folder] as const;
+    });
+    const show = () => rows.forEach(([r, f]) => { r.classList.toggle('on', this.values.cursor === f); r.setAttribute('aria-selected', String(this.values.cursor === f)); });
+    show();
+    this.sync.push(show);
+  }
+
   private buildRendering(p: HTMLElement) {
-    this.head(p, '~ Rendering ~');
-    const col = document.createElement('div'); col.className = 'op-one'; p.append(col);
-    this.choice(col, 'Quality', 'quality', [['High', 'high'], ['Middle', 'medium'], ['Low', 'low']]);
-    this.choice(col, 'FPS limit', 'fps', [['30', 30], ['60', 60], ['Max', 0]]);
-    this.slider(col, 'Resolution', 'resScale', 0.5, 1, 0.05);
-    const n = document.createElement('p'); n.className = 'op-note'; n.textContent = 'Quality liga/desliga sombra e reduz o alcance do cenário; Resolution reduz a imagem para ganhar quadros.'; col.append(n);
+    this.head(p, '~ Rendering Option ~');
+    const cols = document.createElement('div'); cols.className = 'op-cols';
+    const left = document.createElement('div'), right = document.createElement('div');
+    cols.append(left, right); p.append(cols);
+    this.select(left, 'Game Font', 'font', FONTS);
+    this.select(left, 'Render Damage', 'dmgFormat', [['None', 0], ['Spaces', 1]]);
+    this.select(left, 'Pet Options', 'pets', [['Show Pets', 0], ['Hide Others\' Pets', 1], ['Hide Pets', 2]]);
+    this.cursorList(left);
+    this.check(right, 'Hide Chatbox', 'hideChat');
+    this.check(right, 'Hide Healing Numbers', 'hideHeal');
+    this.check(right, 'Round Buff Icons', 'roundBuffs');
+    const sub = document.createElement('div'); sub.className = 'op-sub'; right.append(sub);
+    this.head(sub, 'Performance');
+    this.choice(sub, 'Quality', 'quality', [['High', 'high'], ['Mid', 'medium'], ['Low', 'low']]);
+    this.choice(sub, 'FPS limit', 'fps', [['30', 30], ['60', 60], ['Max', 0]]);
+    this.slider(sub, 'Resolution', 'resScale', 0.5, 1, 0.05);
   }
 
   private buildCustom(p: HTMLElement) {

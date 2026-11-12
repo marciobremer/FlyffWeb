@@ -971,10 +971,17 @@ export class WorldView {
 
   // ---------- entrada (mouse/teclado) e cursores do cliente ----------
   /** Data/Cursors/CurDefault (hotspot 0,0): espada sobre mob, balão sobre NPC, seta no resto */
-  private cursors = (() => {
-    const c = (f: string, fb: string) => `url("/res/Data/Cursors/CurDefault/${f}") 0 0, ${fb}`;
+  private cursorSet = (theme: string) => {
+    const c = (f: string, fb: string) => `url("/res/Data/Cursors/${theme}/${f}") 0 0, ${fb}`;
     return { base: c('curBase.cur', 'default'), attack: c('curAttack.cur', 'crosshair'), npc: c('curNPC.cur', 'pointer') };
-  })();
+  };
+  private cursors = this.cursorSet('CurDefault');
+  /** tema de cursor (pasta de Data/Cursors; opção "Cursors"): sobre o canvas e em toda a interface */
+  setCursorTheme(theme: string) {
+    this.cursors = this.cursorSet(theme);
+    this.hoverKind = '';
+    document.documentElement.style.setProperty('--cur-base', `url("/res/Data/Cursors/${theme}/curBase.cur")`);
+  }
   private hoverAt: { clientX: number; clientY: number } | null = null;
   private hoverKind = '';
   private down: { x: number; y: number } | null = null;
