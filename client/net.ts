@@ -7,7 +7,7 @@ import { MoverInstance, preloadMotions } from '../shared/movers';
 import { hairRgb, loadHumanTemplate } from '../shared/humans';
 import { applyEnchantGlow } from '../shared/enchantGlow';
 import { fuseSkinned } from '../shared/meshfuse';
-import { attachRide, flyMotion, rideOf } from '../shared/ride';
+import { attachMount, attachRide, flyMotion, mountOf, rideOf } from '../shared/ride';
 import { objectMatrix } from '../shared/math';
 import { OT, type WorldObject } from '../shared/formats/types';
 import { motionOf, motionsFor, nextHit } from '../shared/motions';
@@ -30,7 +30,7 @@ export interface PlayerStats {
   /** ataque exibido na janela H (como o RenderATK do original) */
   atkShow?: number;
   /** bloqueio corpo a corpo / à distância, redução de conjuração e dano extra em monstro / jogador (%) */
-  mBlock?: number; rBlock?: number; dct?: number; pvm?: number; pvp?: number; /** DST_SPEED, DST_ADJ_HITRATE e DST_PARRY crus (janela __STATISTICS) */ mvPct?: number; hit?: number; dodgeRate?: number; str: number; sta: number; dex: number; int: number; points: number; job: number;
+  /** Premium Scroll ativo */ premium?: boolean; mBlock?: number; rBlock?: number; dct?: number; pvm?: number; pvp?: number; /** DST_SPEED, DST_ADJ_HITRATE e DST_PARRY crus (janela __STATISTICS) */ mvPct?: number; hit?: number; dodgeRate?: number; str: number; sta: number; dex: number; int: number; points: number; job: number;
   /** bônus de atributo vindo dos equipamentos, precisão extra, esquiva e velocidade de ataque (%) */
   bonus: { str: number; sta: number; dex: number; int: number }; acc: number; dodge: number; spd: number;
   /** classes que dá para escolher agora (nível 15 / 60) */
@@ -131,6 +131,7 @@ export class RemotePlayers {
     this.world.playerGroup.add(inst.group);
     this.world.attachSetSfx(inst, r.view.eq ?? []);
     void attachRide(inst, rideOf(d, r.view.eq ?? []), this.world.lib);
+    void attachMount(inst, mountOf(d, r.view.eq ?? []), this.world.lib); // montaria de chão
     if (r.s.startsWith('fly')) inst.play(this.motionFor(r));
     // troca de equipamento: o modelo antigo sai só agora, no mesmo quadro em que o novo entra
     r.inst?.dispose();
@@ -405,7 +406,8 @@ export class NetClient {
   /** efeitos de skill de buff/cura (quem lançou e os ids XI_*) */
   onSkillFx: (a: number, fx: SkillFx, target?: number) => void = () => {};
   /** debuff de skill no mob `id` por `ms` (o relógio corre no cliente) */
-  onMobDebuff: (id: number, sk: number, name: string, icon: string, ms: number) => void = () => {};
+  /** `delay`: ms até o efeito chegar no alvo (padrão: o movimento de lançar); 0 = já (atordoamento por golpe) */
+  onMobDebuff: (id: number, sk: number, name: string, icon: string, ms: number, delay?: number) => void = () => {};
   /** loja do NPC aberta pelo servidor */
   onShop: (s: import('./shop').ShopView) => void = () => {};
   /** você foi revivido no lugar (Resurrection de um Assist) */
@@ -597,7 +599,7 @@ export class NetClient {
       } else if (m.t === 'skillfx') {
         this.onSkillFx(Number(m.a), m.fx as SkillFx, m.tg === undefined ? undefined : Number(m.tg));
       } else if (m.t === 'mdebuff') {
-        this.onMobDebuff(Number(m.id), Number(m.sk), String(m.name ?? ''), String(m.icon ?? ''), Number(m.ms) || 0);
+        this.onMobDebuff(Number(m.id), Number(m.sk), String(m.name ?? ''), String(m.icon ?? ''), Number(m.ms) || 0, m.d === undefined ? undefined : Number(m.d));
       } else if (m.t === 'skillUsed') {
         this.onSkillUsed(Number(m.id), Number(m.cd) || 1000);
       } else if (m.t === 'getup') {
@@ -749,7 +751,8 @@ export class NetClient {
   zckTeleport(k: number) { return this.raw({ t: 'zckTeleport', k }); }
   /** aprender/subir skills ({ id: nível novo }) e lançar uma skill no mob */
   skillUp(levels: Record<number, number>) { return this.raw({ t: 'skillUp', levels }); }
-  castSkill(id: number, target: number) { return this.raw({ t: 'skill', id, target }); }
+  /** `slot`: lançada pela Action Slot (com a Activition ativa não gasta MP/FP) */
+  castSkill(id: number, target: number, slot = false) { return this.raw({ t: 'skill', id, target, ...(slot ? { slot: 1 } : {}) }); }
   /** loja do NPC: abrir (perto dele), comprar, vender */
   shopOpen(key: string) { return this.raw({ t: 'shopOpen', key }); }
   npcMenu(key: string) { return this.raw({ t: 'npcMenu', key }); }

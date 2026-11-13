@@ -13,11 +13,12 @@ import { hairColorOf, hairRgb, type Sex } from '../shared/humans';
 import { CharStage } from './charpreview';
 import { fmtGameHour, gameHour } from '../shared/gameclock';
 import { GameHud, provisionalMax } from './hud';
-import { type SkillFx, NetClient, RemotePlayers } from './net';
-import { ActionBar, ChatWindow, InventoryWindow, setHammerTheme, type BarItem } from './ui';
+import { type ItemView, type SkillFx, NetClient, RemotePlayers } from './net';
+import { ActionBar, ChatWindow, ELEMENT_NAMES, InventoryWindow, setHammerTheme, type BarItem } from './ui';
+import { initTooltips } from './tooltip';
 import { CraftWindow } from './craft';
 import { ItemTimeWindow } from './itemtime';
-import { setFailStack, setRarities, setTipPlayer, setTipStaff } from './itemtip';
+import { hideItemTip, moveItemTip, setFailStack, setRarities, setTipPlayer, setTipStaff, showItemTip } from './itemtip';
 import { Announcer } from './announce';
 import { VersionWatcher } from './version';
 import { GmPanel } from './gmpanel';
@@ -129,6 +130,7 @@ interface Account { username: string; authority: string }
 interface LoginReply { token: string; account: Account; characters: CharacterInfo[] }
 
 const view = new WorldView($<HTMLCanvasElement>('view'));
+initTooltips(); // dicas no padrão do jogo (o que tem `title`)
 view.stitchSeams = true; // costura do terreno: bordas de pedaços vizinhos com alturas diferentes nos dados originais são ajustadas (o editor não liga)
 view.playerControl = false;
 /** mobs vêm do servidor: todos os jogadores veem os mesmos */
@@ -168,6 +170,7 @@ motionWnd.onMotion = (m) => {
 };
 motionWnd.onEmoticon = (i) => { if (!net.emoticon(i)) chat.system(t('Sem conexão com o servidor.')); };
 const actionBar = new ActionBar(document.body);
+actionBar.stackable = (id) => (inventory.def(id)?.pack ?? 2) > 1; // sem a definição ainda, mostra o número
 actionBar.onUseItem = (id) => { if (!rideToggle(id)) net.useItem(id); };
 actionBar.onChange = (slots) => { net.saveBar(slots); };
 actionBar.onUseChat = (text) => chat.send(text);
@@ -230,15 +233,22 @@ net.onMobs = (add, upd, del) => {
 // ---------- combate (server/combat.ts decide; aqui só ataque automático, animações e números) ----------
 const combat = new Combat(view);
 combat.sendAttack = (id) => { net.attack(id); };
-combat.sendSkill = (sk, id) => { net.castSkill(sk, id); };
+combat.sendSkill = (sk, id, slot) => { net.castSkill(sk, id, !!slot); };
 let myMp = 0, myFp = 0;
-combat.skillBlock = (id) => {
+/** buffs de item que tiram o custo: Refresher Hold (MP), Vital Drink X (FP), Activition (skills da Action Slot) */
+let freeMp = false, freeFp = false, freeSlot = false;
+combat.skillBlock = (id, viaSlot = false) => {
   const s = skillWnd.get(id), L = s?.levels[skillWnd.levelOf(id) - 1];
   if (!s || !L) return null;
-  return L.mp > myMp ? 'MP insuficiente.' : L.fp > myFp ? 'FP insuficiente.' : null;
+  const noMp = freeMp || (viaSlot && freeSlot), noFp = freeFp || (viaSlot && freeSlot);
+  return !noMp && L.mp > myMp ? 'MP insuficiente.' : !noFp && L.fp > myFp ? 'FP insuficiente.' : null;
 };
 combat.onBlocked = (why) => chat.system(why);
-net.onBuffs = (list) => buffBar.set(list);
+net.onBuffs = (list) => {
+  buffBar.set(list);
+  const has = (k: number) => list.some((b) => b.fx?.some(([d]) => d === k));
+  freeMp = has(90001); freeFp = has(90002); freeSlot = has(90003);
+};
 buffBar.onRemove = (id) => { net.removeBuff(id); };
 net.onSkills = (points, levels, list, auto) => { const ch = characters.find((c) => c.slot === selectedSlot); skillWnd.set(points, levels, list, ch?.level ?? 1, !!auto); };
 net.onSkillUsed = (id, cd) => {
@@ -511,10 +521,11 @@ const CAST_MS = 900;
 net.onSkillFx = (a, fx, tg) => skillFx(a, tg === undefined ? null : view.moverMgr.externalInfo(tg)?.pos ?? null, fx, tg === undefined ? 0 : CAST_MS);
 // debuffs nos mobs (Sneaker…): o ícone com a contagem aparece na janela do alvo
 const mobDebuffs = new Map<number, { sk: number; name: string; icon: string; end: number }[]>();
-net.onMobDebuff = (id, sk, name, icon, ms) => {
-  const end = performance.now() + CAST_MS + ms;
-  // o ícone aparece quando o efeito chega no alvo
-  setTimeout(() => { const cur = (mobDebuffs.get(id) ?? []).filter((d) => d.sk !== sk); cur.push({ sk, name, icon, end }); mobDebuffs.set(id, cur); }, CAST_MS);
+net.onMobDebuff = (id, sk, name, icon, ms, delay = CAST_MS) => {
+  const end = performance.now() + delay + ms;
+  // o ícone aparece quando o efeito chega no alvo; o mesmo debuff de novo troca o anterior e a contagem recomeça
+  const put = () => { const cur = (mobDebuffs.get(id) ?? []).filter((d) => d.sk !== sk); cur.push({ sk, name, icon, end }); mobDebuffs.set(id, cur); };
+  if (delay > 0) setTimeout(put, delay); else put();
 };
 setInterval(() => {
   const t = view.target, id = t ? view.moverMgr.externalIdOf(t) : null;
@@ -525,13 +536,17 @@ setInterval(() => {
 net.onHit = (k, a, d, dmg, flags, hp, fx, sn, hx) => {
   if ((k === 'p' && a === net.myId) || (k === 'm' && d === net.myId)) lastBattleAt = performance.now(); // batalha: não monta
   const mm = view.moverMgr, miss = (flags & 1) !== 0, crit = (flags & 2) !== 0;
-  if (k === 'p' && sn) { // golpe da arma: o do swing sempre, o do impacto só se acertou
-    const at = a === net.myId ? view.player?.pos ?? null : remotes.pos(a);
-    audio.play(sn[0], at);
-    if (!miss) audio.play(sn[1], mm.externalInfo(d)?.pos ?? at);
-  }
   if (k === 'p' && fx) skillFx(a, mm.externalInfo(d)?.pos ?? null, fx);
   else if (k === 'p' && a !== net.myId) remotes.swing(a); // golpe normal de outro jogador: a animação a cada golpe
+  // o golpe acerta no quadro marcado no .ani (a espada rápida cedo, o machado mais tarde): som, dano e efeito esperam por ele
+  const attacker = k === 'p' ? (a === net.myId ? view.player?.inst : remotes.instOf(a)) : null;
+  const hitWait = k === 'p' && !fx ? attacker?.hitDelayMs() ?? 0 : 0, swingWait = k === 'p' && !fx ? attacker?.swingDelayMs() ?? 0 : 0;
+  if (k === 'p' && sn) { // golpe da arma: o do swing sempre, o do impacto só se acertou
+    const at = a === net.myId ? view.player?.pos ?? null : remotes.pos(a);
+    const swing = () => audio.play(sn[0], at), impact = () => { if (!miss) audio.play(sn[1], mm.externalInfo(d)?.pos ?? at); };
+    if (swingWait > 20) setTimeout(swing, swingWait); else swing();
+    if (hitWait > 20) setTimeout(impact, hitWait); else impact();
+  }
   if (k === 'p') {
     const land = () => {
       mm.setExternalHp(d, hp);
@@ -551,7 +566,8 @@ net.onHit = (k, a, d, dmg, flags, hp, fx, sn, hx) => {
       const dx = to[0] - from[0], dz = to[2] - from[2], dist = Math.hypot(dx, dz);
       const yaw = (Math.atan2(dx, -dz) * 180) / Math.PI;
       view.playSfxMoving(arrow, [from[0], from[1] + 1, from[2]], [to[0], to[1] + 1, to[2]], yaw, Math.max(0.1, Math.min(0.6, dist / 30)), land);
-    } else land();
+    } else if (!fx && hitWait > 20) setTimeout(land, hitWait);
+    else land();
   } else {
     mm.playExternal(a, 'MTI_ATK1');
     const at = playerHead(d), foot = d === net.myId ? view.player?.pos ?? null : remotes.pos(d);
@@ -647,7 +663,7 @@ function mapView(): MapView | null {
   if (!p || !d) return null;
   const dots: MapDot[] = [];
   for (const o of d.movers) dots.push({ x: o.pos[0], z: o.pos[2], kind: 'npc' });
-  for (const [x, z] of view.moverMgr.externalPositions()) dots.push({ x, z, kind: 'mob' });
+  for (const [x, z, ag] of view.moverMgr.externalPositions()) dots.push({ x, z, kind: ag ? 'aggro' : 'mob' });
   for (const r of remotes.positions()) dots.push({ x: r.x, z: r.z, kind: r.party ? 'party' : 'player', name: r.name });
   // membros da party fora da área de visão: a posição que vem com a party (a cada 1,5 s)
   for (const m of partyWnd.current?.members ?? []) {
@@ -704,7 +720,25 @@ net.onCraftResult = (m) => { if (m.denied) { craftWnd.hide(); chat.system(String
 const wikiWnd = new WikiWindow(document.body);
 for (const w of [wikiWnd.panel, gmPanel.wiki]) { w.query = (p) => net.wiki(p); w.tipFor = (id) => { net.wikiTip(id); }; }
 net.onWiki = (m) => { wikiWnd.panel.setPage(m); gmPanel.wiki.setPage(m); };
-net.onWikiTip = (v) => { wikiWnd.panel.setTip(v); gmPanel.wiki.setTip(v); };
+net.onWikiTip = (v) => { wikiWnd.panel.setTip(v); gmPanel.wiki.setTip(v); groundTipArrived(v); };
+// dica do item que está no chão: a mesma caixa do inventário (a definição completa vem do servidor na primeira vez e fica guardada)
+const groundTips = new Map<number, ItemView>();
+let groundWant: { itemId: number; n: number; upgrade: number } | null = null, groundEv = { clientX: 0, clientY: 0 };
+const groundShow = (v: ItemView, n: number, upgrade: number, ev: { clientX: number; clientY: number }) => showItemTip(ev, v, { id: v.id, n, u: upgrade, e: 0, el: 0 }, ELEMENT_NAMES);
+function groundTipArrived(v: ItemView) {
+  groundTips.set(v.id, v);
+  const w = groundWant;
+  if (w && w.itemId === v.id) groundShow(v, w.n, w.upgrade, groundEv);
+}
+ground.onHover = (it, ev) => {
+  groundEv = { clientX: ev.clientX, clientY: ev.clientY };
+  if (it.gold) { groundWant = null; return; } // penya: só o nome
+  groundWant = { itemId: it.itemId, n: it.n, upgrade: it.upgrade };
+  const v = groundTips.get(it.itemId);
+  if (v) groundShow(v, it.n, it.upgrade, ev); else net.wikiTip(it.itemId);
+};
+ground.onHoverMove = (ev) => { groundEv = { clientX: ev.clientX, clientY: ev.clientY }; moveItemTip(ev); };
+ground.onLeave = () => { groundWant = null; hideItemTip(); };
 hud.onWiki = () => wikiWnd.toggle();
 net.onFriends = (list) => friendsWnd.set(list);
 net.onFriendOn = (id, on) => friendsWnd.online(id, on);

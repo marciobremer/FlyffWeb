@@ -281,7 +281,8 @@ export class Inventory {
     if (d.sex !== -1 && d.sex !== ch.sex) return `${d.name} é para o outro sexo.`;
     if (!jobCanUse(d.job, ch.job)) return `Sua classe não pode usar ${d.name}.`;
     const mine = CLASS_WEAPONS[firstClass(ch.job)];
-    if (mine && (slot === RWEAPON || slot === LWEAPON) && isWeaponKind(d) && !mine.includes(d.kind3)) return `Sua classe não pode empunhar ${d.name}.`;
+    // armas de Vagrant (dwItemJob = JOB_VAGRANT) qualquer classe empunha, porque todas herdam de Vagrant; as demais seguem o tipo de arma da classe
+    if (mine && d.job !== 0 && (slot === RWEAPON || slot === LWEAPON) && isWeaponKind(d) && !mine.includes(d.kind3)) return `Sua classe não pode empunhar ${d.name}.`;
     if (d.level > ch.level) return `${d.name} precisa do nível ${d.level}.`;
     // voar (prancha/vassoura, IK3_BOARD/IK3_STICK) só a partir do nível 20, como no cliente
     if ((d.kind3 === 40 || d.kind3 === 41) && ch.level < 20) return 'Você precisa do nível 20 para voar.';

@@ -971,12 +971,15 @@ export class ActionBar {
       void itemIcon(it.icon).then((u) => { if (u && this.items[k] === it) img.src = u; });
       s.appendChild(img);
       const n = this.counts.get(it.id) ?? 0;
-      const b = document.createElement('b');
-      b.textContent = String(n);
-      s.appendChild(b);
+      const stack = this.stackable(it.id); // item que não empilha (equipamento…): sem o número
+      if (stack) {
+        const b = document.createElement('b');
+        b.textContent = String(n);
+        s.appendChild(b);
+      }
       s.classList.toggle('empty-stack', n === 0);
-      s.title = `${it.name} (${n}) — ${key ? 'tecla ' + key : 'sem tecla'}; botão direito ou arrastar para fora tira`;
-      s.setAttribute('aria-label', `Atalho ${key}: ${it.name} (${n})`);
+      s.title = `${it.name}${stack ? ` (${n})` : ''} — ${key ? 'tecla ' + key : 'sem tecla'}; botão direito ou arrastar para fora tira`;
+      s.setAttribute('aria-label', `Atalho ${key}: ${it.name}${stack ? ` (${n})` : ''}`);
     } else {
       s.classList.remove('empty-stack');
       s.title = `Atalho: arraste um item da bolsa para cá`;
@@ -992,6 +995,9 @@ export class ActionBar {
     for (let k = 0; k < BAR_SLOTS; k++) this.items[k] = slots[k] ?? null;
     for (let k = 0; k < BAR_SLOTS; k++) this.paint(k);
   }
+
+  /** o item empilha (mais de 1 por espaço)? Os que não empilham ficam sem o número no atalho; main.ts liga ao inventário */
+  stackable: (id: number) => boolean = () => true;
 
   /** quantidade de cada item na bolsa (atualiza os números dos atalhos) */
   setCounts(counts: Map<number, number>) {

@@ -33,9 +33,9 @@ export class Combat {
   range = 2;
   /** manda o golpe / a skill ao servidor */
   sendAttack: (mobId: number) => void = () => {};
-  sendSkill: (skillId: number, mobId: number) => void = () => {};
+  sendSkill: (skillId: number, mobId: number, viaSlot?: boolean) => void = () => {};
   /** motivo de não dar para lançar a skill agora (MP/FP insuficiente…), ou null — conferido antes da animação */
-  skillBlock: (skillId: number) => string | null = () => null;
+  skillBlock: (skillId: number, viaSlot?: boolean) => string | null = () => null;
   onBlocked: (why: string) => void = () => {};
   /** skill esperando chegar ao alcance (lança no lugar do próximo golpe) */
   private queued: QueuedSkill | null = null;
@@ -102,16 +102,16 @@ export class Combat {
     p.stop();
     p.face(mx, mz);
     if (now >= this.nextAtk) {
-      let q = this.queued;
+      let q = this.queued, viaSlot = false;
       if (q) this.queued = null;
-      else if (this.chain.length) { q = this.chain.shift()!; this.onChainStep(++this.chainStep); }
+      else if (this.chain.length) { q = this.chain.shift()!; viaSlot = true; this.onChainStep(++this.chainStep); }
       else this.endChain();
       if (q) {
         this.nextAtk = now + Math.max(this.interval, 1200);
-        const why = q.buff ? null : this.skillBlock(q.id);
+        const why = q.buff ? null : this.skillBlock(q.id, viaSlot);
         if (why) { this.onBlocked(why); this.stop(); return; } // como o DoUseSkill do original: avisa e não faz nada
-        else if (q.buff) this.sendSkill(q.id, 0); // buff da sequência vale em quem lança (o movimento toca quando o servidor aceita)
-        else { p.cast(q.motion); this.sendSkill(q.id, id); if (q.once) { this.endChain(); this.targetId = null; } }
+        else if (q.buff) this.sendSkill(q.id, 0, viaSlot); // buff da sequência vale em quem lança (o movimento toca quando o servidor aceita)
+        else { p.cast(q.motion); this.sendSkill(q.id, id, viaSlot); if (q.once) { this.endChain(); this.targetId = null; } }
       } else {
         this.nextAtk = now + this.interval;
         p.attack();

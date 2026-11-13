@@ -23,7 +23,7 @@ const DST: Record<number, string> = {
   73: 'Consumo de MP', 75: 'Velocidade de conjuração', 77: 'Dano crítico', 79: 'Dano em monstros', 80: 'Dano em PvP', 83: 'Ataque', 92: 'Caixa de presente',
   99: 'Chance de drop', 101: 'Dano de fogo (PvE)', 102: 'Dano de água (PvE)', 103: 'Dano elétrico (PvE)', 104: 'Dano de vento (PvE)', 105: 'Dano de terra (PvE)',
   108: 'Dano em atordoados', 109: 'Dano em cegos', 110: 'Dano em envenenados', 111: 'Dano em lentos', 112: 'Dano em sangrando', 118: 'Drop de penya',
-  10003: 'Todos os atributos',
+  10003: 'Todos os atributos', 90001: 'MP ilimitado', 90002: 'FP ilimitado', 90003: 'Skills da Action Slot ilimitadas',
 };
 /** DST em percentual (IsDst_Rate do original) */
 const PCT = new Set([8, 9, 11, 14, 17, 19, 20, 24, 29, 47, 51, 52, 53, 54, 58, 65, 66, 67, 72, 73, 75, 77, 79, 80, 99, 101, 102, 103, 104, 105, 108, 109, 110, 111, 112]);
@@ -32,6 +32,7 @@ const PCT = new Set([8, 9, 11, 14, 17, 19, 20, 24, 29, 47, 51, 52, 53, 54, 58, 6
  * dica do original (IsDst_Rate), com o valor cru — inclusive a velocidade de movimento (DST_SPEED 5 = "+5%")
  */
 export const fxText = (k: number, v: number) => {
+  if (k >= 90000) return DST[k] ?? `Efeito #${k}`; // efeitos sem valor (ilimitado)
   const shown = k === 24 ? Math.trunc(v / 2 / 10) : v;
   return `${DST[k] ?? `Efeito #${k}`} ${shown >= 0 ? '+' : ''}${shown}${PCT.has(k) ? '%' : ''}`;
 };

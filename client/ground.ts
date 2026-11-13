@@ -10,7 +10,7 @@ import { OT } from '../shared/formats/types';
  */
 export type GroundRow = [id: number, itemId: number, x: number, z: number, n: number, gold: number, upgrade: number, name: string];
 
-interface Item { id: number; group: Group; label: CSS2DObject; x: number; z: number; gone: boolean }
+interface Item { id: number; itemId: number; n: number; upgrade: number; gold: number; group: Group; label: CSS2DObject; x: number; z: number; gone: boolean }
 
 const PICK_DIST = 1.4;
 
@@ -24,9 +24,30 @@ export class GroundItems {
   sendPick: (id: number) => void = () => {};
   /** começou a ir pegar algo (o jogo para o ataque) */
   onGo: () => void = () => {};
+  /** mouse parado em cima de um item do chão (nome ou modelo): quem trata mostra a dica completa do item; `onLeave` quando sai */
+  onHover: (it: { itemId: number; n: number; upgrade: number; gold: number }, ev: { clientX: number; clientY: number }) => void = () => {};
+  onHoverMove: (ev: { clientX: number; clientY: number }) => void = () => {};
+  onLeave: () => void = () => {};
+  private hoverId: number | null = null;
+  private hover(id: number | null, ev: { clientX: number; clientY: number }) {
+    if (id === this.hoverId) { if (id !== null) this.onHoverMove(ev); return; }
+    this.hoverId = id;
+    const it = id === null ? undefined : this.items.get(id);
+    if (!it) { this.onLeave(); return; }
+    this.onHover({ itemId: it.itemId, n: it.n, upgrade: it.upgrade, gold: it.gold }, ev);
+  }
 
   constructor(private view: WorldView) {
     view.playerGroup.add(this.root);
+    // mouse sobre o modelo do item (sobre o nome vale o evento do próprio nome, abaixo): dica do item
+    let last = 0;
+    view.canvas.addEventListener('pointermove', (e) => {
+      const now = performance.now();
+      if (now - last < 60 || !this.items.size) return;
+      last = now;
+      this.hover(this.pick(view.raycast(e, this.meshes())), e);
+    });
+    view.canvas.addEventListener('pointerleave', () => { if (this.hoverId !== null) { this.hoverId = null; this.onLeave(); } });
   }
 
   add(rows: GroundRow[]) {
@@ -40,12 +61,14 @@ export class GroundItems {
       const el = document.createElement('div');
       el.className = `ground-label${gold ? ' gold' : ''}`;
       el.textContent = gold ? `${gold.toLocaleString('pt-BR')} Penya` : `${name || 'Item'}${upgrade ? ` +${upgrade}` : ''}${n > 1 ? ` (${n})` : ''}`;
-      el.title = 'Clique para pegar';
+      el.addEventListener('pointerenter', (e) => this.hover(id, e));
+      el.addEventListener('pointermove', (e) => this.onHoverMove(e));
+      el.addEventListener('pointerleave', () => { if (this.hoverId === id) { this.hoverId = null; this.onLeave(); } });
       el.addEventListener('pointerdown', (e) => { e.stopPropagation(); });
       el.addEventListener('click', (e) => { e.stopPropagation(); this.go(id); });
       const label = new CSS2DObject(el);
       label.position.set(x, y + 0.6, z);
-      const it: Item = { id, group, label, x, z, gone: false };
+      const it: Item = { id, itemId, n, upgrade, gold, group, label, x, z, gone: false };
       this.items.set(id, it);
       this.root.add(group, label);
       void this.loadModel(itemId, group, it);
@@ -73,6 +96,7 @@ export class GroundItems {
     const it = this.items.get(id);
     if (!it) return;
     it.gone = true;
+    if (this.hoverId === id) { this.hoverId = null; this.onLeave(); }
     it.group.removeFromParent();
     it.label.removeFromParent();
     it.label.element.remove();

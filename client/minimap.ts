@@ -16,7 +16,7 @@ import { GameWindow } from './ui';
  * as imagens dos pedaços de terreno.
  */
 
-export interface MapDot { x: number; z: number; kind: 'npc' | 'mob' | 'player' | 'party'; name?: string }
+export interface MapDot { x: number; z: number; kind: 'npc' | 'mob' | 'aggro' | 'player' | 'party'; name?: string }
 export interface MapView {
   /** mundo (nome do .wld), quantos pedaços de terreno em x e z e quais existem */
   world: string; landW: number; landH: number; hasTile: (x: number, z: number) => boolean;
@@ -25,7 +25,8 @@ export interface MapView {
   x: number; z: number; heading: number; dots: MapDot[];
 }
 
-const COLORS: Record<MapDot['kind'], string> = { npc: '#ffd23a', mob: '#ff4a3d', player: '#ffffff', party: '#5cff6a' };
+/** mob normal amarelo, mob agressivo vermelho */
+const COLORS: Record<MapDot['kind'], string> = { npc: '#ffd23a', mob: '#ffd23a', aggro: '#ff3b30', player: '#ffffff', party: '#5cff6a' };
 
 /** imagens já decodificadas (data URL → <img>); null = não existe */
 const images = new Map<string, HTMLImageElement | null>();
@@ -163,7 +164,7 @@ export class MiniMap extends GameWindow {
     for (const d of v.dots) {
       const x = sx(d.x), y = sy(d.z);
       if (x < -4 || y < -4 || x > w + 4 || y > h + 4) continue;
-      drawDot(ctx, x, y, d.kind, d.kind === 'mob' ? 2 : 2.6);
+      drawDot(ctx, x, y, d.kind, d.kind === 'mob' || d.kind === 'aggro' ? 2 : 2.6);
     }
     drawArrow(ctx, cx, cy, v.heading, 7);
     this.coords.textContent = `${Math.round(v.x)}, ${Math.round(v.z)}`;

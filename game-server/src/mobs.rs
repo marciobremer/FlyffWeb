@@ -56,6 +56,8 @@ pub struct Mob {
     pub next_scan: u64,
     /// debuff de skill (Sneaker): até este instante (ms) o mob não anda — ainda golpeia quem está ao alcance
     pub frozen_until: u64,
+    /// atordoado (Stonehand): até este instante (ms) não anda nem golpeia
+    pub stun_until: u64,
     pub dmg_by: IdMap<i64>,
     pub died_at: u64,
     pub respawn_at: u64,
@@ -109,7 +111,7 @@ impl<R: Rng, T: Terrain> MobWorld<R, T> {
                 mobs.push(Mob {
                     id: mobs.len() as u32 + 1, model_id: r.model_id, x, z, y: r.pos.1, h, s: MobState::Stand, area: r.rect, origin: (r.pos.0, r.pos.2),
                     target: None, wait, speed: r.speed, flying: r.flying, prop: r.prop.clone(), hp, max_hp: hp,
-                    aggressive: k < r.attack_count || r.boss, foe: 0, next_atk: 0, next_scan: 0, frozen_until: 0, dmg_by: IdMap::default(),
+                    aggressive: k < r.attack_count || r.boss, foe: 0, next_atk: 0, next_scan: 0, frozen_until: 0, stun_until: 0, dmg_by: IdMap::default(),
                     died_at: 0, respawn_at: 0, respawn_ms: r.time_s.max(5) as i64 * 1000, dirty: false,
                 });
             }
@@ -237,6 +239,10 @@ impl<R: Rng, T: Terrain> MobWorld<R, T> {
                 }
             }
 
+            if m.stun_until > now {
+                Self::set_state(m, MobState::Stand);
+                continue;
+            }
             if m.foe != 0 {
                 let Some(p) = hooks.player(m.foe) else {
                     Self::reset(rng, terrain, m);
@@ -313,6 +319,11 @@ impl<R: Rng, T: Terrain> MobWorld<R, T> {
         if let Some(&i) = self.index.get(&id) { self.mobs[i].frozen_until = until; }
     }
 
+    /// atordoamento (Stonehand): o mob não anda nem golpeia até `until` (ms)
+    pub fn stun(&mut self, id: EntityId, until: u64) {
+        if let Some(&i) = self.index.get(&id) { self.mobs[i].frozen_until = self.mobs[i].frozen_until.max(until); self.mobs[i].stun_until = until; }
+    }
+
     /// jogador golpeou o mob: tira HP, guarda o dano (exp) e o mob passa a atacá-lo (se não for pacífico). true se morreu agora.
     pub fn damage(&mut self, id: EntityId, player: u32, dmg: i64, peaceful: bool, now: u64) -> bool {
         let Some(&i) = self.index.get(&id) else { return false };
@@ -347,7 +358,7 @@ impl<R: Rng, T: Terrain> MobWorld<R, T> {
                 id: self.seq, model_id: spawn.model_id, x: mx, z: mz, y, h, s: MobState::Stand,
                 area: Some(Rect { x_min: x - 8.0, z_min: z - 8.0, x_max: x + 8.0, z_max: z + 8.0 }), origin: (x, z), target: None, wait: 2.0,
                 speed: spawn.speed, flying: spawn.flying, prop: spawn.prop.clone(), hp, max_hp: hp, aggressive: spawn.boss, foe: 0, next_atk: 0,
-                next_scan: 0, frozen_until: 0, dmg_by: IdMap::default(), died_at: 0, respawn_at: 0, respawn_ms: -1, dirty: true,
+                next_scan: 0, frozen_until: 0, stun_until: 0, dmg_by: IdMap::default(), died_at: 0, respawn_at: 0, respawn_ms: -1, dirty: true,
             };
             self.grid.set(m.id, mx as f32, mz as f32);
             self.index.insert(m.id, self.mobs.len());

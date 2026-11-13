@@ -138,6 +138,10 @@ struct Fight {
     interval_ms: u64,
     snd: [i64; 2],
     god: bool,
+    /// Activition: skill da Action Slot sem custo
+    free_slot: bool,
+    /// Stonehand: chance de atordoar o mob a cada golpe
+    stun: Option<StunIn>,
     skills: IdMap<SkillIn>,
 }
 
@@ -278,9 +282,10 @@ impl<T: Terrain> MapState<T> {
                     if let Some(&ent) = self.ws_ent.get(&ws) {
                         let v = serde_json::from_slice::<Value>(&payload).ok();
                         let (sid, target) = v.as_ref().map_or((None, None), |v| (v.get("id").and_then(Value::as_u64), v.get("target").and_then(Value::as_u64)));
+                        let via_slot = v.as_ref().and_then(|v| v.get("slot")).and_then(Value::as_u64) == Some(1);
                         if let (Some(sid), Some(target)) = (sid, target) {
                             if self.players.get(&ent).and_then(|p| p.fight.as_ref()).is_some_and(|f| f.skills.contains_key(&(sid as u32))) {
-                                self.on_skill(now, ent, sid as u32, target as u32);
+                                self.on_skill(now, ent, sid as u32, target as u32, via_slot);
                                 return;
                             }
                         }
@@ -387,7 +392,7 @@ impl<T: Terrain> MapState<T> {
                 self.stats.hits += 1;
                 if self.mobs.damage(mob, ent, dmg, peaceful, now) { self.stats.kills += 1; }
             }
-            LinkIn::Freeze { mob, ms } => { self.mobs.freeze(mob, now + ms); }
+            LinkIn::Freeze { mob, ms, stun } => { if stun { self.mobs.stun(mob, now + ms); } else { self.mobs.freeze(mob, now + ms); } }
             LinkIn::Summon { spawn, x, z, y, n } => { self.mobs.summon(&spawn.to_spawn(), x, z, y, n); }
             LinkIn::Elements { table } => { self.elements = Elements { table }; }
             LinkIn::Fighter { char, f } => {
@@ -399,7 +404,7 @@ impl<T: Terrain> MapState<T> {
                     p.fp = f.fp;
                     p.fight = Some(Fight {
                         attacker: (&f.attacker).into(), defender: (&f.defender).into(), w_elem: (f.w_elem[0], f.w_elem[1]), s_elem: (f.s_elem[0], f.s_elem[1]),
-                        reach: f.reach, interval_ms: f.interval_ms, snd: f.snd, god: f.god,
+                        reach: f.reach, interval_ms: f.interval_ms, snd: f.snd, god: f.god, free_slot: f.free_slot, stun: f.stun.clone(),
                         skills: f.skills.into_iter().map(|s| (s.id, s)).collect(),
                     });
                 }
@@ -461,6 +466,7 @@ impl<T: Terrain> MapState<T> {
         if let Some(p) = self.players.get_mut(&ent) { p.next_atk = now + interval; }
         self.stats.hits += 1;
         let died = r.hit && self.mobs.damage(mob_id, pid, r.dmg, prop.peaceful, now);
+        if r.hit && !died { self.try_stun(now, ent, mob_id); }
         let (hp, mx, mz) = self.mobs.get(mob_id).map_or((0, 0.0, 0.0), |m| (mob_hp(m), m.x, m.z));
         let char_id = pid - PLAYER_BASE;
         let hit = json!({ "t": "hit", "k": "p", "a": char_id, "d": mob_id, "dmg": r.dmg, "f": (!r.hit as i64) | ((r.crit as i64) << 1), "hp": hp, "sn": snd });
@@ -468,6 +474,15 @@ impl<T: Terrain> MapState<T> {
         // o Node desfaz Dark Illusion/modo de batalha e guarda a espera do golpe (as skills respeitam a mesma espera)
         self.send(link, &LinkOut::Attacked { char: char_id, cooldown_ms: interval });
         if died { self.mob_died(ent, mob_id, &prop, plevel, mx, mz); }
+    }
+
+    /// Stonehand: depois de um golpe que acertou e não matou, a chance de atordoar o mob; o `mdebuff` mostra o ícone com a contagem
+    fn try_stun(&mut self, now: u64, ent: EntityId, mob_id: u32) {
+        let Some(st) = self.players.get(&ent).and_then(|p| p.fight.as_ref()).and_then(|f| f.stun.clone()) else { return };
+        if self.rng.next_f64() * 100.0 >= st.chance { return; }
+        self.mobs.stun(mob_id, now + st.ms);
+        let msg = json!({ "t": "mdebuff", "id": mob_id, "sk": st.sk, "name": st.name, "icon": st.icon, "ms": st.ms, "d": 0 });
+        self.to_watchers_of(mob_id, Some(ent), &msg);
     }
 
     /// o mob morreu: `mdie` a quem o conhece e, para quem causou mais dano (entre os jogadores que ainda estão aqui), a exp/itens no Node
@@ -485,9 +500,10 @@ impl<T: Terrain> MapState<T> {
     /// skill de ataque (melee/magic) do jogador no mob — as mesmas conferências do `castSkill` do Node: skill conhecida e fora da
     /// espera, alvo na visão e no alcance (magia 24 u; corpo a corpo = alcance da arma + 1), espera do golpe, MP/FP; gasta MP/FP,
     /// manda `skillUsed`, calcula o dano (`combat::skill_damage`) e aplica
-    fn on_skill(&mut self, now: u64, ent: EntityId, skill_id: u32, mob_id: u32) {
+    fn on_skill(&mut self, now: u64, ent: EntityId, skill_id: u32, mob_id: u32, via_slot: bool) {
         let Some(pl) = self.players.get(&ent) else { return };
         let Some(fight) = pl.fight.as_ref() else { return };
+        let free = via_slot && fight.free_slot; // Activition: skill da Action Slot sem custo
         let Some(sk) = fight.skills.get(&skill_id) else { return };
         if pl.dead { self.stats.rejects_dead += 1; return; }
         if pl.skill_ready.get(&skill_id).is_some_and(|t| *t > now) { return; }
@@ -499,7 +515,7 @@ impl<T: Terrain> MapState<T> {
         let reach = if sk.magic { 24.0 } else { fight.reach + 1.0 };
         if (m.x - pl.x).hypot(m.z - pl.z) > reach { self.stats.rejects_range += 1; return; }
         let (link, char_id, plevel, link_conn) = (pl.link, ent - PLAYER_BASE, pl.level, pl.conn);
-        if pl.mp < sk.mp || pl.fp < sk.fp {
+        if !free && (pl.mp < sk.mp || pl.fp < sk.fp) {
             let text = if sk.mp > pl.mp { "MP insuficiente." } else { "FP insuficiente." };
             self.to_player(ent, json!({ "t": "chat", "id": 0, "name": "", "text": text }));
             return;
@@ -508,8 +524,7 @@ impl<T: Terrain> MapState<T> {
         let dmg = combat::skill_damage(&mut self.rng, min, max, &prop);
         let _ = link_conn;
         let pl = self.players.get_mut(&ent).unwrap();
-        pl.mp -= mp_cost;
-        pl.fp -= fp_cost;
+        if !free { pl.mp -= mp_cost; pl.fp -= fp_cost; }
         pl.skill_ready.insert(skill_id, now + cd);
         let lock = if magic { 1500 } else { 1200 }; // a animação da skill segura o próximo golpe
         pl.next_atk = now + lock;
@@ -519,6 +534,7 @@ impl<T: Terrain> MapState<T> {
         self.send(link, &LinkOut::Attacked { char: char_id, cooldown_ms: lock });
         self.to_player(ent, json!({ "t": "skillUsed", "id": skill_id, "cd": cd }));
         let died = self.mobs.damage(mob_id, ent, dmg, prop.peaceful, now);
+        if !died { self.try_stun(now, ent, mob_id); }
         let (hp, mx, mz) = self.mobs.get(mob_id).map_or((0, 0.0, 0.0), |m| (mob_hp(m), m.x, m.z));
         let mut hit = json!({ "t": "hit", "k": "p", "a": char_id, "d": mob_id, "dmg": dmg, "f": 4, "hp": hp });
         if let (Some(o), Some(t)) = (hit.as_object_mut(), template.as_object()) { for (k, v) in t { o.insert(k.clone(), v.clone()); } }

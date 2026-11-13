@@ -13,7 +13,7 @@ import { loadEdits, saveEdits } from '../common/worldedits';
 import { customTeleports } from '../common/customteleports';
 import { ARRIVAL_POINT } from '../../shared/worldedits';
 import { rankOf, type Rank } from '../../shared/rank';
-import { RIDE_TAG } from '../../shared/look';
+import { lookSymbol, RIDE_TAG } from '../../shared/look';
 import { TRADE_SLOTS, type TradeOffer } from '../character/inventory';
 import { ItemCatalog, jobCanUse } from '../common/items';
 import type { CombatRules, Equipped, Fighter } from './combat';
@@ -501,8 +501,15 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     const p = c.player, cb = c.cb;
     if (!p || !cb || !inventory) return;
     cb.exp = 0;
+    // 2ª classe (1ª classe → 6–13, no nível 60): os pontos de atributo voltam — tudo o que o nível dá (59 níveis × 2 = 118) para distribuir de novo
+    const second = job >= 6 && job <= 13 && cb.f.job >= 1 && cb.f.job <= 4;
     p.job = job;
     cb.f.job = job;
+    if (second) {
+      cb.realBase = undefined;
+      cb.f.base = { str: 15, sta: 15, dex: 15, int: 15 };
+      reconcilePoints(cb, p.level);
+    }
     await query('UPDATE characters SET job = $2, updated_at = now() WHERE id = $1', [p.id, job]);
     if (skillMode() === 'auto') { reconcileSkills(cb, p.level); send(c.ws, skillsMsg(c)); }
     const st = await inventory.state(p.id);
@@ -514,6 +521,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     toWatchers(c, { t: 'look', id: p.id, eq: p.eq, mt: p.mt });
     toWatchers(c, { t: 'job', id: p.id, job });
     send(c.ws, { t: 'chat', id: 0, name: '', text: `Você agora é ${JOB_NAMES[job] ?? '#' + job}!` });
+    if (second) send(c.ws, { t: 'chat', id: 0, name: '', text: `Seus pontos de atributo voltaram: você tem ${cb.points} ponto(s) para distribuir de novo (tecla H).` });
     void saveCombat(p.id, cb, p.level).catch((e) => console.error('realtime: salvar classe', e));
   }
   const JOB_NAMES: Record<number, string> = { 1: 'Mercenary', 2: 'Acrobat', 3: 'Assist', 4: 'Magician', 6: 'Knight', 7: 'Blade', 8: 'Jester', 9: 'Ranger', 10: 'Ringmaster', 11: 'Billposter', 12: 'Psykeeper', 13: 'Elementor' };
@@ -554,6 +562,35 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
 
   /** buff de item (pergaminho): chave no mapa de buffs = ITEM_BUFF + id do item (skills ficam abaixo disso) */
   const ITEM_BUFF = 1_000_000;
+  /** DST inventados para efeitos que não existem como DST_* (somam em `cb.f.dst` como os demais): Refresher Hold, Vital Drink X e Activition */
+  const DST_UNLIMITED_MP = 90001, DST_UNLIMITED_FP = 90002, DST_UNLIMITED_SLOT = 90003;
+  /**
+   * Stonehand (SI_ASS_CHEER_STONEHAND): DST_CHR_CHANCESTUN = chance (%) de cada golpe disparar a skill SA_STONEHAND_STUN_L02
+   * (SI_GEN_STONEHAND: DST_CHRSTATE = CHS_STUN por 4000 ms, propSkillAdd.csv). O mob atordoado não anda nem golpeia; o ícone com a
+   * contagem aparece na janela do alvo (`mdebuff`) e um novo atordoamento renova o tempo.
+   */
+  const STUN_MS = 4000;
+  function stunOf(cb: PlayerCombat) {
+    const dstStun = D('DST_CHR_CHANCESTUN'), chance = cb.f.dst.get(dstStun) ?? 0;
+    if (chance <= 0) return null;
+    let sk = 0;
+    for (const [id, b] of cb.buffs) if (b.dst.some(([d]) => d === dstStun)) { sk = id; break; }
+    return { chance, ms: STUN_MS, sk, name: 'Stun', icon: skillCat?.byId.get(sk)?.icon ?? '' };
+  }
+  /** depois de um golpe que acertou e não matou: a chance de atordoar o mob (Stonehand ativa) */
+  function tryStun(c: Conn, m: Mob, now: number) {
+    const p = c.player, st = c.cb ? stunOf(c.cb) : null;
+    if (!p || !st || m.s === 'dead' || Math.random() * 100 >= st.chance) return;
+    m.stunnedUntil = now + st.ms;
+    m.frozenUntil = Math.max(m.frozenUntil ?? 0, now + st.ms);
+    if (rustHere(c)) rust?.send({ k: 'freeze', mob: m.id, ms: st.ms, stun: true });
+    sendNear(p.w, m.x, m.z, { t: 'mdebuff', id: m.id, sk: st.sk, name: st.name, icon: st.icon, ms: st.ms, d: 0 });
+  }
+  /** custo (MP, FP) de uma skill: Refresher Hold = MP ilimitado, Vital Drink X = FP ilimitado, Activition = skills da Action Slot sem custo */
+  const costOf = (cb: PlayerCombat, L: { mp: number; fp: number }, viaSlot = false): [number, number] => {
+    const slotFree = viaSlot && (cb.f.dst.get(DST_UNLIMITED_SLOT) ?? 0) > 0;
+    return [slotFree || (cb.f.dst.get(DST_UNLIMITED_MP) ?? 0) > 0 ? 0 : L.mp, slotFree || (cb.f.dst.get(DST_UNLIMITED_FP) ?? 0) > 0 ? 0 : L.fp];
+  };
   // ---------- buffs guardados (characters.buffs, migração 013) ----------
   /** sem a coluna (migração não aplicada) os buffs só não ficam guardados; o resto grava normal */
   let buffsColumn = true;
@@ -684,8 +721,11 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   }
 
   /** velocidade máxima no chão ou no ar (u/s) para o anti-speedhack */
+  /** montarias de chão que correm mais que o personagem a pé (multiplicador da velocidade de corrida) */
+  const MOUNT_SPEED_MUL: Record<string, number> = { II_SYS_MOUNT_11: 2 }; // Dead Purple Tiger Mount: o dobro
+  const mountMul = (p: { eq: string[] }) => Math.max(1, ...p.eq.map((s) => MOUNT_SPEED_MUL[lookSymbol(s)] ?? 1));
   function maxSpeed(c: Conn) {
-    const p = c.player!, mul = (c.speedPct ?? 100) / 100, run = (rules && c.cb ? rules.runSpeed(c.cb.f, p.sex) : 6) * mul;
+    const p = c.player!, mul = ((c.speedPct ?? 100) / 100) * mountMul(p), run = (rules && c.cb ? rules.runSpeed(c.cb.f, p.sex) : 6) * mul;
     return c.gmFly || p.eq.some((s) => s.startsWith(RIDE_TAG)) ? Math.max(run, FLY_MAX_SPEED * mul) : run;
   }
 
@@ -713,7 +753,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       atkMs: rules?.attackInterval(cb.f, c.player!.mt) ?? 1000, aspd: rules?.attackSpeed(cb.f) ?? 1, atk: rules?.shownAtk(cb.f) ?? [0, 0], atkShow: rules?.shownAtkValue(cb.f) ?? 0, range: rules?.attackRange(cb.f) ?? 2, def: rules?.showDefense(cb.f) ?? 0, crit: rules?.critChance(cb.f) ?? 0, cdmg: rules?.critBonus(cb.f) ?? 0, ...(rules ? rules.panel(cb.f) : {}),
       str: cb.f.base.str, sta: cb.f.base.sta, dex: cb.f.base.dex, int: cb.f.base.int, bonus: { str: cb.f.str - cb.f.base.str, sta: cb.f.sta - cb.f.base.sta, dex: cb.f.dex - cb.f.base.dex, int: cb.f.int - cb.f.base.int },
       acc: rules ? rules.accuracy(cb.f) : 0, dodge: rules ? rules.dodge(cb.f) : 0, spd: rules ? Math.floor(Math.floor(rules.attackSpeed(cb.f) * 100) / 2) : 0, points: cb.points, job: cb.f.job, jobOpts: rules ? rules.jobOptions(cb.f.job, lv) : [],
-      mv: +((rules ? rules.runSpeed(cb.f, c.player!.sex) : 6) * ((c.speedPct ?? 100) / 100)).toFixed(3), fx: rules ? rules.bonusList(cb.f) : [] };
+      mv: +((rules ? rules.runSpeed(cb.f, c.player!.sex) : 6) * ((c.speedPct ?? 100) / 100) * mountMul(c.player!)).toFixed(3), fx: rules ? rules.bonusList(cb.f) : [],
+      /** Premium Scroll ativo (janela de personagem) */ premium: cb.buffs.has(ITEM_BUFF + (inventory?.catalog.bySymbol.get('II_SCR_PREMIUM_01')?.id ?? -1)) };
   }
 
   /** painel de GM: atributos base de um jogador online (os de teste, se houver) e se são de teste */
@@ -750,7 +791,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   function addExp(c: Conn, amount: number) {
     const cb = c.cb, p = c.player;
     if (!cb || !p || !rules || amount <= 0) return;
-    cb.exp += Math.max(1, Math.floor(amount * rates().exp));
+    const expBonus = Math.max(0, cb.f.dst.get(D('DST_EXPERIENCE')) ?? 0); // DST_EXPERIENCE (%): Beginner Amplification, Premium, capa de exp…
+    cb.exp += Math.max(1, Math.floor(amount * rates().exp * (1 + expBonus / 100)));
     let up = false;
     const cap = rules.levelCap(cb.f.job);
     while (p.level < cap && rules.expToNext[p.level] > 0 && cb.exp >= rules.expToNext[p.level]) { cb.exp -= rules.expToNext[p.level]; p.level++; cb.points += rules.gpAt[p.level] ?? 2; if (skillCat) cb.skillPoints += skillCat.gainAt(p.level); up = true; }
@@ -1755,6 +1797,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     cb.nextAtk = now + rules.attackInterval(cb.f, p.mt);
     const r = rules.playerHitsMob(cb.f, m.prop);
     const died = r.hit && mobWorld.damage(m, p.id, r.dmg, rules.peaceful(m.prop), now);
+    if (r.hit && !died) tryStun(c, m, now); // Stonehand
     sendNear(p.w, m.x, m.z, { t: 'hit', k: 'p', a: p.id, d: m.id, dmg: r.dmg, f: (r.hit ? 0 : 1) | (r.crit ? 2 : 0), hp: mobHp(m), sn: [cb.f.weapon?.snd1 ?? -1, cb.f.weapon?.snd2 ?? -1],
       ...(cb.f.weapon && (cb.f.weapon.sfx3 >= 0 || cb.f.weapon.sfx5 >= 0) ? { hx: [cb.f.weapon.sfx3, cb.f.weapon.sfx5] } : {}) });
     if (!died) return;
@@ -1869,7 +1912,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   function buffsMsg(c: Conn) {
     const now = Date.now();
     return { t: 'buffs', list: [...(c.cb?.buffs.entries() ?? [])].map(([id, b]) => {
-      if (id >= ITEM_BUFF) { const d = inventory?.catalog.byId.get(id - ITEM_BUFF); return { id, name: d?.name ?? '', icon: d?.icon ?? '', lv: 0, item: 1, left: Math.max(0, b.until - now) }; }
+      if (id >= ITEM_BUFF) { const d = inventory?.catalog.byId.get(id - ITEM_BUFF); return { id, name: d?.name ?? '', icon: d?.icon ?? '', lv: 0, item: 1, left: Math.max(0, b.until - now), d: d?.desc ?? '', fx: b.dst ?? [] }; }
       const s = skillCat?.byId.get(id);
       return { id, name: s?.name ?? '', icon: s?.icon ?? '', lv: b.lv, left: Math.max(0, b.until - now), d: s?.desc ?? '', fx: b.dst ?? [] };
     }) };
@@ -1898,7 +1941,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
    * hora, os demais viram um buff com a duração dwSkillTime (somam aos atributos como os itens equipados).
    */
   const WEAPON_NAMES: Record<number, string> = { 2: 'uma espada', 3: 'um machado', 4: 'um bastão', 5: 'um knuckle', 6: 'uma varinha', 7: 'um cajado', 8: 'uma espada de duas mãos', 9: 'um machado de duas mãos', 11: 'um yoyo', 12: 'um arco', 13: 'um arco', 14: 'uma besta' };
-  function castSkill(c: Conn, skillId: number, mobId: number) {
+  function castSkill(c: Conn, skillId: number, mobId: number, viaSlot = false) {
     const mobWorld = W(c).mobs;
     const p = c.player, cb = c.cb, s = skillCat?.byId.get(skillId);
     if (!p || !cb || !s || !rules || !mobWorld || cb.dead) return;
@@ -1921,8 +1964,9 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       const reach = hostile ? 15 : s.kind === 'magic' ? 24 : reachOf(rules.attackRange(cb.f)) + 1;
       if (Math.hypot(m.x - p.p[0], m.z - p.p[2]) > reach) return;
     }
-    if (cb.mp < L.mp || cb.fp < L.fp) { reply(c, L.mp > cb.mp ? 'MP insuficiente.' : 'FP insuficiente.'); return; }
-    cb.mp -= L.mp; cb.fp -= L.fp; cb.dirty = true;
+    const [mpCost, fpCost] = costOf(cb, L, viaSlot);
+    if (cb.mp < mpCost || cb.fp < fpCost) { reply(c, mpCost > cb.mp ? 'MP insuficiente.' : 'FP insuficiente.'); return; }
+    cb.mp -= mpCost; cb.fp -= fpCost; cb.dirty = true;
     if (skillId !== DARK_ILLUSION) breakDark(c); // outra skill desfaz a Dark Illusion
     const cd = Math.max(L.cooldown || 0, s.kind === 'buff' ? 1000 : 1500);
     cb.skillReady.set(skillId, now + cd);
@@ -1993,6 +2037,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     cb.nextAtk = now + (s.kind === 'magic' ? 1500 : 1200); // a animação da skill segura o próximo golpe
     const dmg = Math.max(1, skillCat!.meleePower(cb.f, s, lv, inventory?.catalog.bySymbol.get('II_WEA_HAN_HAND') ?? null) - skillCat!.mobSkillDefense(m!.prop!));
     const died = mobWorld.damage(m!, p.id, dmg, rules.peaceful(m!.prop!), now);
+    if (!died) tryStun(c, m!, now); // Stonehand
     sendNear(p.w, m!.x, m!.z, { t: 'hit', k: 'p', a: p.id, d: m!.id, dmg, f: 4, hp: mobHp(m!), sk: s.symbol, fx: { c: s.sfx[0], p: s.kind === 'magic' ? s.sfx[1] : -1, h: s.sfx[2], s: s.sfx[4], mo: s.kind === 'magic' ? s.motion : '', sn: s.snd[0], sh: s.snd[1] } });
     if (!died) return;
     let best = p.id, bestDmg = -1;
@@ -2004,7 +2049,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
 
   // ---------- pet coletor (CAIPet + __SYS_PETFILTER do Titanium) ----------
   /** o pet procura itens até 20 unidades do dono (CAIPet::SubItemLoot), corre a ~8 u/s e procura de novo a cada 0,3 s */
-  const PET_RANGE = 20, PET_SPEED = 8;
+  const PET_RANGE = 20, PET_SPEED = 32; // PET_SPEED em u/s: o pet coletor corre bem rápido até o item (era 8)
   /** item IK3_PET: chama o pet (dwLinkKind = MI_* que aparece) ou recolhe se é o mesmo; outro pet troca */
   function togglePet(c: Conn, item: number, mover: number) {
     const p = c.player;
@@ -2062,7 +2107,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (f.ar > 0 && armor) return false;
     return true;
   }
-  /** a cada 0,3 s: cada pet livre vai buscar o item mais perto do dono que ele pode pegar */
+  /** a cada 0,1 s: cada pet livre vai buscar o item mais perto do dono que ele pode pegar */
   const petTick = setInterval(() => {
     const now = Date.now();
     for (const c of conns) {
@@ -2076,8 +2121,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         best = g; bestD = dist;
       }
       if (!best) continue;
-      const g = best, ms = Math.round((bestD / PET_SPEED) * 1000) + 250;
-      pet.busy = now + ms + 300;
+      const g = best, ms = Math.round((bestD / PET_SPEED) * 1000) + 70;
+      pet.busy = now + ms + 40;
       sendNear(p.w, g.x, g.z, { t: 'petGo', a: p.id, x: g.x, z: g.z, ms });
       setTimeout(() => {
         if (c.pet !== pet || !c.player || ground.get(g.id) !== g || c.player.w !== g.w) return;
@@ -2088,16 +2133,23 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         }).catch((e) => { console.error('realtime: pet pegar item', e); ground.set(g.id, g); });
       }, ms);
     }
-  }, 300);
+  }, 100);
 
   /**
    * Usa o item do espaço `slot` da bolsa (CMover::DoUseItem / DoUseItemFood): poção, comida e refresher curam HP/MP/FP
    * pelo dwDestParam/nAdjParamVal; acima do limite dwAbilityMin a cura cai para 30 %; espera dwSkillReady (mín. 1 s) por grupo.
    */
   /** pergaminhos que dão um buff (símbolo II_* → DST_* com valor e duração em ms) */
-  const ITEM_BUFFS: Record<string, { dst: [string, number][]; ms: number }> = {
+  const ITEM_BUFFS: Record<string, { dst: [string | number, number][]; ms: number; /** enche MP/FP ao usar */ fill?: 'mp' | 'fp' }> = {
     II_CHR_SYS_SCR_UPCUTSTONE: { dst: [['DST_ATKPOWER_RATE', 20]], ms: 1800_000 }, // Upcut Stone: +20% de ATK por 30 min
+    II_SYS_SYS_SCR_EXPSCROLL05: { dst: [['DST_EXPERIENCE', 50]], ms: 3600_000 }, // Beginner Amplification: +50% de EXP por 1 hora
+    II_SCR_PREMIUM_01: { dst: [['DST_STAT_ALLUP', 15], ['DST_EXPERIENCE', 50]], ms: 86_400_000 }, // Premium Scroll (24 Hours): todos os atributos +15 e EXP +50% por 24 h
+    II_CHR_REF_REF_HOLD: { dst: [[DST_UNLIMITED_MP, 1]], ms: 1800_000, fill: 'mp' }, // Refresher Hold: MP ilimitado por 30 min
+    II_CHR_POT_DRI_VITALX: { dst: [[DST_UNLIMITED_FP, 1]], ms: 1800_000, fill: 'fp' }, // Vital Drink X: enche o FP e FP ilimitado por 30 min
+    II_CHR_SYS_SCR_ACTIVITION: { dst: [[DST_UNLIMITED_SLOT, 1]], ms: 1800_000 }, // Activition: skills da Action Slot ilimitadas por 30 min (sem custo de MP/FP)
   };
+  /** "30 minutos" / "1 hora" / "24 horas" */
+  const fmtBuffTime = (ms: number) => { const m = Math.round(ms / 60000); return m >= 60 ? `${m / 60} hora${m / 60 === 1 ? '' : 's'}` : `${m} minutos`; };
   function useItem(c: Conn, slot: number) {
     const p = c.player, cb = c.cb;
     if (!p || !cb || !inventory || cb.dead) return;
@@ -2128,15 +2180,19 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       // pergaminho de buff (Upcut Stone…): gasta o item e vira um buff com tempo, que aparece na barra de buffs junto com os das skills
       const ib = ITEM_BUFFS[d.symbol];
       if (ib) {
-        const dst = ib.dst.map(([name, v]) => [D(name), v] as [number, number]);
+        // já ativo (mesmo pergaminho): não gasta outro, só avisa
+        const active = cb.buffs.get(ITEM_BUFF + d.id);
+        if (active && active.until > Date.now()) { reply(c, `${d.name} já está ativado.`); return; }
+        const dst = ib.dst.map(([name, v]) => [typeof name === 'number' ? name : D(name), v] as [number, number]);
         const after = await inventory.consume(p.id, slot);
         if (!after) return;
         cb.buffs.set(ITEM_BUFF + d.id, { lv: 0, until: Date.now() + ib.ms, dst });
         send(c.ws, inventory.view(after));
         refreshFighter(c, after);
+        if (ib.fill === 'mp') cb.mp = cb.maxMp; else if (ib.fill === 'fp') cb.fp = cb.maxFp; // Refresher Hold / Vital Drink X enchem o recurso ao usar
         send(c.ws, buffsMsg(c));
         send(c.ws, statsMsg(c));
-        reply(c, `${d.name}: efeito ativo por ${Math.round(ib.ms / 60000)} minutos.`);
+        reply(c, `${d.name}: efeito ativo por ${fmtBuffTime(ib.ms)}.`);
         void saveBuffs(p.id, cb).catch(() => {});
         return;
       }
@@ -2335,8 +2391,9 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     const now = Date.now();
     if ((cb.skillReady.get(skillId) ?? 0) > now) return;
     const L = s.levels[lv - 1];
-    if (cb.mp < L.mp || cb.fp < L.fp) { reply(c, L.mp > cb.mp ? 'MP insuficiente.' : 'FP insuficiente.'); return; }
-    cb.mp -= L.mp; cb.fp -= L.fp; cb.dirty = true;
+    const [rMp, rFp] = costOf(cb, L);
+    if (cb.mp < rMp || cb.fp < rFp) { reply(c, rMp > cb.mp ? 'MP insuficiente.' : 'FP insuficiente.'); return; }
+    cb.mp -= rMp; cb.fp -= rFp; cb.dirty = true;
     const cd = Math.max(L.cooldown || 0, 3000);
     cb.skillReady.set(skillId, now + cd);
     send(c.ws, { t: 'skillUsed', id: skillId, cd });
@@ -2540,11 +2597,12 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
             const pr = skillCat.powerRange(cb.f, sd, lv, hand);
             if (!pr) continue;
             const magic = sd.kind === 'magic';
-            skills.push({ id, magic, mp: L.mp, fp: L.fp, cd: Math.max(L.cooldown || 0, 1500), min: pr[0], max: pr[1],
+            const [mpc, fpc] = costOf(cb, L); // Refresher Hold / Vital Drink X: sem custo também nas skills que o Rust lança
+            skills.push({ id, magic, mp: mpc, fp: fpc, cd: Math.max(L.cooldown || 0, 1500), min: pr[0], max: pr[1],
               hit: { sk: sd.symbol, fx: { c: sd.sfx[0], p: magic ? sd.sfx[1] : -1, h: sd.sfx[2], s: sd.sfx[4], mo: magic ? sd.motion : '', sn: sd.snd[0], sh: sd.snd[1] } } });
           }
           rust.send({ k: 'fighter', char: p.id, f: { attacker: snap.attacker, defender: snap.defender, wElem: snap.wElem, sElem: snap.sElem, reach: reachOf(snap.range),
-            intervalMs: rules.attackInterval(cb.f, p.mt), snd: snap.snd, hp: cb.hp, maxHp: cb.maxHp, dead: cb.dead, god, mp: cb.mp, fp: cb.fp, skills } });
+            intervalMs: rules.attackInterval(cb.f, p.mt), snd: snap.snd, hp: cb.hp, maxHp: cb.maxHp, dead: cb.dead, god, mp: cb.mp, fp: cb.fp, freeSlot: (cb.f.dst.get(DST_UNLIMITED_SLOT) ?? 0) > 0, stun: stunOf(cb) ?? undefined, skills } });
           rustFight.set(p.id, { f: cb.f, mt: p.mt, hp: cb.hp, maxHp: cb.maxHp, dead: cb.dead, god, level: p.level, mp: cb.mp, fp: cb.fp, sk: skKey });
         }
       }
@@ -2674,7 +2732,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         send(ws, inventory.view(st));
         refreshFighter(c, st);
         const eq = inventory.looks(st, c.hide), mt = stanceOf(c, inventory.combatMotion(st, player.job));
-        if (eq.join() !== player.eq.join() || mt !== player.mt) { player.eq = eq; player.mt = mt; toWatchers(c, { t: 'look', id, eq, mt }); }
+        if (eq.join() !== player.eq.join() || mt !== player.mt) { player.eq = eq; player.mt = mt; toWatchers(c, { t: 'look', id, eq, mt }); if (c.cb) send(ws, statsMsg(c)); } // a velocidade de corrida muda ao montar/desmontar
       }).catch((e) => console.error('realtime: inventário (aviso)', e));
     }
   }
@@ -2970,7 +3028,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         skillUp(c, msg.levels);
       } else if (msg.t === 'skill' && c.player && Number.isInteger(msg.id) && Number.isInteger(msg.target)) {
         if (c.peace) setPeace(c, false);
-        castSkill(c, msg.id as number, msg.target as number);
+        castSkill(c, msg.id as number, msg.target as number, msg.slot === 1);
       } else if (msg.t === 'shopOpen' && c.player && typeof msg.key === 'string') {
         shopOpen(c, msg.key.slice(0, 40));
       } else if (c.trade && (msg.t === 'invMove' || msg.t === 'invUse' || msg.t === 'sell' || msg.t === 'invDrop' || msg.t === 'invSort')) {
@@ -3204,7 +3262,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
           send(ws, inv.view(r.state));
           refreshFighter(c, r.state);
           const eq = inv.looks(r.state, c.hide), mt = stanceOf(c, inv.combatMotion(r.state, player.job));
-          if (eq.join() !== player.eq.join() || mt !== player.mt) { player.eq = eq; player.mt = mt; toWatchers(c, { t: 'look', id: player.id, eq, mt }); }
+          if (eq.join() !== player.eq.join() || mt !== player.mt) { player.eq = eq; player.mt = mt; toWatchers(c, { t: 'look', id: player.id, eq, mt }); if (c.cb) send(ws, statsMsg(c)); } // a velocidade de corrida muda ao montar/desmontar
         }).catch((e) => { console.error('realtime inventário', e); send(ws, { t: 'invError', error: 'Servidor indisponível.' }); });
       }
     });

@@ -28,6 +28,8 @@ export interface Mob {
   dirty: boolean; cell: number;
   /** debuff de skill (Sneaker): até este instante (ms) o mob não anda — ainda golpeia quem está ao alcance */
   frozenUntil?: number;
+  /** atordoado (Stonehand, CHS_STUN) até este instante (ms): não anda nem golpeia */
+  stunnedUntil?: number;
 }
 
 /** o que o mundo dos mobs precisa saber dos jogadores (fornecido por server/realtime.ts) */
@@ -159,6 +161,7 @@ export class MobWorld {
       }
 
       const frozen = (m.frozenUntil ?? 0) > now;
+      if ((m.stunnedUntil ?? 0) > now) { this.setState(m, 'stand'); continue; } // atordoado: nada de andar nem de golpear
       if (m.foe && hooks) {
         const p = hooks.player(m.foe);
         if (!p || this.outOfLeash(m)) { this.reset(m); continue; }

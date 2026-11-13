@@ -7,7 +7,7 @@ import { motionOf, motionsFor, nextHit } from './motions';
 import { objectMatrix, TICKS_PER_SEC } from './math';
 import { OT, type WorldObject } from './formats/types';
 import { applyEnchantGlow } from './enchantGlow';
-import { attachRide, flyMotion, rideOf, type RideInfo } from './ride';
+import { attachMount, attachRide, flyMotion, mountOf, rideOf, type RideInfo } from './ride';
 
 /**
  * Personagem jogável: humano montado com Part_*.o3d (corpo padrão, cabeça/cabelo 01), anda sobre a altura do terreno e é
@@ -277,6 +277,7 @@ export class Player {
     if (!inst) return;
     const ride = rideOf(this.data, equip);
     void attachRide(inst, ride, this.lib);
+    void attachMount(inst, mountOf(this.data, equip), this.lib); // montaria de chão (tigre…): aparece sob o personagem
     if (ride && !this.ride) {
       this.ride = ride;
       this.target = null;

@@ -305,13 +305,13 @@ export class CharacterWindow extends GameWindow {
   /** ping, FPS e mapa atuais (main.ts atualiza algumas vezes por segundo enquanto a janela está aberta) */
   setLive(ping: number | null, fps: number, location: string) {
     const [premium, loc, pingV, fpsV] = this.other.values;
-    premium.textContent = this.inactive();
+    premium.textContent = this.premiumText(); premium.className = this.s?.premium ? 'cw-good' : 'cw-bad';
     loc.textContent = location;
     pingV.textContent = ping === null ? '—' : `${Math.round(ping)}ms`;
     pingV.className = ping !== null && ping > 150 ? 'cw-bad' : 'cw-good';
     fpsV.textContent = fps.toFixed(2);
   }
-  private inactive() { return t('Inativo...'); }
+  private premiumText() { return this.s?.premium ? t('Ativo') : t('Inativo...'); }
 
   /** atributos novos do servidor (descarta o pendente que não cabe mais) */
   setStats(s: PlayerStats) {
@@ -356,8 +356,7 @@ export class CharacterWindow extends GameWindow {
     serverV.textContent = SERVER_NAME;
     channelV.textContent = CHANNEL_NAME;
     const [premium] = this.other.values;
-    if (!premium.textContent) { premium.textContent = this.inactive(); }
-    premium.classList.add('cw-bad');
+    premium.textContent = this.premiumText(); premium.className = this.s?.premium ? 'cw-good' : 'cw-bad';
 
     // ataque = média do mínimo e máximo, como o RenderATK do original; Speed e Hit Rate como o oficial (DST_SPEED / DST_ADJ_HITRATE)
     const leftOf = (s: PlayerStats) => [String(s.atkShow ?? Math.floor((s.atk[0] + s.atk[1]) / 2)), pct(s.crit), String(s.def), pct(s.spd)];

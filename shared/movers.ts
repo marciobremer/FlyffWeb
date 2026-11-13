@@ -251,6 +251,17 @@ export class MoverInstance {
   private time = Math.random() * 10;
   /** multiplicador de velocidade do movimento atual */
   private rate = 1;
+  /** instante (performance.now) em que o movimento atual começou */
+  private motionAt = 0;
+  /** ms (a partir de agora) até o quadro em que o golpe acerta / do som do swing no movimento atual; 0 se já passou ou o movimento não marca */
+  hitDelayMs() { return this.attrDelay(this.motion?.hitFrame); }
+  swingDelayMs() { return this.attrDelay(this.motion?.sndFrame); }
+  private attrDelay(frame: number | undefined) {
+    const m = this.motion;
+    if (frame === undefined || !m || !(m.perSlerp > 0)) return 0;
+    const ms = (frame / (m.perSlerp * TICKS_PER_SEC) / this.rate) * 1000 - (performance.now() - this.motionAt);
+    return Math.max(0, Math.min(1500, ms));
+  }
   private motion: Motion | null;
   private motionSymbol = 'MTI_STAND';
   /** false = ANILOOP_1PLAY: para no último quadro e marca `finished` */
@@ -366,21 +377,29 @@ export class MoverInstance {
     this.effect?.setVisible?.(fx);
     if (fx) this.effect?.update(dt);
     const mo = this.motion;
-    if (!mo || mo.frameCount < 2) return;
+    if (!mo || mo.frameCount < 2) { this.rider?.update(dt); return; }
     this.time += dt * this.rate;
     if (this.blendT < 1) { this.blendT = Math.min(1, this.blendT + dt / this.blendTime); if (this.blendT >= 1) this.blendFrom = null; }
     const frames = this.time * mo.perSlerp * TICKS_PER_SEC;
     if (!this.loop && !this.loading && frames >= mo.frameCount - 1) this.ended = true;
     const f = this.loop ? frames % mo.frameCount : Math.min(frames, mo.frameCount - 1);
-    this.pose(f);
+    // montado, o pulo segue o tempo normal (a máquina de estados do pulo espera o fim de cada movimento), mas o corpo fica na pose sentada
+    const seat = this.rider && /^MTI_JUMP/.test(this.motionSymbol) ? this.rider.poseMotion() : null;
+    if (seat) this.pose((this.time * seat.perSlerp * TICKS_PER_SEC) % seat.frameCount, seat);
+    else this.pose(f);
     this.afterPose?.();
+    this.rider?.update(dt);
   }
   /** chamado depois de posar os ossos a cada quadro (ex.: vassoura/bike acompanha a altura do quadril) */
   afterPose: (() => void) | null = null;
+  /** montaria animada (shared/ride.ts attachMount): a pose sentada substitui os movimentos em loop e o corpo segue o osso da montaria */
+  rider: { pose: string; /** a pose sentada já carregada (null até chegar) */ poseMotion(): Motion | null; update(dt: number): void } | null = null;
+  /** último movimento pedido com `play` (a montaria escolhe parado/andar/correr por ele, mesmo com a pose sentada tocando) */
+  requested = 'MTI_STAND';
 
-  private pose(frame: number) {
+  private pose(frame: number, override?: Motion) {
     const { skeleton } = this.tpl;
-    const motion = this.motion;
+    const motion = override ?? this.motion;
     const n = this.bones.length;
     if (!motion || motion.boneCount !== n) {
       for (let i = 0; i < n; i++) this.bones[i].matrixWorld.copy(this.worlds[i]);
@@ -427,6 +446,8 @@ export class MoverInstance {
 
   /** `rate`: velocidade do movimento (1 = normal; o golpe do jogador toca na velocidade de ataque, como no original) */
   play(symbol: string, loop = true, rate = 1) {
+    this.requested = symbol;
+    if (this.rider && loop) symbol = this.rider.pose; // montado: parado/andando/correndo = a mesma pose sentada (golpes, dano e o tempo do pulo continuam)
     this.rate = rate;
     if (symbol === this.motionSymbol && loop === this.loop) return;
     this.motionSymbol = symbol;
@@ -437,7 +458,7 @@ export class MoverInstance {
       this.loading = false;
       if (!m || m.frameCount < 2) { this.ended = !loop; if (!m) return; }
       if (this.lastLocal.length) { this.blendFrom = this.lastLocal.map((x) => x.clone()); this.blendT = 0; }
-      this.motion = m; this.time = 0;
+      this.motion = m; this.time = 0; this.motionAt = performance.now();
     };
     // já carregado → troca neste mesmo quadro; senão baixa e troca quando chegar
     const ready = motionReady(this.tpl);
@@ -770,7 +791,7 @@ export class MoverManager {
     const flying = y !== null;
     const gy = flying ? y : this.floorAt(x, z) ?? 100;
     const obj: WorldObject = { type: OT.MOVER, modelId: entry.id, pos: [x, gy, z], rot: [0, h, 0], scale: [1, 1, 1], motion: 0, ai: 0, ai2: 0, name: '' };
-    const e: External = { obj, inst: null, target: [x, z], cur: [x, gy, z], h, curH: h, s: state, flying, gone: false, hp, oneShot: false, pet };
+    const e: External = { obj, inst: null, target: [x, z], cur: [x, gy, z], h, curH: h, s: state, flying, gone: false, hp, oneShot: false, pet, aggressive };
     this.external.set(id, e);
     this.externalObjs.add(obj);
     void this.template(entry, obj).then((tpl) => {
@@ -821,8 +842,8 @@ export class MoverManager {
   }
 
   externalInfo(id: number) { const e = this.external.get(id); return e ? { pos: e.cur, hp: e.hp, s: e.s, inst: e.inst } : null; }
-  /** posição (x, z) dos mobs do servidor vivos — pontos vermelhos do mini mapa */
-  externalPositions(): [number, number][] { const out: [number, number][] = []; for (const e of this.external.values()) if (!e.gone && e.hp > 0 && !e.pet) out.push([e.cur[0], e.cur[2]]); return out; }
+  /** posição (x, z) e se é agressivo dos mobs do servidor vivos — pontos do mini mapa (agressivo vermelho, normal amarelo) */
+  externalPositions(): [number, number, boolean][] { const out: [number, number, boolean][] = []; for (const e of this.external.values()) if (!e.gone && e.hp > 0 && !e.pet) out.push([e.cur[0], e.cur[2], !!e.aggressive]); return out; }
 
   setExternalHp(id: number, hp: number) { const e = this.external.get(id); if (e) e.hp = hp; }
 
@@ -928,6 +949,7 @@ interface External {
   /** HP em milésimos do máximo; tocando um movimento de uma vez (golpe, dano) que depois volta ao do estado */
   hp: number; oneShot: boolean;
   /** pet coletor de um jogador (não é mob) */ pet: boolean;
+  /** mob agressivo (ataca quem chega perto) */ aggressive?: boolean;
 }
 
 /** movimento do mob para o estado vindo do servidor */

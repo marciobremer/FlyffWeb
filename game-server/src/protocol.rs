@@ -80,6 +80,22 @@ pub struct FighterIn {
     pub fp: i64,
     #[serde(default)]
     pub skills: Vec<SkillIn>,
+    /// Activition: as skills lançadas pela Action Slot (`slot: 1` no `skill`) não gastam MP nem FP
+    #[serde(default)]
+    pub free_slot: bool,
+    /// Stonehand ativa: chance de cada golpe atordoar o mob
+    #[serde(default)]
+    pub stun: Option<StunIn>,
+}
+
+/// atordoamento por chance (Stonehand): chance em %, duração (ms) e o que aparece na janela do alvo (`mdebuff`: id da skill, nome, ícone)
+#[derive(Debug, Clone, Deserialize)]
+pub struct StunIn {
+    pub chance: f64,
+    pub ms: u64,
+    pub sk: u32,
+    pub name: String,
+    pub icon: String,
 }
 
 /// uma skill de ataque (melee ou magic) pronta para lançar: custos, espera, faixa do poder (já com os atributos) e o que vai no `hit`
@@ -123,7 +139,7 @@ pub enum LinkIn {
     /// o Node calculou um dano (golpe, skill) em um mob: o Rust confere a visão, aplica e é dono do HP/morte
     Damage { char: u32, mob: u32, dmg: i64, peaceful: bool },
     /// skill de debuff (Sneaker): o mob não anda por `ms`
-    Freeze { mob: u32, ms: u64 },
+    Freeze { mob: u32, ms: u64, /** atordoamento: também não golpeia */ #[serde(default)] stun: bool },
     /// o personagem saiu/morreu: mobs que o atacavam desistem
     Forget { char: u32 },
     /// morto ou invisível: os mobs não o veem. `invis`: só quem é `staff` (GM/admin) o enxerga na visão de jogadores

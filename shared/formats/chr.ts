@@ -56,6 +56,8 @@ export interface Motion {
   /** por osso: Float32Array(frameCount*7) = x,y,z,w,px,py,pz; ou null (osso estático usa `staticTm`) */
   frames: (Float32Array | null)[];
   staticTm: (number[] | null)[];
+  /** quadro em que o golpe acerta (atributo tipo 1 do .ani) e quadro do som do swing (tipo 2); undefined = o movimento não marca */
+  hitFrame?: number; sndFrame?: number;
 }
 
 export function parseAni(buf: ArrayBuffer): Motion {
@@ -78,5 +80,16 @@ export function parseAni(buf: ArrayBuffer): Motion {
       frames.push(a); staticTm.push(null);
     } else { frames.push(null); staticTm.push(r.mat()); }
   }
-  return { perSlerp, frameCount, boneCount, parents, frames, staticTm };
+  // atributos do movimento (depois dos ossos): 1 inteiro e, por quadro, [flags, quadro (float), tipo] — tipo 1 = golpe acerta, 2 = som do swing
+  let hitFrame: number | undefined, sndFrame: number | undefined;
+  if (r.buf.byteLength - r.o >= 4 + frameCount * 12) {
+    r.i32();
+    for (let k = 0; k < frameCount; k++) {
+      r.i32(); r.f32();
+      const type = r.i32();
+      if (type === 1 && hitFrame === undefined) hitFrame = k;
+      else if (type === 2 && sndFrame === undefined) sndFrame = k;
+    }
+  }
+  return { perSlerp, frameCount, boneCount, parents, frames, staticTm, hitFrame, sndFrame };
 }
