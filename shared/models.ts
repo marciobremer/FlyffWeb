@@ -1,5 +1,6 @@
-import { BoxGeometry, BufferAttribute, BufferGeometry, Color, Material, Matrix4, MeshLambertMaterial, type Texture } from 'three';
+import { BoxGeometry, BufferAttribute, BufferGeometry, Color, DataTexture, LinearFilter, LinearMipmapLinearFilter, Material, Matrix4, MeshLambertMaterial, RepeatWrapping, RGBAFormat, Texture, UnsignedByteType } from 'three';
 import { loadDds } from './dds';
+import { decodeTga } from './tga';
 import { fetchBuf } from './data';
 import { parseO3d, type O3d } from './formats/o3d';
 import { modelFileName, type ModelEntry } from './formats/inc';
@@ -19,6 +20,35 @@ export function placeholderMaterial(id: number): MeshLambertMaterial {
     placeholderMats.set(id, m);
   }
   return m;
+}
+
+/** textura de modelo que não é .dds (png, jpg, bmp pelo navegador): origem no topo, como o DDS */
+function loadBrowserImage(url: string): Promise<Texture | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => { const t = new Texture(img); t.flipY = false; t.generateMipmaps = true; t.minFilter = LinearMipmapLinearFilter; t.magFilter = LinearFilter; t.needsUpdate = true; resolve(t); };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+async function loadTgaTexture(url: string): Promise<Texture | null> {
+  const buf = await fetchBuf(url);
+  if (!buf) return null;
+  try {
+    const img = decodeTga(buf);
+    const t = new DataTexture(new Uint8Array(img.data.buffer, img.data.byteOffset, img.data.byteLength), img.width, img.height, RGBAFormat, UnsignedByteType);
+    t.generateMipmaps = true; t.minFilter = LinearMipmapLinearFilter; t.magFilter = LinearFilter; t.needsUpdate = true;
+    return t;
+  } catch { return null; }
+}
+/**
+ * Textura de modelo: .dds, .tga, .png, .jpg ou .bmp. O endereçamento é WRAP como no D3D (muitos modelos têm UVs fora de 0–1, ex.: itens
+ * no chão — com CLAMP a imagem sumia e o modelo saía de uma cor só, "sem textura").
+ */
+async function loadModelTexture(url: string, key: string): Promise<Texture | null> {
+  const t = /\.(png|jpe?g|bmp|gif|webp)$/.test(key) ? await loadBrowserImage(url) : /\.tga$/.test(key) ? await loadTgaTexture(url) : await loadDds(url);
+  if (t) { t.wrapS = t.wrapT = RepeatWrapping; t.needsUpdate = true; }
+  return t;
 }
 
 /** Carrega .o3d reais (e texturas .dds quando existem) sob demanda, com cache. */
@@ -107,7 +137,7 @@ export class ModelLibrary {
     let p = this.textures.get(key);
     if (!p) {
       p = this.textureFiles.has(key)
-        ? loadDds('/res/Data/Model/Texture/' + encodeURIComponent(name))
+        ? loadModelTexture('/res/Data/Model/Texture/' + encodeURIComponent(name), key)
         : Promise.resolve(null);
       this.textures.set(key, p);
     }

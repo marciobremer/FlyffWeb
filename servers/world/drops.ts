@@ -37,6 +37,13 @@ const P10K = 10_000;
 
 export const OWNER_MS = 30_000, GROUND_MS = 120_000;
 const R3E9 = 3_000_000_000;
+/**
+ * Itens unique (grade 200) e ultimate (300) têm dwItemRare = 200 fixo, então o filtro de faixa do DropKind (nível do mob − 5 … − 2) nunca
+ * os pegava: só caíam dos 72 mobs que os listam em DropItem, a ~0,01 % cada. Agora cada DropKind também tenta, com esta chance (por
+ * tentativa, × taxa de drop do servidor), um unique/ultimate do mesmo tipo cujo NÍVEL de item esteja na mesma faixa; se sair, vale a
+ * mesma chance de enchant (expDropLuck) dos itens normais.
+ */
+export const UNIQUE_DROP = 0.01, ULTIMATE_DROP = 0.002;
 const rand = (n: number) => Math.floor(Math.random() * n);
 
 export class DropRules {
@@ -45,6 +52,8 @@ export class DropRules {
   private luck: number[][] = [];
   /** itens por IK3 (para DropKind) e as sementes de penya (modelo no chão por quantia) */
   private byKind3 = new Map<number, ItemDef[]>();
+  /** unique/ultimate por IK3 (DropKind: faixa pelo nível do item, não pelo dwItemRare) */
+  private special = new Map<number, ItemDef[]>();
   private seeds: ItemDef[] = [];
   /** versões novas: drops por monstro (id MI_*), por faixa de nível, e a penalidade por diferença de nível */
   readonly monsterDrops = new Map<number, MonsterDrops>();
@@ -62,6 +71,7 @@ export class DropRules {
       for (const line of clean.split(/\r?\n/)) { const v = line.trim().split(/\s+/).map(Number); if (v.length >= 11 && v.every(Number.isFinite)) this.luck.push(v.slice(0, 11)); }
     }
     for (const d of items.byId.values()) {
+      if (d.kind3 && d.rare > 0 && d.grade >= 200) { let a = this.special.get(d.kind3); if (!a) this.special.set(d.kind3, (a = [])); a.push(d); }
       if (d.kind3 && d.rare > 0) { let a = this.byKind3.get(d.kind3); if (!a) this.byKind3.set(d.kind3, (a = [])); a.push(d); }
     }
     this.loadNew(resDir);
@@ -191,14 +201,21 @@ export class DropRules {
       if (g > 0) out.push({ itemId: this.seedFor(g), count: 1, upgrade: 0, gold: g });
     }
     const minRare = Math.max(1, m.level - 5), maxRare = Math.max(1, m.level - 2);
-    for (const ik3 of t.kinds) {
-      const pool = (this.byKind3.get(ik3) ?? []).filter((x) => x.rare >= minRare && x.rare <= maxRare);
-      if (!pool.length) continue;
-      const item = pool[rand(pool.length)];
+    const tryKind = (item: ItemDef) => {
       const row = this.luck[Math.min(119, Math.max(0, item.level - 1))];
-      if (!row) continue;
+      if (!row) return;
       for (let k = rand(11); k >= 0; k--) {
         if (rand(R3E9) < row[k] * (m.correction / 100) * drop) { out.push({ itemId: item.id, count: 1, upgrade: k, gold: 0 }); break; }
+      }
+    };
+    for (const ik3 of t.kinds) {
+      const pool = (this.byKind3.get(ik3) ?? []).filter((x) => x.grade < 200 && x.rare >= minRare && x.rare <= maxRare);
+      if (pool.length) tryKind(pool[rand(pool.length)]);
+      // unique / ultimate do mesmo tipo, pelo nível do item
+      const sp = (this.special.get(ik3) ?? []).filter((x) => x.level >= minRare && x.level <= maxRare);
+      if (sp.length) {
+        const item = sp[rand(sp.length)];
+        if (Math.random() < Math.min(1, (item.grade >= 300 ? ULTIMATE_DROP : UNIQUE_DROP) * drop)) tryKind(item);
       }
     }
     return out;

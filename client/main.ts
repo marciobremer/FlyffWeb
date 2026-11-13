@@ -443,7 +443,7 @@ net.onChangeWorld = (w, p, force) => {
     if (view.player) view.player.runSpeed = moveSpeed;
     const ch = characters.find((c) => c.slot === selectedSlot);
     if (ch) { view.player?.inst?.setLabel(ch.name, rankOf(account?.authority), PLAYER_LABEL_LIFT); view.player?.inst?.setGuildTag(myGuild, myGuildMaster); }
-    void view.player?.setCombat(combatMt);
+    void view.player?.setCombat(stanceFor(combatMt));
     view.playerControl = true;
     net.resume();
     mapLoading.hide();
@@ -914,12 +914,12 @@ net.onInv = (m) => {
   void restyle(lookList(inventory.equippedPieces(), inventory.hidden));
 };
 net.onWelcome = (eq, mt) => {
-  combatMt = mt; void restyle(eq); void view.player?.setCombat(mt); net.guild('guildInfo');
+  combatMt = mt; void restyle(eq); void view.player?.setCombat(stanceFor(mt)); net.guild('guildInfo');
   const o = optionsWnd.values; // o servidor precisa saber o que este jogador aceita receber
   net.prefs({ trade: o.trade, whisper: o.whisper, friend: o.friend, guild: o.guild, party: o.party });
 };
 // postura de combate (arma/escudo equipado, conforme a classe) e equipamento vindos do servidor
-net.onLook = (eq, mt) => { combatMt = mt; void restyle(eq); void view.player?.setCombat(mt); };
+net.onLook = (eq, mt) => { combatMt = mt; void restyle(eq); void view.player?.setCombat(stanceFor(mt)); };
 /** caixinhas do inventário: esconde/mostra capacete, capa, máscara e roupas de cash (lembrado por personagem neste navegador) */
 inventory.onHide = (mask) => {
   const ch = characters.find((c) => c.slot === selectedSlot);
@@ -949,6 +949,9 @@ function levelUpFx(id: number) {
 net.onLevelUp = (id) => levelUpFx(id);
 /** troca o equipamento visível do personagem local (recoloca o nome na instância nova) */
 let combatMt = 0, lookNow: string[] = [];
+/** teste: ?stance=N força a postura de combate N (1–15) do seu personagem em batalha, para descobrir qual conjunto de animações serve para cada arma */
+const FORCE_STANCE = Number(new URLSearchParams(location.search).get('stance')) || 0;
+const stanceFor = (mt: number) => (FORCE_STANCE >= 1 && FORCE_STANCE <= 15 && mt > 0 ? FORCE_STANCE : mt);
 /** você está invisível (modo invisível de GM ou Dark Illusion): seu boneco fica translúcido */
 let myInvis = false;
 net.onInvis = (on) => { myInvis = on; view.player?.inst?.setGhost(on); gmPanel.setInvis(on); };
@@ -1191,7 +1194,7 @@ view.onFrame = (dt) => {
     perfAcc += dt; perfFrame = Math.max(perfFrame, dt * 1000);
     if (perfAcc >= 1) { perfAcc = 0; perfGap = net.takeStatesGap(); perfAny = net.takeAnyGap(); perfFrameShown = Math.round(perfFrame); perfFrame = 0; if (inGame) net.sendPerf({ sg: perfGap, mg: perfAny, fps: Math.round(view.fps), ping: net.ping === null ? null : Math.round(net.ping), fm: perfFrameShown }); }
     const inf = view.sceneStats;
-    $('hud').textContent += ` · s3tc ${hasS3tc() ? 'sim' : 'nao'} · maxTex ${view.renderer.capabilities.maxTextureSize} · ${inf.calls} calls · ${(inf.triangles / 1000).toFixed(0)}k tri · states gap ${perfGap[0]}–${perfGap[1]} ms · msg gap ${perfAny[0]}–${perfAny[1]} ms · quadro máx ${perfFrameShown} ms · ${remotes.count} jogadores (${remotes.fusedCount} fundidos)`;
+    $('hud').textContent += ` · s3tc ${hasS3tc() ? 'sim' : 'nao'} · maxTex ${view.renderer.capabilities.maxTextureSize} · ${inf.calls} calls · ${(inf.triangles / 1000).toFixed(0)}k tri · states gap ${perfGap[0]}–${perfGap[1]} ms · msg gap ${perfAny[0]}–${perfAny[1]} ms · quadro máx ${perfFrameShown} ms · ${remotes.count} jogadores (${remotes.fusedCount} fundidos) · postura ${view.player?.stance ?? 0}`;
   }
   if (previewing) view.player?.preview(dt, 0);
   if (inGame) {
@@ -1734,7 +1737,7 @@ async function enter() {
   if (view.player) view.player.runSpeed = moveSpeed;
   if (curWorld !== WORLD) mapLoading.hide();
   combatMt = ch.mt ?? 0;
-  await view.player?.setCombat(combatMt);
+  await view.player?.setCombat(stanceFor(combatMt));
   lookNow = equip;
   updateInvPreview();
   inventory.setHide(hide);

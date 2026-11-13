@@ -740,8 +740,8 @@ export class Inventory {
     switch (w.kind3) {
       case 2: return 1; // IK3_SWD
       case 3: return 4; // IK3_AXE
-      case 4: return base === 10 ? 9 : 3; // IK3_CHEERSTICK
-      case 5: return base === 11 ? 10 : 6; // IK3_KNUCKLEHAMMER
+      case 4: return base === 10 ? 9 : 3; // IK3_CHEERSTICK: Ringmaster 9, Assist/Billposter 3
+      case 5: return 6; // IK3_KNUCKLEHAMMER: o mesmo ataque de knuckle para Assist, Ringmaster e Billposter (o 10 do Billposter parecia de espada)
       case 6: return base === 12 ? 11 : 2; // IK3_WAND
       case 7: return base === 13 ? 12 : 5; // IK3_STAFF
       case 8: case 9: return 7; // IK3_THSWD, IK3_THAXE

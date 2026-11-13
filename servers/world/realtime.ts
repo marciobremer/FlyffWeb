@@ -1923,7 +1923,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (!cb || !cb.buffs.size) return;
     const now = Date.now();
     let changed = false;
-    for (const [id, b] of cb.buffs) if (force || b.until <= now) { cb.buffs.delete(id); changed = true; }
+    // `force` (morreu): perde os buffs de skill; os de item (Premium, EXP, Upcut Stone…) continuam até o tempo acabar
+    for (const [id, b] of cb.buffs) if ((force && id < ITEM_BUFF) || b.until <= now) { cb.buffs.delete(id); changed = true; }
     if (!changed) return;
     void inventory?.state(c.player!.id).then((st) => { refreshFighter(c, st); send(c.ws, buffsMsg(c)); });
   }
