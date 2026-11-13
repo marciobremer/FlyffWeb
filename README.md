@@ -43,7 +43,6 @@ Browser ──► Node.js (login, API, website) ──► Rust (combat, AI, move
 | Computer | Windows 10 or 11 (64-bit), 8 GB RAM or more, and free disk space for the game files (several GB) |
 | Internet | to download the programs and the project |
 | **Titanium MMO** | the client **and** the `Resource` folder of Titanium MMO (see step 4) — **required** |
-| **L2 Giran map** | *optional*: only if you want the extra Giran map (see step 4) |
 | Time | about 30–40 minutes the first time (mostly waiting for downloads and the first compilation) |
 
 You do **not** need to know how to program. Every command below can be copied and pasted.
@@ -80,9 +79,7 @@ You do **not** need to know how to program. Every command below can be copied an
 | **`Original/Resource/`** | The **Resource** folder of **Titanium MMO**: item and monster tables (`propItem.txt`, `propMover.txt`, `defineItem.h`…), the maps (`World/WdMadrigal`…) and the 3D models | **YES — nothing opens without it** | Titanium MMO |
 | **`Original/Client/`** | The **installed client** of **Titanium MMO** (`Neuz.exe`, `Data/`, `World/`…): models, textures, icons, sounds | **YES** | Titanium MMO |
 | `data/res-extra/Data/` | Complementary interface icons, cursors and themes (`Cursors/`, `Icon/`, `Theme/`) | Recommended: without it some icons, cursors or windows may appear blank | data pack that comes with the forum thread |
-| **`data/res-extra/L2/`** and **`data/res-extra/World/`** | The **L2 Giran map**: the 3D models (`L2/`) and the `WdL2Giran` map with its textures (`World/`) | Optional (without them only the Madrigal map exists) | L2 Giran map pack, in the forum thread |
 | `htdocs/.env.local` | Passwords and keys for the website | **YES — you create it in step 6** | you |
-| `data/l2/`, `tools/cruma/` | Raw Cruma (L2 exporter) material, only used to **rebuild** the Giran map | Not needed to run | — |
 | `node_modules/`, `dist/`, `htdocs/.next/`, `game-server/target/`, `data/mappack/` | Generated automatically (installation, compiling the game, the website and the Rust engine, the map pack) | Do nothing | generated for you |
 | `backups/` | Database copies containing player accounts | No | — |
 
@@ -160,20 +157,6 @@ To check it is right, these files and folders **must exist**:
 
 ### 4.3 Interface add-ons (recommended)
 Copy the **`Data`** folder from the pack that comes with the forum thread into **`data\res-extra\`**, so that you end up with `C:\Projeto_Atools\data\res-extra\Data\` containing the `Cursors`, `Icon` and `Theme` subfolders.
-
-### 4.4 L2 Giran map (optional)
-The extra Giran map (from Lineage 2) lives in **two folders** inside `data\res-extra\`:
-
-```
-C:\Projeto_Atools\data\res-extra\
-├── L2\        ← 3D models of the map (.glb files)
-└── World\
-    ├── WdL2Giran\   ← the map itself (WdL2Giran.wld and the .lnd files)
-    └── Texture\     ← map textures
-```
-
-If these folders exist, the server registers the map by itself; in the game, a GM goes there with the `//mapa l2` chat command.
-If they do not exist, **nothing breaks** — there is just no Giran map.
 
 ---
 
@@ -335,7 +318,6 @@ Run these in PowerShell, inside the project folder.
 | `npm run dev` | development mode (port 5173; it is a separate world from 8080) |
 | `npm run db:migrate` | applies database updates |
 | `npm run account -- <command>` | `create`, `set-password`, `list`, `add-character`, `set-authority`, `give-item`, `give-penya` |
-| `npm run l2world -- <tile> <Name>` | rebuilds the L2 map from Cruma exports (only if you have `data/l2`) |
 | `npm test` / `npm run typecheck` | tests and code check |
 
 **Useful environment variables** (set them before starting, with `set NAME=value`):
