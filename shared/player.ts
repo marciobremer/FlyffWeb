@@ -37,6 +37,8 @@ const GRAVITY = 28, JUMP_V = 9 * Math.sqrt(3);
  */
 const RUN_DEFAULT = 0.1 * TICKS_PER_SEC, WALK_RATIO = 0.25;
 /** maior degrau que se sobe andando; raio do corpo e alturas dos raios de parede (joelho e peito) */
+/** postura cuja corrida é a pose de voo do //fly (12 = Elementor com cajado em modo de combate) */
+const GM_FLY_STANCE = 12;
 const STEP = 0.7, RADIUS = 0.35, WALL_RAYS = [0.75, 1.5];
 /** alturas (acima de onde decolou) em que uma parede entre a decolagem e o pouso invalida o pulo: acima do que o pulo alcança */
 const JUMP_WALL_RAYS = [1.6, 2.6, 3.6];
@@ -82,8 +84,14 @@ export class Player {
   get flying() { return !!this.ride; }
   /** voo livre de GM (//fly): sem prancha, sem gravidade; E sobe, Q desce, WASD guia. Ao desligar, cai pela gravidade normal */
   private gmFlyOn = false;
+  /** no ar com o //fly: toca a pose de voo (GM_FLY_STANCE) */
+  private gmFlying = false;
   get gmFly() { return this.gmFlyOn; }
-  set gmFly(on: boolean) { if (this.gmFlyOn && !on) { this.grounded = false; this.vy = 0; } this.gmFlyOn = on; }
+  set gmFly(on: boolean) {
+    if (this.gmFlyOn && !on) { this.grounded = false; this.vy = 0; }
+    if (!on && this.gmFlying) { this.gmFlying = false; this.state = 'stand'; this.inst?.play(...motionOf('stand', this.combat)); }
+    this.gmFlyOn = on;
+  }
   /** velocidade atual (unidades por segundo), para o painel de voo */
   get flySpeed() { return Math.hypot(...this.fv) * TICKS_PER_SEC; }
   get flyAcc() { return this.acc; }
@@ -456,8 +464,14 @@ export class Player {
     const floor = this.world.heightAt(this.pos[0], this.pos[2]);
     if (floor !== null && this.pos[1] < floor) this.pos[1] = floor;
     this.grounded = false; this.vy = 0;
-    const st: Player['state'] = len > 1e-4 || up !== 0 ? 'run' : 'stand';
-    if (st !== this.state) { this.state = st; inst.play(...motionOf(st, this.combat)); }
+    // fora do chão: a corrida do Elementor em modo de combate (MTI_RUN_12, o corpo deitado de quem voa), parado ou andando
+    const air = floor === null || this.pos[1] > floor + 0.4;
+    if (air && !this.gmFlying) { this.gmFlying = true; this.state = 'run'; inst.play(...motionOf('run', GM_FLY_STANCE)); }
+    else if (!air && this.gmFlying) { this.gmFlying = false; this.state = 'run'; inst.play(...motionOf('run', this.combat)); }
+    if (!this.gmFlying) {
+      const st: Player['state'] = len > 1e-4 || up !== 0 ? 'run' : 'stand';
+      if (st !== this.state) { this.state = st; inst.play(...motionOf(st, this.combat)); }
+    }
     inst.update(dt);
     this.apply();
   }

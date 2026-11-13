@@ -2371,7 +2371,16 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     cb.dead = false;
     cb.hp = Math.ceil(cb.maxHp / 2); cb.mp = Math.max(cb.mp, Math.ceil(cb.maxMp / 2)); cb.fp = Math.max(cb.fp, Math.ceil(cb.maxFp / 2));
     cb.dirty = true;
-    const at = arrivalOf(W(c)) ?? W(c).start;
+    const arrival = arrivalOf(W(c));
+    if (!arrival && p.w !== MAIN) {
+      // mapa sem ponto de chegada (Heaven Tower, dungeons): `start` é o ponto de Madrigal, que aí cai fora do terreno (tela vazia).
+      // Renasce na cidade; o cliente é avisado do HP/estado pelo 'teleport' com revive e depois muda de mapa.
+      p.s = 'stand'; c.dirty = true;
+      send(c.ws, { t: 'teleport', p: p.p, revive: true });
+      void changeWorld(c, MAIN, [...REVIVE_AT] as [number, number, number], true).catch((e) => console.error('realtime: reviver', e));
+      return;
+    }
+    const at = arrival ?? W(c).start;
     p.p = [...at]; p.s = 'stand'; c.dirty = true;
     send(c.ws, { t: 'teleport', p: at, revive: true });
   }
@@ -2986,6 +2995,18 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
                 done = true;
               }
               return done;
+            },
+            skillsLive: (id, mode) => {
+              for (const o of conns) if (o.player?.id === id && o.cb && skillCat) {
+                const cb = o.cb;
+                if (mode === 'clear') cb.skills.clear();
+                else for (const s of skillCat.forJob(cb.f.job)) if (o.player.level >= s.reqLevel) cb.skills.set(s.id, s.max);
+                reconcilePoints(cb, o.player.level); // pontos livres = o que sobra do total do nível
+                send(o.ws, skillsMsg(o));
+                void saveCombat(id, cb, o.player.level).catch((e) => console.error('realtime: salvar skills (GM)', e));
+                return cb.skills.size;
+              }
+              return null;
             },
             setLevelLive: (id, level) => {
               for (const o of conns) if (o.player?.id === id) {

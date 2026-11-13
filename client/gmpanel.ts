@@ -249,6 +249,19 @@ export class GmPanel extends GameWindow {
 
   private resetStats() { if (!this.setStatsReq(this.nick(), null)) this.status('No connection to the server.', true); else this.status('…'); }
 
+  /** caixa de skills de teste: abre todas no máximo permitido pelo nível do alvo, ou zera */
+  private skillsBox() {
+    return el('div', { className: 'gm-stats gm-skills' },
+      el('b', { textContent: 'Skills (test)' }),
+      el('p', { className: 'gm-hint', textContent: 'Gives every skill of the class at max level, up to what the character level allows.' }),
+      el('div', { className: 'gm-row' }, btn('Max all skills', () => this.send(this.withTarget('skills-max', '')))),
+      el('div', { className: 'gm-row' }, btn('Zero skills', () => {
+        const who = this.nick() || 'you';
+        void gameConfirm(`Zero all skills of ${who}? The points go back to the pool.`, 'Zero').then((ok) => { if (ok) this.send(this.withTarget('skills-clear', '')); });
+      })),
+      el('p', { className: 'gm-hint', textContent: 'Saved. Does not change the level or class.' }));
+  }
+
   private statsBox() {
     this.statBox.replaceChildren(
       el('b', { textContent: 'Stats (test)' }), this.statWho,
@@ -302,7 +315,7 @@ export class GmPanel extends GameWindow {
       })),
       el('div', { className: 'gm-row' },
         btn('Kill', () => this.send(this.withTarget('kill', ''))),
-        btn('Revive', () => this.send(this.withTarget('revive', ''))))), this.statsBox()),
+        btn('Revive', () => this.send(this.withTarget('revive', ''))))), this.statsBox(), this.skillsBox()),
       sep(),
       el('h4', { textContent: 'GM' }),
       el('div', { className: 'gm-row' }, this.invisBtn, el('span', { className: 'gm-hint', textContent: 'invisible to players; GMs and admins can see you' })),

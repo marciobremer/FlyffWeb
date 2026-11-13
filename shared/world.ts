@@ -125,6 +125,8 @@ export class WorldView {
   private loadToken = 0;
 
   layers: Layers = { terrain: true, objs: true, sfx: true, water: true, sky: true, movers: true, spawns: true, wireframe: false };
+  /** ambiente padrão antes de qualquer mapa com ambiente salvo (usado por mapas sem ambiente) */
+  private baseSettings: { settings: WorldSettings; sky: boolean; water: boolean } | null = null;
   settings: WorldSettings = { hour: 12, worldLight: true, worldFog: false, shadows: true, sunTilt: 30 };
   /** raio (em tiles) carregado em volta do alvo da câmera */
   radius = 3;
@@ -694,6 +696,12 @@ export class WorldView {
     this.setupMovers();
     // padrão do mundo salvo no editor (painel Ambiente): vale no jogo e já vem marcado no editor
     const env = d.edits.environment;
+    // mundo sem ambiente salvo volta ao padrão do cliente (senão herda o névoa/hora/camadas do mapa anterior, ex.: da Heaven Tower)
+    this.baseSettings ??= { settings: { ...this.settings }, sky: this.layers.sky, water: this.layers.water };
+    if (!env) {
+      this.settings = { ...this.baseSettings.settings };
+      this.layers = { ...this.layers, sky: this.baseSettings.sky, water: this.baseSettings.water };
+    }
     if (env) {
       this.settings = { hour: env.hour, worldLight: env.worldLight, worldFog: env.worldFog, shadows: env.shadows, sunTilt: env.sunTilt };
       this.layers = { ...this.layers, sky: env.showSky, water: env.showWater };

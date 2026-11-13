@@ -1631,6 +1631,9 @@ async function backToLogin() {
   $('charScreen').hidden = true;
   $('loginScreen').hidden = false;
   $('loginScreen').classList.remove('leaving');
+  // o fundo do login é Flaris: se o jogador saiu de outro mapa (torre, dungeon…), reabre Madrigal e espera o chão antes de posar a câmera
+  await openWorld(WORLD, FLARIS.x, FLARIS.z);
+  await view.loadTile(Math.floor(FLARIS.x / 512), Math.floor(FLARIS.z / 512));
   view.lookAt(FLARIS.x, FLARIS.z, 60);
   view.camera.position.y -= 25;
   view.controls.update();

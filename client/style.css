@@ -964,3 +964,27 @@ body.ingame #langPick { display: none; }
 .gm-box .gm-row > .gm-btn { width: 100%; padding: 0 4px; }
 .gm-box .gm-row:nth-last-child(-n+2) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .gm-box .gm-row:nth-last-child(2) > .gm-btn { grid-column: 1 / -1; }
+
+.gm-skills .gm-row { display: block; margin: 4px 0; }
+.gm-skills .gm-row > .gm-btn { width: 100%; }
+
+/* janela de skills no estilo do original: classes com nome, título azul, árvore ampliada e faixa azul no rodapé */
+.sk-tabs { gap: 22px; }
+.sk-tabcell { display: flex; flex-direction: column; align-items: center; gap: 2px; font: 700 12px Tahoma, sans-serif; color: #2a5fa8; }
+.sk-tabcell.on span { color: #d84a1a; }
+.sk-title, .sk-banner { flex: none; text-align: center; font: 700 13px Tahoma, sans-serif; color: #fff; background: #7f9bbd; border-radius: 10px; padding: 2px 8px; text-shadow: 0 1px 0 rgb(0 0 0 / .35); }
+.sk-banner { font-size: 12px; }
+.sk-treebox { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: auto; }
+.sk-treebox .sk-tree { zoom: 1.45; background-color: #f4f1ef; border-radius: 8px; box-shadow: 0 0 0 1px #c9c4c0 inset; }
+.sk-node i.max { background: #3c4f86; font-size: 8px; line-height: 10px; letter-spacing: .02em; left: 0; top: auto; bottom: -3px; }
+.sk-node.pending i.max { background: #2a7a2a; }
+.sk-tip .skill-name { color: #0a7d0a; }
+
+.sk-treebox .sk-tree { zoom: 1; }
+.sk-scaled { flex: none; position: relative; background: #f4f1ef; border-radius: 8px; box-shadow: 0 0 0 1px #c9c4c0 inset; }
+.sk-scaled .sk-tree { position: absolute; left: 0; top: 0; background-color: transparent; box-shadow: none; }
+.sk-node i.max, .sk-node.pending i.max { background: #d22; }
+.sk-tabcell.ghost { color: #6a7480; }
+.sk-tab:disabled { cursor: default; filter: none; }
+.sk-tab.lock { display: grid; place-items: center; background: #c9ccd2; border: 2px solid #8a8f99; border-radius: 4px; box-sizing: border-box; font-size: 20px; }
+.sk-tab.lock::after { content: '🔒'; filter: grayscale(1); }

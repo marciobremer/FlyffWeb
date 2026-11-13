@@ -24,6 +24,8 @@ export interface GmContext {
   setLevelLive(id: number, level: number): void;
   /** devolve os pontos de atributo de quem está online (STR/STA/DEX/INT voltam a 15); false se não está online */
   resetStatsLive(id: number): boolean;
+  /** teste: abre todas as skills da classe até o nível do personagem no máximo (`max`) ou zera todas (`clear`); devolve quantas ficaram abertas, ou null se está offline */
+  skillsLive?(id: number, mode: 'max' | 'clear'): number | null;
   reply(text: string): void;
   /** abre o painel de GM no cliente de quem digitou */
   openPanel(): void;
@@ -90,6 +92,7 @@ const HELP = [
   '//event [run <id>]   lists the events (data/events.json) / triggers one now · //weather [rain|clear] [minutes]   shows / changes the map weather',
   '//quest   lists the quests and your progress · //quest reset [id]   resets the progress (one or all)',
   '//reset-stats [character]   returns the stat points (STR/STA/DEX/INT go back to 15)',
+  '//skills-max [character]   opens every skill of the class at max level, up to the character level (test) · //skills-clear [character] zeroes them',
   '//give-penya [character] <amount>',
   '//bag [character] <42-168>',
   '//mob <MI_…|id> [quantity] [x z]   summons monsters near you or at the point x z (they do not respawn; bosses come aggressive)',
@@ -368,6 +371,17 @@ export async function runGmCommand(ctx: GmContext, text: string): Promise<void> 
     if (!ctx.resetStatsLive(t.id)) await query('UPDATE characters SET str = 15, sta = 15, dex = 15, "int" = 15, updated_at = now() WHERE id = $1', [t.id]);
     log(`reset-stats ${t.name}`);
     ctx.reply(`${t.name}'s stat points were returned (STR/STA/DEX/INT = 15).`);
+    return;
+  }
+
+  if (name === 'skills-max' || name === 'skillsmax' || name === 'skills-clear' || name === 'skillsclear') {
+    const t = await target(() => false);
+    if (!t) return;
+    const clear = name.endsWith('clear');
+    const n = ctx.skillsLive?.(t.id, clear ? 'clear' : 'max');
+    if (n === null || n === undefined) { ctx.reply(`${t.name} must be online.`); return; }
+    log(`${name} ${t.name}`);
+    ctx.reply(clear ? `${t.name}'s skills were zeroed (points returned).` : `${t.name} now has ${n} skills at max level (the ones the level allows).`);
     return;
   }
 
