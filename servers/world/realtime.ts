@@ -1255,7 +1255,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
    * o original dava o nível do SetBuffSkill) — com a duração do NPC; vale se o nível do personagem está na faixa dele.
    */
   /**
-   * `mode`: 'assist' = "Get Buffed!" — todos os buffs de Assist (classe 3) que o nível do personagem libera; 'class' = "Class Buffs" —
+   * `mode`: 'assist' = "Get Buffed!" — todos os buffs de Assist (classe 3), de qualquer personagem desde o nível 1 (menos a Prevention); 'class' = "Class Buffs" —
    * os buffs da própria classe (a 1ª e a 2ª: um Blade recebe os de Mercenary e de Blade) liberados no nível; 'npc' = os SetBuffSkill do
    * NPC (como antes). Os dois primeiros valem no nível máximo de cada skill e na duração dela (dwSkillTime).
    */
@@ -1283,7 +1283,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (mode === 'assist' || mode === 'class') {
       const lineage = skillCat.lineage(cb.f.job);
       const mine = (job: number) => (mode === 'assist' ? job === 3 : job !== 0 && lineage.has(job));
-      const picked = [...skillCat.byId.values()].filter((s) => mine(s.job) && s.kind === 'buff' && !s.hostile && !SELF_ONLY_BUFFS.has(s.symbol) && !(NEEDS_WEAPON_ELEMENT.has(s.symbol) && !weaponHasElement(cb.f)) && p.level >= s.reqLevel).sort((a, b) => a.job - b.job || a.reqLevel - b.reqLevel || a.id - b.id);
+      const picked = [...skillCat.byId.values()].filter((s) => mine(s.job) && s.kind === 'buff' && !s.hostile && !SELF_ONLY_BUFFS.has(s.symbol) && !(NEEDS_WEAPON_ELEMENT.has(s.symbol) && !weaponHasElement(cb.f)) && (mode === 'assist' || p.level >= s.reqLevel)).sort((a, b) => a.job - b.job || a.reqLevel - b.reqLevel || a.id - b.id);
       for (const s of picked) {
         const { L, dst } = effects(s);
         if (!L || !(L.time > 0) || !dst.length) continue; // só buff com duração e efeito (cura instantânea fica de fora)
