@@ -22,6 +22,14 @@ const goalList = (goals: QuestGoal[]) => {
   return ul;
 };
 
+/** o fundo do tema (imagem da borda) cobre o do corpo da janela: o texto vai num quadro preto interno para ler melhor */
+function questPane(body: HTMLElement) {
+  const pane = document.createElement('div');
+  pane.className = 'quest-pane';
+  body.replaceChildren(pane);
+  return pane;
+}
+
 /** diálogo com o NPC */
 export class QuestDialogWindow extends GameWindow {
   onAccept: (d: QuestDialog) => void = () => {};
@@ -34,8 +42,7 @@ export class QuestDialogWindow extends GameWindow {
 
   open(d: QuestDialog) {
     this.setTitle(d.name);
-    const b = this.body;
-    b.replaceChildren();
+    const b = questPane(this.body);
     const text = document.createElement('p');
     text.className = 'quest-text';
     text.textContent = d.text || (d.st === 'done' ? 'Quest concluída.' : '');
@@ -84,8 +91,7 @@ export class QuestLogWindow extends GameWindow {
   set(list: QuestEntry[]) { this.list = list; this.render(); }
 
   private render() {
-    const b = this.body;
-    b.replaceChildren();
+    const b = questPane(this.body);
     if (!this.list.length) { const p = document.createElement('p'); p.className = 'quest-text'; p.textContent = 'Nenhuma quest em andamento. Fale com os NPCs com "❗" no menu.'; b.append(p); return; }
     for (const q of this.list) {
       const h = document.createElement('h4');
