@@ -988,3 +988,6 @@ body.ingame #langPick { display: none; }
 .sk-tab:disabled { cursor: default; filter: none; }
 .sk-tab.lock { display: grid; place-items: center; background: #c9ccd2; border: 2px solid #8a8f99; border-radius: 4px; box-sizing: border-box; font-size: 20px; }
 .sk-tab.lock::after { content: '🔒'; filter: grayscale(1); }
+
+/* quests: fundo preto para ler melhor */
+.gwnd-body.quest { background: #000; padding: 10px 12px; border-radius: 4px; }
