@@ -10,6 +10,7 @@ import { BAG } from '../servers/character/inventory';
 import { QuestBook, type QuestDef, type QuestLog } from '../servers/world/quests';
 import { QuestFlow, type QuestConn, type QuestHost } from '../servers/world/questflow';
 import { applying, hasNaN, origId, type Hero } from '../servers/world/origquests';
+import { loadNpcScripts } from '../servers/world/npctalk';
 
 const items = new ItemCatalog(RES_DIR).load();
 const t0 = Date.now();
@@ -48,7 +49,7 @@ const calls: string[] = [];
 const host = {
   inventory, book, send: (_: C, m: Record<string, unknown>) => sent.push(m), say: () => {}, addExp: (_: C, n: number) => { exp += n; },
   party: () => party, near: () => true, worldOf: () => 'WdMadrigal', pointPos: () => null, teleport: async (_: C, w: string) => { calls.push(`teleport ${w}`); return null; }, runEvent: (id: string) => { calls.push(`evento ${id}`); },
-  npcName: (_: C, k: string) => k, partyNear: () => [], addSkillPoints: (_: C, n: number) => { sp += n; },
+  npcInfo: (_: C, k: string) => ({ name: k }), expToNext: () => 1000, partyNear: () => [], addSkillPoints: (_: C, n: number) => { sp += n; },
 } as unknown as QuestHost<C>;
 const flow = new QuestFlow<C>(host);
 
@@ -115,6 +116,29 @@ console.log(await flow.info(c, withDrop.id));
 console.log(flow.list(c));
 
 assert.equal(Object.keys(failed).length, 0, 'há quests que não completam');
+
+// janela de conversa e abas do diário
+{
+  const scripts = loadNpcScripts(RES_DIR);
+  if (scripts.size) { assert.ok(scripts.get('mafl_boboko')?.intro?.includes('Boboco')); assert.ok(scripts.get('mafl_boboko')?.bye); }
+  console.log(`falas ok: ${scripts.size} roteiros de NPC`);
+  const tabs: Record<string, number> = {};
+  for (const q of originals) tabs[q.orig!.tab] = (tabs[q.orig!.tab] ?? 0) + 1;
+  console.log(`abas ok: ${JSON.stringify(tabs)}`);
+  const q = originals.find((x) => x.orig!.say[0] && x.orig!.say[1] && !x.orig!.begin.prev.length)!;
+  const me3 = hero(q);
+  sent.length = 0;
+  await flow.talk(me3, q.npc);
+  await flow.dialog(me3, q.id, q.npc);
+  await flow.accept(me3, q.id, q.npc);
+  const talk = sent.find((m) => m.t === 'npcTalk')!, dlgs = sent.filter((m) => m.t === 'questDlg');
+  assert.ok((talk.quests as { id: string }[]).some((x) => x.id === q.id));
+  assert.ok((dlgs[0].pages as string[]).length >= 2, 'falas em páginas');
+  assert.equal(dlgs[1].accepted, true);
+  const book2 = sent.find((m) => m.t === 'quests') as { list: { id: string; tab: string; reward: string[] }[] };
+  assert.ok(book2.list.some((x) => x.id === q.id && x.tab === q.orig!.tab));
+  console.log(`conversa ok: ${q.name}`);
+}
 
 // marcadores: "!" antes de aceitar, "?" cinza em andamento, "?" amarelo pronta, "!" cinza até 5 níveis antes
 {

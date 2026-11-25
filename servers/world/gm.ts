@@ -26,6 +26,8 @@ export interface GmContext {
   resetStatsLive(id: number): boolean;
   /** teste: abre todas as skills da classe até o nível do personagem no máximo (`max`) ou zera todas (`clear`); devolve quantas ficaram abertas, ou null se está offline */
   skillsLive?(id: number, mode: 'max' | 'clear'): number | null;
+  /** apaga todas as quests de quem está online (em andamento e concluídas); false se não está online */
+  questsClear?(id: number): Promise<boolean>;
   reply(text: string): void;
   /** abre o painel de GM no cliente de quem digitou */
   openPanel(): void;
@@ -91,6 +93,7 @@ const HELP = [
   '//pos   shows your exact position (x, y, z) and the //tp command to come back here',
   '//event [run <id>]   lists the events (data/events.json) / triggers one now · //weather [rain|clear] [minutes]   shows / changes the map weather',
   '//quest   your quest progress · //quest info <id|name> · //quest npc <key> · //quest reset [id]   resets the progress (one or all)',
+  '//quest-clear [character]   erases every quest of the character, in progress and completed (test)',
   '//reset-stats [character]   returns the stat points (STR/STA/DEX/INT go back to 15)',
   '//skills-max [character]   opens every skill of the class at max level, up to the character level (test) · //skills-clear [character] zeroes them',
   '//give-penya [character] <amount>',
@@ -374,6 +377,15 @@ export async function runGmCommand(ctx: GmContext, text: string): Promise<void> 
     if (!ctx.resetStatsLive(t.id)) await query('UPDATE characters SET str = 15, sta = 15, dex = 15, "int" = 15, updated_at = now() WHERE id = $1', [t.id]);
     log(`reset-stats ${t.name}`);
     ctx.reply(`${t.name}'s stat points were returned (STR/STA/DEX/INT = 15).`);
+    return;
+  }
+
+  if (name === 'quest-clear' || name === 'questclear' || name === 'quests-clear') {
+    const t = await target(() => false);
+    if (!t) return;
+    if (!(await ctx.questsClear?.(t.id))) await query("UPDATE characters SET quests = '{}'::jsonb, updated_at = now() WHERE id = $1", [t.id]);
+    log(`quest-clear ${t.name}`);
+    ctx.reply(`${t.name}'s quests were erased (in progress and completed). Quest items stay in the bag.`);
     return;
   }
 

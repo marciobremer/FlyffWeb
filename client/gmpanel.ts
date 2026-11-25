@@ -313,6 +313,10 @@ export class GmPanel extends GameWindow {
         const who = this.nick() || 'you';
         void gameConfirm(`Return the stat points of ${who}? STR, STA, DEX and INT go back to 15.`, 'Return').then((ok) => { if (ok) this.send(this.withTarget('reset-stats', '')); });
       })),
+      el('div', { className: 'gm-row' }, btn('Clear quests', () => {
+        const who = this.nick() || 'you';
+        void gameConfirm(`Erase every quest of ${who}, in progress and completed? Quest items stay in the bag.`, 'Erase').then((ok) => { if (ok) this.send(this.withTarget('quest-clear', '')); });
+      })),
       el('div', { className: 'gm-row' },
         btn('Kill', () => this.send(this.withTarget('kill', ''))),
         btn('Revive', () => this.send(this.withTarget('revive', ''))))), this.statsBox(), this.skillsBox()),

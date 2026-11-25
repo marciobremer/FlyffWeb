@@ -1,7 +1,8 @@
 import type { Inventory } from '../character/inventory';
 import { BAG } from '../character/inventory';
 import { query } from '../common/db/index';
-import { applying, canBegin, canEnd, nextLevel, origId, type Hero, type OrigQuest } from './origquests';
+import type { NpcScript } from './npctalk';
+import { applying, canBegin, canEnd, nextLevel, origId, type Hero, type OrigQuest, type QuestTab } from './origquests';
 import { cleanLog, offerable, type QuestBook, type QuestDef, type QuestLog, type QuestState } from './quests';
 
 /** o que o fluxo de quests precisa do servidor do jogo (o realtime.ts entrega) */
@@ -23,12 +24,14 @@ export interface QuestHost<C extends QuestConn> {
   teleport(c: C, world: string, point?: string): Promise<string | null>;
   /** dispara um evento de data/events.json (recompensa de quest) */
   runEvent(id: string, by: C): void;
-  /** nome do NPC para o diário (o characterKey se não souber) */
-  npcName(c: C, key: string): string;
   /** os outros membros da party perto de (x, z), que também ganham os itens de quest original */
   partyNear(c: C, x: number, z: number): C[];
   /** pontos de skill ganhos numa quest original */
   addSkillPoints(c: C, n: number): void;
+  /** nome, retrato (Data/Char) e falas do NPC na janela de conversa */
+  npcInfo(c: C, key: string): NpcScript & { name: string; portrait?: string };
+  /** exp que falta no nível `level` para o próximo (para mostrar a recompensa em %) */
+  expToNext(level: number): number;
 }
 export interface QuestConn { player: { id: number; level: number; job: number; sex: number } | null; quests?: QuestLog; /** último pacote de marcadores mandado */ questMarks?: string; cb: unknown }
 
@@ -39,6 +42,9 @@ interface Goal { label: string; have: number; need: number }
 export type QuestMark = 1 | 2 | 3 | 4;
 /** qual prevalece quando o NPC tem várias */
 const MARK_RANK: Record<QuestMark, number> = { 3: 4, 1: 3, 2: 2, 4: 1 };
+/** uma quest no diário */
+interface BookEntry { id: string; name: string; tab: QuestTab; category: string; desc: string }
+interface ActiveEntry extends BookEntry { npc: string; goals: Goal[]; ready: boolean; reward: string[]; canAbandon: boolean }
 /** MAX_QUEST do original: quests em andamento ao mesmo tempo */
 const MAX_ACTIVE = 100;
 const between = (a: number, b: number) => a + Math.floor(Math.random() * (b - a + 1));
@@ -176,16 +182,34 @@ export class QuestFlow<C extends QuestConn> {
     return out;
   }
 
-  /** janela de diálogo da quest (resposta de { t: 'quest', op: 'open' } e depois de aceitar) */
-  async dialog(c: C, id: string, key: string, say?: string) {
+  /** janela de conversa (op 'talk'): retrato, saudação do roteiro, apresentação, despedida e as quests do NPC */
+  async talk(c: C, key: string) {
+    if (!c.player || !this.h.near(c, key)) return;
+    const info = this.h.npcInfo(c, key), quests = await this.menuFor(c, key);
+    const text = (quests.some((q) => q.st === 'offer') ? info.yes : info.no) || info.greet || '';
+    this.h.send(c, { t: 'npcTalk', key, name: info.name, portrait: info.portrait ?? null, text, intro: info.intro ?? null, bye: info.bye ?? null, quests });
+  }
+
+  /**
+   * Uma quest na janela de conversa (resposta de { t: 'quest', op: 'open' } e depois de aceitar). As falas vêm em páginas
+   * ("Próximo"); `said` = o que o NPC responde ao aceitar (sem botões).
+   */
+  async dialog(c: C, id: string, key: string, said?: string) {
     const q = this.h.book.get(id);
     if (!q || !c.player || (!same(q.npc, key) && !same(q.ender, key)) || !this.h.near(c, key)) return;
-    const st = await this.statusOf(c, q, key);
+    const st = said !== undefined ? 'active' : await this.statusOf(c, q, key);
     if (!st) return;
+    const o = q.orig;
+    const say = (...n: number[]) => n.map((i) => o?.say[i]).filter((t): t is string => !!t);
     // em andamento: quem recebe cobra o que falta; quem só ofereceu repete o que disse ao aceitar
-    const waiting = q.orig && !same(q.ender, key) ? q.orig.say[5] || q.text.progress : q.text.progress;
-    const text = say || (st === 'offer' ? q.text.offer : st === 'active' ? waiting : q.text.done);
-    this.h.send(c, { t: 'questDlg', id: q.id, key, name: q.name, st, text, goals: await this.goals(c, q), reward: await this.rewardText(c, q), req: this.partyReq(q), blocked: st === 'active' ? null : this.blockedBy(c, q) });
+    const own = said ? [said] : st === 'offer' ? say(0, 1, 2, 3, 4) : st === 'ready' ? say(7, 8, 9) : o && !same(q.ender, key) ? say(5) : say(10, 11, 12);
+    const fallback = st === 'offer' ? q.text.offer : st === 'ready' ? q.text.done : q.text.progress;
+    const info = this.h.npcInfo(c, key);
+    this.h.send(c, {
+      t: 'questDlg', id: q.id, key, name: q.name, npc: info.name, portrait: info.portrait ?? null, intro: info.intro ?? null, bye: info.bye ?? null,
+      st, accepted: said !== undefined, pages: own.length ? own : [fallback], no: say(6)[0] ?? null, quests: await this.menuFor(c, key),
+      req: this.partyReq(q), blocked: st === 'active' ? null : this.blockedBy(c, q),
+    });
   }
 
   async accept(c: C, id: string, key: string) {
@@ -210,7 +234,7 @@ export class QuestFlow<C extends QuestConn> {
     this.save(c);
     for (const i of start?.items ?? []) await this.h.inventory.add(p.id, i.item, i.n).catch((e) => console.error('quests: item inicial', e));
     this.h.say(c, `Quest aceita: ${q.name}.`);
-    await this.dialog(c, id, key, q.orig?.say[5]);
+    await this.dialog(c, id, key, q.orig?.say[5] ?? q.text.progress);
     await this.push(c);
   }
 
@@ -266,7 +290,11 @@ export class QuestFlow<C extends QuestConn> {
 
   private async announce(c: C, q: QuestDef, key: string, reward: string[]) {
     this.h.say(c, `Quest concluída: ${q.name}!${reward.length ? ` Recompensa: ${reward.join(', ')}.` : ''}`);
-    this.h.send(c, { t: 'questDlg', id: q.id, key, name: q.name, st: 'done', text: q.text.done, goals: [], reward, req: [], blocked: null });
+    const info = this.h.npcInfo(c, key);
+    this.h.send(c, {
+      t: 'questDlg', id: q.id, key, name: q.name, npc: info.name, portrait: info.portrait ?? null, intro: info.intro ?? null, bye: info.bye ?? null,
+      st: 'done', accepted: false, pages: [`Quest concluída!${reward.length ? `\n\n${reward.join('\n')}` : ''}`], no: null, quests: await this.menuFor(c, key), req: [], blocked: null,
+    });
     await this.push(c);
   }
 
@@ -402,20 +430,40 @@ export class QuestFlow<C extends QuestConn> {
     return changed;
   }
 
-  /** diário de quests (tecla Q): as em andamento, com o progresso */
+  private entry(q: QuestDef): BookEntry {
+    return { id: q.id, name: q.name, tab: q.orig?.tab ?? 'general', category: q.orig ? q.orig.category : 'Servidor', desc: q.orig?.desc ?? q.text.progress };
+  }
+
+  /** recompensa como no diário original: penya, experiência em % do nível atual, itens */
+  private async rewardLines(c: C, q: QuestDef): Promise<string[]> {
+    if (q.orig?.hideReward) return ['??'];
+    const r = q.orig?.reward;
+    const exp: [number, number] = r ? [r.expMin, r.expMax] : [q.reward.exp, q.reward.exp];
+    const gold: [number, number] = r ? [r.goldMin, r.goldMax] : [q.reward.penya, q.reward.penya];
+    const next = this.h.expToNext(c.player!.level), pct = (n: number) => `${((n / next) * 100).toFixed(2)}%`;
+    const out: string[] = [];
+    if (gold[1]) out.push(`Penya: ${range(...gold)}`);
+    if (exp[1]) out.push(`Experiência: ${next > 0 ? (exp[0] === exp[1] ? pct(exp[0]) : `${pct(exp[0])}–${pct(exp[1])}`) : range(...exp)}`);
+    if (r?.skillPoints) out.push(`Pontos de skill: ${r.skillPoints}`);
+    const items = r ? applying(r.items, await this.hero(c)) : q.reward.items.map((i) => ({ item: i.item, n: i.count }));
+    for (const i of items) out.push(`${this.h.book.itemName(i.item)}${i.n > 1 ? ` × ${i.n}` : ''}`);
+    return out;
+  }
+
+  /** diário de quests (tecla Q): as em andamento, com o progresso, e as concluídas */
   async push(c: C) {
     if (!c.player) return;
-    const list: { id: string; name: string; npc: string; goals: Goal[]; ready: boolean; desc?: string; category?: string; canAbandon: boolean }[] = [];
+    const list: ActiveEntry[] = [], done: BookEntry[] = [];
     for (const [id, st] of Object.entries(this.log(c))) {
-      if (st.s !== 1) continue;
       const q = this.h.book.get(id);
       if (!q) continue;
+      if (st.s !== 1) { done.push(this.entry(q)); continue; }
       list.push({
-        id, name: q.name, npc: this.h.npcName(c, q.ender), goals: await this.goals(c, q), ready: await this.complete(c, q),
-        ...(q.orig ? { desc: q.orig.desc, category: q.orig.category } : {}), canAbandon: q.orig?.canAbandon ?? true,
+        ...this.entry(q), npc: this.h.npcInfo(c, q.ender).name, goals: await this.goals(c, q), ready: await this.complete(c, q),
+        reward: await this.rewardLines(c, q), canAbandon: q.orig?.canAbandon ?? true,
       });
     }
-    this.h.send(c, { t: 'quests', list });
+    this.h.send(c, { t: 'quests', list, done });
     await this.pushMarks(c);
   }
 

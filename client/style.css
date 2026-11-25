@@ -916,20 +916,52 @@ html, body, body *:not(canvas), canvas.inv-model, canvas.char-model { cursor: va
 /* contagem de saída (client/logout.ts) */
 .logout-text { margin: 0; padding: 10px 6px; text-align: center; font: 13px/1.3 Tahoma, Verdana, system-ui, sans-serif; color: #222; background: rgb(255 255 255 / .85); border: 1px solid #c9b3a6; border-radius: 4px; }
 
-/* quests: diálogo com o NPC e diário (tecla Q) */
-.gwnd-body.quest { flex-direction: column; gap: 6px; overflow: auto; color: #222; font: 13px Tahoma, Verdana, sans-serif; }
-.quest h4 { margin: 6px 0 2px; font: 700 13px Tahoma, Verdana, sans-serif; color: #a14a24; }
-.quest-text, .quest-reward { margin: 0; white-space: pre-wrap; line-height: 1.35; }
-.quest-sub { color: #5f5a66; font-size: 11px; }
-.quest-goals { margin: 2px 0 6px; padding-left: 18px; }
-.quest-goals li.ok { color: #1c7a2c; font-weight: 700; }
-.quest-actions { display: flex; gap: 6px; margin-top: auto; padding-top: 8px; }
-.quest button { padding: 4px 12px; border: 1px solid #b08a78; border-radius: 4px; background: #fff; color: #222; font: 13px Tahoma, Verdana, sans-serif; cursor: pointer; }
-.quest button:disabled { opacity: .45; cursor: default; }
-.quest button:hover:not(:disabled) { background: #f6e7bd; }
-.quest-abandon { align-self: flex-start; font-size: 11px !important; padding: 1px 8px !important; }
-
-.quest-blocked { margin: 4px 0; color: #b3261e; font-weight: 700; }
+/* quests (client/quests.ts): janela de conversa, diário (tecla Q) e objetivos na tela, no tema claro das outras janelas */
+.quest-head { flex: none; text-align: center; font: 700 12px Tahoma, sans-serif; color: #fff; background: #7f9bbd; border-radius: 10px; padding: 2px 8px; text-shadow: 0 1px 0 rgb(0 0 0 / .35); }
+.quest-blocked { margin: 6px 0 0; color: #b3261e; font-weight: 700; }
+.gwnd-body.talk { flex-direction: row; gap: 8px; padding: 4px; font: 13px/1.35 Tahoma, Verdana, sans-serif; color: #222; }
+.talk-face { flex: none; width: 160px; align-self: stretch; display: grid; place-items: center; background: #f2efee no-repeat center bottom / contain; border: 1px solid #b9a8c8; border-radius: 6px; text-align: center; font-weight: 700; }
+.talk-right { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 5px; }
+.talk-text { flex: 1 1 0; min-height: 90px; overflow-y: auto; padding: 8px 10px; background: rgb(242 239 238 / .96); border: 1px solid #d8c4b8; border-radius: 6px; white-space: pre-wrap; user-select: text; }
+.talk-text p { margin: 0; }
+.talk-actions { flex: none; display: flex; justify-content: center; gap: 24px; min-height: 24px; }
+.talk-actions .gm-btn { min-width: 76px; }
+.talk-actions .talk-next { margin-left: auto; }
+.gwnd .gm-btn:disabled { filter: grayscale(1); opacity: .55; cursor: default; }
+.talk-links { flex: none; display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 0 4px; }
+.talk-quests { flex: 0 1 auto; min-height: 0; max-height: 110px; overflow-y: auto; display: flex; flex-direction: column; align-items: flex-start; padding: 0 4px; background: rgb(242 239 238 / .96); border-radius: 6px; }
+.talk-quests > * { flex: none; }
+.talk-group { margin-top: 2px; font-weight: 700; color: #a14a24; }
+.talk-link, .talk-quest { padding: 1px 6px; border: 0; border-radius: 3px; background: transparent; color: #222; font: 13px Tahoma, Verdana, sans-serif; text-align: left; cursor: pointer; }
+.talk-link { font-weight: 700; background: rgb(242 239 238 / .96); }
+.talk-link:hover, .talk-quest:hover { background: #f6e7bd; }
+.talk-quest.ready { color: #1c7a2c; font-weight: 700; }
+.gwnd-body.qbook { gap: 6px; padding: 4px; font: 12px/1.35 Tahoma, Verdana, sans-serif; color: #222; }
+.qb-main { flex: 1; min-height: 0; display: flex; gap: 8px; }
+.qb-left { flex: 3; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.qb-mid { flex: 1; min-height: 0; display: flex; background: rgb(242 239 238 / .96); border: 1px solid #d8c4b8; border-radius: 6px; overflow: hidden; }
+.qb-tabs { flex: none; width: 86px; display: flex; flex-direction: column; }
+.qb-tab { flex: 1; padding: 0 4px; border: 0; border-right: 1px solid #b9a8c8; border-bottom: 1px solid #b9a8c8; background: #ded3ea; color: #3c3350; font: 700 12px Tahoma, sans-serif; cursor: pointer; }
+.qb-tab.on { background: transparent; border-right-color: transparent; color: #a14a24; }
+.qb-tab:disabled { color: #9a93a6; cursor: default; }
+.qb-list { flex: 1; min-width: 0; overflow-y: auto; padding: 6px 8px; }
+.qb-category { margin: 2px 0; font-weight: 700; color: #2a5fa8; }
+.qb-category::before { content: '● '; color: #d98a3a; }
+.qb-row { display: flex; align-items: center; gap: 4px; padding: 0 4px 0 10px; border-radius: 3px; }
+.qb-row.on { background: #f6e7bd; }
+.qb-row input { flex: none; margin: 0; }
+.qb-name { flex: 1; min-width: 0; padding: 2px 0; border: 0; background: transparent; color: #222; font: inherit; text-align: left; cursor: pointer; }
+.qb-name.ready { color: #1c7a2c; font-weight: 700; }
+.qb-empty { color: #5f5a66; }
+.qb-side { flex: 2; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.qb-box { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 4px 8px; background: rgb(242 239 238 / .96); border: 1px solid #d8c4b8; border-radius: 6px; user-select: text; }
+.qb-box .ok { color: #1c7a2c; font-weight: 700; }
+.qb-foot { flex: none; display: flex; justify-content: space-between; gap: 8px; }
+.qb-foot select { flex: 1; max-width: 60%; }
+/* objetivos das quests marcadas, na tela */
+.quest-tracker { position: fixed; right: 10px; top: 240px; z-index: 5; width: 220px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; font: 12px/1.35 Tahoma, Verdana, sans-serif; color: #fff; text-shadow: 0 1px 1px #000, 0 0 3px #000; text-align: right; }
+.qt-name { font-weight: 700; color: #ffd76a; }
+.qt-quest.ready .qt-name, .qt-goal.ok { color: #7dff8a; }
 
 /* seletor de idioma (client/lang.ts): PT-BR | EN em texto puro (bandeiras em emoji não aparecem no Windows); some dentro do jogo */
 #langPick { position: fixed; top: 12px; right: 14px; z-index: 60; display: flex; border: 1px solid rgb(255 255 255 / .35); border-radius: 6px; overflow: hidden; background: rgb(10 14 28 / .6); font: 700 12px/1 Tahoma, Verdana, system-ui, sans-serif; }
@@ -976,8 +1008,8 @@ body.ingame #langPick { display: none; }
 .gm-box .gm-field > span { width: 74px; flex: none; }
 .gm-box .gm-field .gm-in { flex: 1; width: auto; min-width: 0; }
 .gm-box .gm-row > .gm-btn { width: 100%; padding: 0 4px; }
-.gm-box .gm-row:nth-last-child(-n+2) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.gm-box .gm-row:nth-last-child(2) > .gm-btn { grid-column: 1 / -1; }
+.gm-box .gm-row:nth-last-child(-n+3) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.gm-box .gm-row:nth-last-child(2) > .gm-btn, .gm-box .gm-row:nth-last-child(3) > .gm-btn { grid-column: 1 / -1; }
 
 .gm-skills .gm-row { display: block; margin: 4px 0; }
 .gm-skills .gm-row > .gm-btn { width: 100%; }
@@ -1005,7 +1037,3 @@ body.ingame #langPick { display: none; }
 
 /* "!" e "?" sobre os NPCs (client/questmarks.ts): quadro de 32×32 acima do nome */
 .quest-mark { width: 32px; height: 32px; margin-top: -26px; background-image: var(--quest-marks); background-repeat: no-repeat; pointer-events: none; image-rendering: pixelated; }
-/* quests: área que rola, no tom claro da janela (o fundo do tema é translúcido e a cena atrapalhava a leitura) */
-.quest-pane > * { flex-shrink: 0; }
-.quest-category { margin-top: 4px; padding-bottom: 2px; border-bottom: 1px solid #b08a78; color: #2a5fa8; font: 700 11px Tahoma, Verdana, sans-serif; text-transform: uppercase; }
-.quest-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; overflow: auto; background: rgb(242 239 238 / .94); border-radius: 4px; }

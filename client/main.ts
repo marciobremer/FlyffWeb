@@ -37,7 +37,7 @@ import { BuffBar } from './buffbar';
 import { PartyBuffs } from './partybuffs';
 import { TradeWindow } from './trade';
 import { TeleportWindow } from './teleport';
-import { QuestDialogWindow, QuestLogWindow } from './quests';
+import { NpcTalkWindow, QuestLogWindow } from './quests';
 import { loadQuestMarks, questMarkElement } from './questmarks';
 import { loadGameScroll } from './gamescroll';
 import { Rain } from './weather';
@@ -148,8 +148,10 @@ const inventory = new InventoryWindow(document.body);
 /** Teleporter (tecla V, como o APP_ZCK_TELEPORTEUR do cliente) */
 const teleportWnd = new TeleportWindow(document.body);
 loadGameScroll();
-const questDlg = new QuestDialogWindow(document.body), questLog = new QuestLogWindow(document.body);
+const questDlg = new NpcTalkWindow(document.body), questLog = new QuestLogWindow(document.body);
+questDlg.onOpen = (id, key) => { net.quest('open', id, key); };
 questDlg.onAccept = (d) => { net.quest('accept', d.id, d.key); };
+questDlg.onBye = (key, text) => { if (text && menuNpc?.key === key) menuNpc.inst.say(text); };
 questDlg.onTurnIn = (d) => { net.quest('turnIn', d.id, d.key); };
 questLog.onAbandon = (id) => { net.quest('abandon', id); };
 hud.onQuests = () => questLog.toggle();
@@ -359,9 +361,10 @@ function npcFrame(now: number) {
     else { p.stop(); p.face(nx, nz); menuNpc = npcGoing; net.npcMenu(npcGoing.key); shopNpc = [nx, nz]; npcGoing = null; }
   }
   // NPC com o menu, a loja ou o ferreiro aberto para de trabalhar (stand calmo) até fechar
-  view.moverMgr.attending = menuNpc && (npcMenu.visible || shopWnd.visible || smithWnd.visible) ? menuNpc.inst : null;
+  view.moverMgr.attending = menuNpc && (npcMenu.visible || shopWnd.visible || smithWnd.visible || questDlg.visible) ? menuNpc.inst : null;
   // fecha o menu ao se afastar além do alcance de conversa do servidor (12 m)
   if (npcMenu.visible && shopNpc && Math.hypot(shopNpc[0] - p.pos[0], shopNpc[1] - p.pos[2]) > 12) npcMenu.hide();
+  if (questDlg.visible && menuNpc && questDlg.key === menuNpc.key && Math.hypot(menuNpc.inst.source.pos[0] - p.pos[0], menuNpc.inst.source.pos[2] - p.pos[2]) > 14) questDlg.hide();
   if (shopWnd.visible && shopNpc && Math.hypot(shopNpc[0] - p.pos[0], shopNpc[1] - p.pos[2]) > 14) { shopWnd.hide(); shopNpc = null; }
 }
 /** menu do NPC ao chegar perto: Comércio (loja) e Receber Buffs! (Buff Pang) — o servidor diz o que ele tem */
@@ -369,6 +372,7 @@ const npcMenu = new NpcMenu(document.body);
 let menuNpc: { inst: MoverInstance; key: string } | null = null;
 net.onNpcMenu = (m) => {
   const opts: NpcMenuOption[] = [];
+  if (m.talk) opts.push({ label: t('Diálogo'), run: () => net.quest('talk', '', m.key) });
   if (m.shop) opts.push({ label: t('Comércio'), run: () => net.shopOpen(m.key) });
   if (m.buff) {
     opts.push({ label: t('Receber Buffs!'), run: () => net.npcBuff(m.key, 'assist') }); // buffs de Assist liberados no seu nível
@@ -377,8 +381,6 @@ net.onNpcMenu = (m) => {
   if (m.tower) opts.push({ label: t('Heaven Tower'), run: () => towerWnd.show() });
   if (m.colosseum) opts.push({ label: t('Colosseum'), run: () => coloUi.open(characters.find((c) => c.slot === selectedSlot)?.level ?? 1) });
   if (m.craft) opts.push({ label: t('Craft'), run: () => craftWnd.show() }); // o servidor só deixa fabricar perto do NPC de craft
-  // quests do NPC: ❗ oferece, … em andamento, ✔ pronta para entregar
-  for (const q of m.quests) opts.push({ label: `${q.st === 'offer' ? '❗' : q.st === 'ready' ? '✔' : '…'} ${q.name}`, run: () => net.quest('open', q.id, m.key) });
   // ferreiro (Bobochan, Peach…): as opções do character.inc abrem a janela no modo certo
   for (const o of smithOptions(m.smith)) opts.push({ label: o.label, run: () => smithWnd.open(m.key, o.mode) });
   if (!opts.length) return;
@@ -974,8 +976,9 @@ coloUi.onGo = () => { net.colo('go'); };
 net.onColo = (m) => coloUi.handle(m);
 const rain = new Rain(view);
 net.onWeather = (on) => { if (on !== rain.raining) chat.system(on ? t('Começou a chover.') : t('A chuva parou.')); lastRain = on; rain.set(on && optionsWnd.values.weather); };
-net.onQuestDialog = (d) => questDlg.open(d);
-net.onQuests = (list) => questLog.set(list);
+net.onNpcTalk = (m) => questDlg.talk(m);
+net.onQuestDialog = (d) => questDlg.quest(d);
+net.onQuests = (list, done) => questLog.set(list, done);
 net.onQuestMarks = (marks) => { void loadQuestMarks(); view.moverMgr.setQuestMarks(marks, questMarkElement); };
 net.onPet = (a, m) => pets.set(a, m);
 net.onPetGo = (a, x, z, ms) => pets.go(a, x, z, ms);
@@ -1631,7 +1634,7 @@ async function backToLogin() {
   view.labelRenderer.domElement.hidden = false;
   hud.hide();
   coloUi.stop();
-  inventory.hide(); inventory.clear(); delBox.hide(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); miniMap.hide(); worldMap.hide(); smithWnd.hide(); shopWnd.hide(); skillWnd.hide(); teleportWnd.hide(); towerWnd.hide(); questDlg.hide(); questLog.hide(); view.moverMgr.setQuestMarks({}, questMarkElement); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
+  inventory.hide(); inventory.clear(); delBox.hide(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); miniMap.hide(); worldMap.hide(); smithWnd.hide(); shopWnd.hide(); skillWnd.hide(); teleportWnd.hide(); towerWnd.hide(); questDlg.hide(); questLog.hide(); questLog.set([]); view.moverMgr.setQuestMarks({}, questMarkElement); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
   $('charScreen').hidden = true;
   $('loginScreen').hidden = false;
   $('loginScreen').classList.remove('leaving');

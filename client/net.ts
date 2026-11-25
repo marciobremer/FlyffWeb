@@ -1,5 +1,5 @@
 import type { TradeView } from './trade';
-import type { QuestDialog, QuestEntry } from './quests';
+import type { NpcTalk, QuestDialog, QuestDone, QuestEntry } from './quests';
 import { PLAYER_LABEL_LIFT } from '../shared/rank';
 import { Matrix4, Mesh, type Object3D } from 'three';
 import type { WorldView } from '../shared/world';
@@ -457,9 +457,10 @@ export class NetClient {
   onEmote: (id: number, motion: string, mode: number) => void = () => {};
   onEmo: (id: number, index: number) => void = () => {};
   /** o que o NPC clicado oferece (abre o menu do NPC) */
-  onNpcMenu: (m: { key: string; name: string; shop: boolean; buff: boolean; craft: boolean; tower: boolean; colosseum: boolean; smith: string[]; quests: { id: string; name: string; st: 'offer' | 'active' | 'ready' }[] }) => void = () => {};
+  onNpcMenu: (m: { key: string; name: string; shop: boolean; buff: boolean; craft: boolean; tower: boolean; colosseum: boolean; smith: string[]; /** tem conversa (quests ou falas) */ talk: boolean }) => void = () => {};
+  onNpcTalk: (m: NpcTalk) => void = () => {};
   onQuestDialog: (d: QuestDialog) => void = () => {};
-  onQuests: (list: QuestEntry[]) => void = () => {};
+  onQuests: (list: QuestEntry[], done: QuestDone[]) => void = () => {};
   /** "!"/"?" por NPC (characterKey minúsculo → 1 a 4) */
   onQuestMarks: (marks: Record<string, number>) => void = () => {};
   /** clima do mapa onde está: chovendo ou não */
@@ -671,7 +672,9 @@ export class NetClient {
       } else if (m.t === 'emo') {
         this.onEmo(Number(m.id), Number(m.i));
       } else if (m.t === 'npcMenu') {
-        this.onNpcMenu({ key: String(m.key), name: String(m.name ?? ''), shop: !!m.shop, buff: !!m.buff, craft: !!m.craft, tower: !!m.tower, colosseum: !!m.colosseum, smith: Array.isArray(m.smith) ? (m.smith as string[]) : [], quests: Array.isArray(m.quests) ? (m.quests as { id: string; name: string; st: 'offer' | 'active' | 'ready' }[]) : [] });
+        this.onNpcMenu({ key: String(m.key), name: String(m.name ?? ''), shop: !!m.shop, buff: !!m.buff, craft: !!m.craft, tower: !!m.tower, colosseum: !!m.colosseum, smith: Array.isArray(m.smith) ? (m.smith as string[]) : [], talk: !!m.talk });
+      } else if (m.t === 'npcTalk') {
+        this.onNpcTalk(m as unknown as NpcTalk);
       } else if (m.t === 'questDlg') {
         this.onQuestDialog(m as unknown as QuestDialog);
       } else if (m.t === 'weather') {
@@ -679,7 +682,7 @@ export class NetClient {
       } else if (m.t === 'questMarks') {
         this.onQuestMarks((m.marks ?? {}) as Record<string, number>);
       } else if (m.t === 'quests') {
-        this.onQuests(Array.isArray(m.list) ? (m.list as QuestEntry[]) : []);
+        this.onQuests(Array.isArray(m.list) ? (m.list as QuestEntry[]) : [], Array.isArray(m.done) ? (m.done as QuestDone[]) : []);
       } else if (m.t === 'smith') {
         this.onSmith(m.ok === true, m.fx === 'success' || m.fx === 'fail' ? m.fx : null, typeof m.s === 'number' ? m.s : null, String(m.text ?? ''));
       } else if (m.t === 'shop') {
@@ -760,8 +763,8 @@ export class NetClient {
   /** loja do NPC: abrir (perto dele), comprar, vender */
   shopOpen(key: string) { return this.raw({ t: 'shopOpen', key }); }
   npcMenu(key: string) { return this.raw({ t: 'npcMenu', key }); }
-  /** quest: abrir o diálogo, aceitar, entregar (perto do NPC `key`) ou abandonar */
-  quest(op: 'open' | 'accept' | 'turnIn' | 'abandon', id: string, key = '') { return this.raw({ t: 'quest', op, id, key }); }
+  /** quest: conversar, abrir uma, aceitar, entregar (perto do NPC `key`) ou abandonar */
+  quest(op: 'talk' | 'open' | 'accept' | 'turnIn' | 'abandon', id: string, key = '') { return this.raw({ t: 'quest', op, id, key }); }
   /** guild: criar, convidar, responder, sair, expulsar, desfazer, ver */
   guild(t: 'guildCreate' | 'guildInvite' | 'guildAnswer' | 'guildLeave' | 'guildKick' | 'guildDisband' | 'guildInfo' | 'guildNotice', extra: Record<string, unknown> = {}) { return this.raw({ t, ...extra }); }
   /** party: convidar, responder convite, sair, expulsar, passar liderança, buff de party, lista */

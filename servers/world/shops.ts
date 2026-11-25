@@ -37,6 +37,9 @@ export class ShopCatalog {
    */
   readonly npcBuffs = new Map<string, { skill: number; level: number; minLv: number; maxLv: number; ms: number }[]>();
   readonly npcNames = new Map<string, string>();
+  /** retrato (SetImage → Data/Char/char_*.tga) e roteiro (m_szDialog sem o .txt) de cada NPC, por chave */
+  readonly npcImages = new Map<string, string>();
+  readonly npcDialogs = new Map<string, string>();
   /** menus de ferreiro de cada NPC (AddMenu MMI_PIERCING, MMI_SMELT_*, MMI_CHANGEELEM… do character.inc), por chave */
   readonly npcMenus = new Map<string, Set<string>>();
 
@@ -108,6 +111,10 @@ export class ShopCatalog {
       if (t === '{') { if (depth === 0) { shop = { key, name: '', tabs: [] }; } depth++; continue; }
       if (t === '}') { depth--; if (depth === 0) finish(); continue; }
       if (depth === 0) { if (/^[A-Za-z_]/.test(t)) key = t; continue; }
+      if (shop && t === 'm_szDialog' && tokens[k + 1] === '=') {
+        this.npcDialogs.set(shop.key.toLowerCase(), resolve(tokens[k + 2]).replace(/\.txt$/i, '').toLowerCase());
+        continue;
+      }
       if (!shop || tokens[k + 1] !== '(') continue;
       const args: string[] = [];
       let j = k + 2;
@@ -149,6 +156,7 @@ export class ShopCatalog {
         if (/^II_/.test(args[0] ?? '')) token = this.items.bySymbol.get(args[0])?.name ?? args[0];
         else if (v === 1) token = 'Ficha';
       }
+      else if (t === 'SetImage') { const file = resolve(args[0]); if (/\.tga$/i.test(file)) this.npcImages.set(shop.key.toLowerCase(), file); }
       else if (t === 'SetName') { npcName = resolve(args[0]); this.npcNames.set(shop.key.toLowerCase(), nameTable()?.npcs[shop.key.toLowerCase()] || npcName); }
     }
   }

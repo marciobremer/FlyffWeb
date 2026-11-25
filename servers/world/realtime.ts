@@ -37,6 +37,7 @@ import { UpgradeRules, type SmithResult } from './upgrade';
 import type { InvEdit } from '../character/inventory';
 import { QuestBook, cleanLog, type QuestLog } from './quests';
 import { QuestFlow } from './questflow';
+import { loadNpcScripts, type NpcScript } from './npctalk';
 import { EventScheduler } from './events';
 import { setRateBoost } from '../common/rates';
 
@@ -67,7 +68,7 @@ import { setRateBoost } from '../common/rates';
  *   { t: 'pierce', card, target }                   piercing: espeta a carta do espaço `card` da bolsa na suit do espaço `target` (também
  *                                                   da bolsa, não equipada) — resposta { t: 'pierced', ok, s } e o inventário novo
  *   { t: 'npcMenu', key } / { t: 'npcBuff', key }     perto do NPC: o que ele oferece (loja, buffs) / receber os buffs (Buff Pang)
- *   { t: 'quest', op: 'open'|'accept'|'turnIn'|'abandon', id, key } / { t: 'quests' }   quests do NPC `key` (perto dele) → `questDlg` / `quests` (servers/world/questflow.ts)
+ *   { t: 'quest', op: 'talk'|'open'|'accept'|'turnIn'|'abandon', id, key } / { t: 'quests' }   quests do NPC `key` (perto dele) → `questDlg` / `quests` (servers/world/questflow.ts)
  *   { t: 'teleports' } → { t: 'teleports', list }   destinos da janela Teleporter (tecla V): nome, imagem, descrição, drops
  *   { t: 'zckTeleport', k }                         teleporte da janela Teleporter: destino `k` da lista
  *   { t: 'tower' } → { t: 'tower', list } / { t: 'towerGo', k }   Heaven Tower (perto do Forsaken Tower Manager): andares com preço / entrar no andar `k`
@@ -2229,6 +2230,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   // ---------- quests (servers/world/quests.ts = data/quests.json; questflow.ts = aceitar, progresso, entregar) ----------
   const questBook = inventory ? new QuestBook(inventory.catalog) : null;
   questBook?.all(); // lê já na subida: o log mostra quantas entraram, e o 1º login não espera
+  const npcScripts = inventory ? loadNpcScripts(inventory.catalog.resDir) : new Map<string, NpcScript>();
   const quests = inventory ? new QuestFlow<Conn>({
     inventory, book: questBook!,
     send: (c, msg) => send(c.ws, msg), say: reply, addExp,
@@ -2244,7 +2246,11 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       return point && !pt ? `Ponto "${point}" não existe em ${world}: você foi para a chegada do mapa.` : null;
     },
     runEvent: (id) => { if (!events.run(id, 'quest')) console.warn(`quests: evento "${id}" não existe em data/events.json`); },
-    npcName: (c, key) => W(c).shops?.npcNames.get(key.toLowerCase()) ?? key,
+    npcInfo: (c, key) => {
+      const k = key.toLowerCase(), shops = W(c).shops;
+      return { ...npcScripts.get(shops?.npcDialogs.get(k) ?? k), name: shops?.npcNames.get(k) ?? key, portrait: shops?.npcImages.get(k) };
+    },
+    expToNext: (level) => rules?.expToNext[level] ?? 0,
     partyNear: (c, x, z) => (c.player ? parties.of(c.player.id)?.members ?? [] : []).filter((id) => id !== c.player!.id).map((id) => liveConn(id))
       .filter((o): o is Conn => !!o?.player && !!o.cb && !o.cb.dead && o.player.w === c.player!.w && Math.hypot(o.player.p[0] - x, o.player.p[2] - z) <= PARTY_RANGE),
     addSkillPoints: (c, n) => {
@@ -3018,6 +3024,15 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
               }
               return done;
             },
+            questsClear: async (id) => {
+              for (const o of conns) if (o.player?.id === id && quests) {
+                await quests.reset(o);
+                // os pontos de skill dados por quests somem junto
+                if (o.cb) { o.cb.questSp = 0; reconcileSkills(o.cb, o.player.level); send(o.ws, skillsMsg(o)); void saveCombat(id, o.cb, o.player.level).catch((e) => console.error('realtime: salvar pontos (GM)', e)); }
+                return true;
+              }
+              return false;
+            },
             skillsLive: (id, mode) => {
               for (const o of conns) if (o.player?.id === id && o.cb && skillCat) {
                 const cb = o.cb;
@@ -3109,11 +3124,12 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         const shops = W(c).shops;
         if (!shops?.near(key, c.player.p[0], c.player.p[2])) return;
         const base = { t: 'npcMenu', key, name: shops.npcNames.get(k) ?? key, shop: shops.shops.has(k) || shops.tokenShops.has(k), buff: shops.npcBuffs.has(k), craft: craftNpcs.has(k), tower: k === TOWER_NPC, colosseum: k === COLO_NPC, smith: [...(shops.npcMenus.get(k) ?? [])] };
-        void (quests ? quests.menuFor(c, key) : Promise.resolve([])).then((q) => send(ws, { ...base, quests: q })).catch((e) => console.error('realtime: menu do NPC', e));
+        const script = npcScripts.get(shops.npcDialogs.get(k) ?? k);
+        void (quests ? quests.menuFor(c, key) : Promise.resolve([])).then((q) => send(ws, { ...base, talk: !!quests && (q.length > 0 || !!script) })).catch((e) => console.error('realtime: menu do NPC', e));
       } else if (msg.t === 'quest' && c.player && typeof msg.id === 'string' && typeof msg.key === 'string' && quests) {
         const id = msg.id.slice(0, 64), key = msg.key.slice(0, 40), op = msg.op, q = quests;
         // um pedido de cada vez por jogador (a entrega confere e tira os itens de uma vez só)
-        c.invQueue = c.invQueue.then(() => (op === 'open' ? q.dialog(c, id, key) : op === 'accept' ? q.accept(c, id, key) : op === 'turnIn' ? q.turnIn(c, id, key) : op === 'abandon' ? q.abandon(c, id) : undefined)).catch((e) => console.error('realtime: quest', e));
+        c.invQueue = c.invQueue.then(() => (op === 'talk' ? q.talk(c, key) : op === 'open' ? q.dialog(c, id, key) : op === 'accept' ? q.accept(c, id, key) : op === 'turnIn' ? q.turnIn(c, id, key) : op === 'abandon' ? q.abandon(c, id) : undefined)).catch((e) => console.error('realtime: quest', e));
       } else if (msg.t === 'quests' && c.player && quests) {
         void quests.push(c);
       } else if (msg.t === 'npcBuff' && c.player && typeof msg.key === 'string') {

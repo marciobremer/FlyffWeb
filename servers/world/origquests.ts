@@ -16,12 +16,16 @@ const FILES = ['propQuest', 'propQuest-RequestBox', 'propQuest-Scenario', 'propQ
 /** (sexo, tipo, classe ou item, item, quantidade): sexo -1 = ambos; tipo 0 = só para a classe (-1 = todas), tipo 1 = se tiver o item `who` */
 export interface ItemRule { sex: number; type: number; who: number; item: number; n: number }
 
+/** abas da janela de quests: as raízes 6000–6003 da árvore SetHeadQuest */
+export type QuestTab = 'scenario' | 'general' | 'office' | 'event';
+const TABS: Record<number, QuestTab> = { 6000: 'scenario', 6001: 'general', 6002: 'office', 6003: 'event' };
+
 export interface OrigQuest {
   num: number;
   /** SetCharacter: quem oferece; SetEndCondCharacter: quem recebe (sem ele, o mesmo) */
   giver: string; ender: string;
   /** título da categoria (SetHeadQuest) e a descrição do diário (state 0) */
-  category: string; desc: string;
+  category: string; tab: QuestTab; desc: string;
   /** falas por QSAY_* */
   say: Record<number, string>;
   /** SetEndRewardHide: a recompensa aparece como "??" até concluir */ hideReward: boolean;
@@ -176,7 +180,7 @@ export function loadOriginalQuests(resDir: string, items: ItemCatalog): OrigLoad
       title: text(first(r, 'SetTitle')?.[0]) || r.sym,
       giver,
       ender: str(first(r, 'SetEndCondCharacter')?.[0]).trim() || giver,
-      category: '', desc: text(r.states.get(0)?.find((c) => c[0] === 'SetDesc')?.[1][0]),
+      category: '', tab: 'general', desc: text(r.states.get(0)?.find((c) => c[0] === 'SetDesc')?.[1][0]),
       say: Object.fromEntries(all('SetDialog').map((a) => [num(a[0]), text(a[1])]).filter(([k, v]) => Number.isInteger(k) && v)),
       hideReward: !!num(first(r, 'SetEndRewardHide')?.[0]),
       canAbandon: !first(r, 'SetRemove') || !!num(first(r, 'SetRemove')![0]),
@@ -205,6 +209,10 @@ export function loadOriginalQuests(resDir: string, items: ItemCatalog): OrigLoad
     const head = num(first(r, 'SetHeadQuest')?.[0]);
     q.category = text(first(raws.get(head) ?? r, 'SetTitle')?.[0]);
     if (!head) q.category = '';
+    for (let h = head, seen = 0; h && seen < 8; seen++) {
+      if (TABS[h]) { q.tab = TABS[h]; break; }
+      h = num(first(raws.get(h) ?? r, 'SetHeadQuest')?.[0]);
+    }
     quests.set(id, q);
   }
   return { quests, skipped };
