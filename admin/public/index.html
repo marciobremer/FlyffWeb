@@ -511,6 +511,20 @@
 
   </main>
 
+  <!-- opções da conta (clique na linha) -->
+  <dialog id="dlgAcc">
+    <h4>Conta <span class="who"></span></h4>
+    <p class="dim" id="accInfo"></p>
+    <label>Tipo de conta <select id="accAuth"></select></label>
+    <div class="dactions"><button class="btn teal" type="button" id="accSaveAuth">Salvar tipo</button></div>
+    <div class="dactions accacts">
+      <button class="btn" type="button" id="accKick">Kick</button>
+      <button class="btn stop" type="button" id="accBan">Banir</button>
+      <button class="btn ok" type="button" id="accUnban">Desbanir</button>
+      <button class="btn" type="button" id="accPass">Senha</button>
+      <button class="btn" type="button" id="accClose">Fechar</button>
+    </div>
+  </dialog>
   <!-- diálogos de ação (banir / trocar senha) -->
   <dialog id="dlgBan">
     <form method="dialog">

@@ -7,7 +7,7 @@ import { ADMIN_PORT, ANNOUNCE_MAX, GAME_PORT, ROOT, SITE_DIR, SITE_PORT } from '
 import { GameProcess } from './game-process';
 import { SiteProcess } from './site-process';
 import { RATES_FILE, RATE_MAX, RATE_MIN, rates, saveRates } from '../servers/common/rates';
-import { AdminError, banAccount, createAccount, dbStatus, listAccounts, setPassword, unbanAccount, unbanByName } from '../servers/auth/accounts';
+import { AdminError, banAccount, createAccount, dbStatus, listAccounts, setAuthority, setPassword, unbanAccount, unbanByName } from '../servers/auth/accounts';
 import { dbHealth, installDatabase } from '../servers/common/db/install';
 import { itemIcon, itemsApi } from './items-api';
 import { skillIcon, skillsApi } from './skills-api';
@@ -315,7 +315,7 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
     const b = await readJson(req);
     return send(res, 200, { usernames: await unbanByName(String(b.name ?? '')) });
   }
-  const act = /^\/accounts\/(\d+)\/(ban|unban|kick|password)$/.exec(p);
+  const act = /^\/accounts\/(\d+)\/(ban|unban|kick|password|authority)$/.exec(p);
   if (act && m === 'POST') {
     const id = Number(act[1]);
     const b = await readJson(req);
@@ -330,6 +330,7 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
       if (!k) throw new AdminError('O servidor do jogo não está rodando pelo painel.');
       return send(res, 200, k);
     }
+    if (act[2] === 'authority') { await setAuthority(id, String(b.authority ?? '')); return send(res, 200, { ok: true }); }
     if (act[2] === 'password') { await setPassword(id, String(b.password ?? '')); return send(res, 200, { ok: true }); }
   }
   send(res, 404, { error: 'Rota desconhecida.' });

@@ -176,11 +176,13 @@ async function loadAccounts() {
   $('pgNext').disabled = r.page >= pages;
   if (!r.rows.length) { $('accRows').innerHTML = '<tr><td colspan="7" class="empty">Nenhuma conta encontrada.</td></tr>'; return; }
   const now = Date.now();
+  accById.clear();
+  for (const a of r.rows) accById.set(String(a.id), a);
   $('accRows').innerHTML = r.rows.map((a) => {
     const banned = a.blockedUntil && new Date(a.blockedUntil).getTime() > now;
     const level = a.characters.length ? Math.max(...a.characters.map((c) => c.level)) : '—';
     const banTxt = banned ? `<span class="badge ban" title="até ${fmtDate(a.blockedUntil)}">${new Date(a.blockedUntil).getFullYear() >= 2100 ? 'permanente' : 'até ' + fmtDate(a.blockedUntil)}</span>` : '—';
-    return `<tr>
+    return `<tr class="accrow" data-id="${a.id}" tabindex="0" title="Clique para ver as opções da conta">
       <td><b>${esc(a.username)}</b>${a.hasPassword ? '' : ' <span class="dim" title="sem senha do jogo web">(sem senha)</span>'}<br><small class="dim">criada ${fmtDate(a.createdAt)} · último login ${fmtDate(a.lastLoginAt)}</small></td>
       <td class="tags">${a.characters.map((c) => `<a class="chlink" href="#characters/${encodeURIComponent(c.name)}" title="Ver a ficha de ${esc(c.name)}"><span>${esc(c.name)}</span></a>`).join('') || '<span class="dim">—</span>'}</td>
       <td>${a.authority === 'Z' ? '<span class="badge adm">Dono</span>' : a.authority !== 'F' ? '<span class="badge adm">GM</span>' : 'Jogador'}</td>
@@ -201,22 +203,19 @@ function ask(dlg, who) {
   return new Promise((resolve) => { dlg.onclose = () => resolve(dlg.returnValue === 'ok'); dlg.returnValue = ''; dlg.showModal(); });
 }
 
-$('accRows').addEventListener('click', async (ev) => {
-  const b = ev.target.closest('button[data-act]');
-  if (!b) return;
-  const id = b.dataset.id, name = b.dataset.name;
+async function accountAction(act, id, name) {
   try {
-    if (b.dataset.act === 'kick') {
+    if (act === 'kick') {
       const r = await api(`/accounts/${id}/kick`, { method: 'POST' });
       say($('accMsg'), `${name}: ${r.kicked} conexão(ões) derrubada(s).`);
-    } else if (b.dataset.act === 'ban') {
+    } else if (act === 'ban') {
       if (!(await ask($('dlgBan'), name))) return;
       const r = await api(`/accounts/${id}/ban`, { method: 'POST', body: JSON.stringify({ days: Number($('banDays').value) }) });
       say($('accMsg'), `${name} banido ${Number($('banDays').value) ? 'até ' + fmtDate(r.until) : 'permanentemente'}${r.kicked ? ' e desconectado' : ''}.`);
-    } else if (b.dataset.act === 'unban') {
+    } else if (act === 'unban') {
       await api(`/accounts/${id}/unban`, { method: 'POST' });
       say($('accMsg'), `${name} desbanido.`);
-    } else if (b.dataset.act === 'password') {
+    } else if (act === 'password') {
       $('newPass').value = '';
       if (!(await ask($('dlgPass'), name))) return;
       await api(`/accounts/${id}/password`, { method: 'POST', body: JSON.stringify({ password: $('newPass').value }) });
@@ -224,7 +223,57 @@ $('accRows').addEventListener('click', async (ev) => {
     }
   } catch (e) { say($('accMsg'), e.message, true); }
   loadAccounts();
+}
+
+// ---- opções da conta (clique na linha) ----
+const accById = new Map();
+const AUTH_NAMES = { F: 'Jogador (F)', G: 'GM (G)', Z: 'Dono / Admin (Z)' };
+let accOpen = null;
+
+function openAccount(id) {
+  const a = accById.get(String(id));
+  if (!a) return;
+  accOpen = a;
+  const dlg = $('dlgAcc'), banned = a.blockedUntil && new Date(a.blockedUntil).getTime() > Date.now();
+  dlg.querySelector('.who').textContent = a.username;
+  $('accInfo').textContent = `${a.characters.map((c) => `${c.name} (nível ${c.level})`).join(', ') || 'sem personagens'} · ${a.online ? 'online' : 'offline'}`;
+  const sel = $('accAuth');
+  // contas importadas podem ter outras letras (níveis de GM): aparecem como estão
+  sel.replaceChildren(...Object.entries({ ...AUTH_NAMES, ...(AUTH_NAMES[a.authority] ? {} : { [a.authority]: `GM (${a.authority})` }) }).map(([v, label]) => new Option(label, v)));
+  sel.value = a.authority;
+  $('accSaveAuth').disabled = true;
+  $('accKick').disabled = !a.online;
+  $('accBan').hidden = !!banned;
+  $('accUnban').hidden = !banned;
+  dlg.showModal();
+}
+
+$('accRows').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button[data-act]');
+  if (b) { accountAction(b.dataset.act, b.dataset.id, b.dataset.name); return; }
+  const row = ev.target.closest('tr.accrow');
+  if (row && !ev.target.closest('a')) openAccount(row.dataset.id);
 });
+$('accRows').addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Enter' || !ev.target.matches('tr.accrow')) return;
+  ev.preventDefault();
+  openAccount(ev.target.dataset.id);
+});
+$('accAuth').onchange = () => { $('accSaveAuth').disabled = $('accAuth').value === accOpen.authority; };
+$('accSaveAuth').onclick = async () => {
+  const a = accOpen, authority = $('accAuth').value;
+  if (!confirm(`Mudar ${a.username} para ${AUTH_NAMES[authority] ?? authority}?`)) return;
+  $('dlgAcc').close();
+  try {
+    await api(`/accounts/${a.id}/authority`, { method: 'POST', body: JSON.stringify({ authority }) });
+    say($('accMsg'), `${a.username} agora é ${AUTH_NAMES[authority] ?? authority}. Os comandos // valem na hora; a cor do nome, no próximo login.`);
+  } catch (e) { say($('accMsg'), e.message, true); }
+  loadAccounts();
+};
+for (const [button, act] of [['accKick', 'kick'], ['accBan', 'ban'], ['accUnban', 'unban'], ['accPass', 'password']]) {
+  $(button).onclick = () => { $('dlgAcc').close(); accountAction(act, accOpen.id, accOpen.username); };
+}
+$('accClose').onclick = () => $('dlgAcc').close();
 
 $('searchForm').onsubmit = (ev) => { ev.preventDefault(); acc.user = $('qUser').value.trim(); acc.nick = $('qNick').value.trim(); acc.page = 1; loadAccounts(); };
 $('btnClear').onclick = () => { $('qUser').value = $('qNick').value = ''; acc.user = acc.nick = ''; acc.page = 1; loadAccounts(); };

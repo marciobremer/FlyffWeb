@@ -55,6 +55,13 @@ export async function createAccount(input: { username?: string; password?: strin
   }
 }
 
+/** F = jogador, G = GM, Z = dono do servidor (administrador); os comandos // do chat conferem o banco a cada uso */
+export async function setAuthority(id: number, authority: string) {
+  if (!['F', 'G', 'Z'].includes(authority)) throw new AdminError('Tipo de conta inválido.');
+  const r = await query('UPDATE accounts SET authority = $2 WHERE id = $1', [id, authority]);
+  if (!r.rowCount) throw new AdminError('Conta não encontrada.');
+}
+
 /** dias = 0 → permanente */
 export async function banAccount(id: number, days: number) {
   const until = days > 0 ? new Date(Date.now() + days * 86400000) : new Date('2100-01-01T00:00:00Z');

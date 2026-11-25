@@ -102,6 +102,9 @@ input:focus, select:focus { outline: 2px solid #2f6f8f; outline-offset: 0; }
 dialog { background: var(--card); color: var(--fg); border: 1px solid #2a3a58; border-radius: 10px; padding: 20px 22px; min-width: 320px; }
 dialog::backdrop { background: rgb(0 0 0 / .55); }
 dialog h4 { margin: 0 0 14px; }
+tr.accrow { cursor: pointer; }
+tr.accrow:hover, tr.accrow:focus-visible { background: rgb(255 255 255 / .04); }
+.dactions.accacts { border-top: 1px solid var(--line); padding-top: 14px; flex-wrap: wrap; }
 dialog label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--dim); }
 dialog input { width: 100%; }
 .dactions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
