@@ -177,6 +177,14 @@ await flow.turnIn(me, old.id, old.npc);
 assert.equal(me.quests[old.id]?.s, 2);
 assert.equal(count(scale.item), 0);
 assert.deepEqual(calls, ['evento cw_chefe', 'teleport DuClockwork']);
+// no diário: aba própria, com o teleporte na lista de recompensas
+sent.length = 0;
+await flow.push(me);
+const mine = (sent.find((m) => m.t === 'quests') as { done: { id: string; tab: string }[] }).done.find((x) => x.id === old.id);
+assert.equal(mine?.tab, 'server');
+await flow.accept(me, old.id, old.npc);
+const last = sent.filter((m) => m.t === 'quests').pop() as { list: { id: string; tab: string; reward: string[] }[] };
+assert.deepEqual(last.list.find((x) => x.id === old.id)?.reward, ['Teleporte para DuClockwork']);
 console.log('quests.json ok: A Arena do Clockworks de ponta a ponta');
 console.log('OK');
 process.exit(0);

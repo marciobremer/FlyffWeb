@@ -43,7 +43,7 @@ export type QuestMark = 1 | 2 | 3 | 4;
 /** qual prevalece quando o NPC tem várias */
 const MARK_RANK: Record<QuestMark, number> = { 3: 4, 1: 3, 2: 2, 4: 1 };
 /** uma quest no diário */
-interface BookEntry { id: string; name: string; tab: QuestTab; category: string; desc: string }
+interface BookEntry { id: string; name: string; /** 'server' = as do data/quests.json */ tab: QuestTab | 'server'; category: string; desc: string }
 interface ActiveEntry extends BookEntry { npc: string; goals: Goal[]; ready: boolean; reward: string[]; canAbandon: boolean }
 /** MAX_QUEST do original: quests em andamento ao mesmo tempo */
 const MAX_ACTIVE = 100;
@@ -431,7 +431,7 @@ export class QuestFlow<C extends QuestConn> {
   }
 
   private entry(q: QuestDef): BookEntry {
-    return { id: q.id, name: q.name, tab: q.orig?.tab ?? 'general', category: q.orig ? q.orig.category : 'Servidor', desc: q.orig?.desc ?? q.text.progress };
+    return { id: q.id, name: q.name, tab: q.orig?.tab ?? 'server', category: q.orig?.category ?? '', desc: q.orig?.desc ?? q.text.progress };
   }
 
   /** recompensa como no diário original: penya, experiência em % do nível atual, itens */
@@ -447,6 +447,7 @@ export class QuestFlow<C extends QuestConn> {
     if (r?.skillPoints) out.push(`Pontos de skill: ${r.skillPoints}`);
     const items = r ? applying(r.items, await this.hero(c)) : q.reward.items.map((i) => ({ item: i.item, n: i.count }));
     for (const i of items) out.push(`${this.h.book.itemName(i.item)}${i.n > 1 ? ` × ${i.n}` : ''}`);
+    if (!q.orig && q.reward.teleport) out.push(`Teleporte para ${q.reward.teleport.world}`);
     return out;
   }
 

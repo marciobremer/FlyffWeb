@@ -18,7 +18,7 @@ export interface QuestDialog extends Omit<Npc, 'name'> {
   id: string; name: string; npc: string; st: QuestStatus | 'done'; /** resposta ao aceitar: sem botões */ accepted: boolean;
   pages: string[]; /** fala do "Não" */ no: string | null; req?: string[]; /** motivo de não poder aceitar/entregar agora */ blocked?: string | null;
 }
-export type QuestTab = 'scenario' | 'general' | 'office' | 'event';
+export type QuestTab = 'scenario' | 'general' | 'office' | 'event' | 'server';
 export interface QuestDone { id: string; name: string; tab: QuestTab; category: string; desc: string }
 export interface QuestEntry extends QuestDone { npc: string; goals: QuestGoal[]; ready: boolean; reward: string[]; canAbandon: boolean }
 
@@ -135,7 +135,7 @@ export class NpcTalkWindow extends GameWindow {
   }
 }
 
-const TABS: [QuestTab, string][] = [['scenario', 'Cenário'], ['general', 'Geral'], ['office', 'Escritório'], ['event', 'Evento']];
+const TABS: [QuestTab, string][] = [['scenario', 'Cenário'], ['general', 'Geral'], ['office', 'Escritório'], ['event', 'Evento'], ['server', 'Servidor']];
 /** MAX_CHECKED_QUEST do original: quantas quests aparecem na tela */
 const MAX_TRACKED = 5;
 const OFF_KEY = 'flyff.quest.untracked';
