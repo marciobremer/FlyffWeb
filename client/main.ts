@@ -39,6 +39,7 @@ import { TradeWindow } from './trade';
 import { TeleportWindow } from './teleport';
 import { QuestDialogWindow, QuestLogWindow } from './quests';
 import { loadQuestMarks, questMarkElement } from './questmarks';
+import { loadGameScroll } from './gamescroll';
 import { Rain } from './weather';
 import { MotionWindow } from './motionwnd';
 import { hideBit, lookSymbol } from '../shared/look';
@@ -146,6 +147,7 @@ const logout = new LogoutCountdown(document.body, () => void backToLogin());
 const inventory = new InventoryWindow(document.body);
 /** Teleporter (tecla V, como o APP_ZCK_TELEPORTEUR do cliente) */
 const teleportWnd = new TeleportWindow(document.body);
+loadGameScroll();
 const questDlg = new QuestDialogWindow(document.body), questLog = new QuestLogWindow(document.body);
 questDlg.onAccept = (d) => { net.quest('accept', d.id, d.key); };
 questDlg.onTurnIn = (d) => { net.quest('turnIn', d.id, d.key); };
@@ -383,7 +385,7 @@ net.onNpcMenu = (m) => {
   // ao lado do NPC, na altura da cabeça
   const inst = menuNpc?.key === m.key ? menuNpc.inst : null;
   const at = inst ? view.screenOf(inst) : null;
-  npcMenu.show(m.name, opts, at ? at[0] + 30 : innerWidth / 2, at ? at[1] : innerHeight / 2);
+  npcMenu.show(m.name, opts, at ? at[0] + 30 : innerWidth / 2, at ? at[1] : innerHeight / 2, true);
 };
 // itens no chão (drops): clicar no item ou no nome anda até ele e pega
 const ground = new GroundItems(view);

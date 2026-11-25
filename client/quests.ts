@@ -25,7 +25,7 @@ const goalList = (goals: QuestGoal[]) => {
 /** o fundo do tema (imagem da borda) cobre o do corpo da janela: o texto vai num quadro preto interno para ler melhor */
 function questPane(body: HTMLElement) {
   const pane = document.createElement('div');
-  pane.className = 'quest-pane';
+  pane.className = 'quest-pane game-scroll';
   body.replaceChildren(pane);
   return pane;
 }
@@ -37,7 +37,7 @@ export class QuestDialogWindow extends GameWindow {
 
   constructor(parent: HTMLElement) {
     super(parent, { id: 'questDlg', title: 'Quest', store: 'flyff.wnd.questdlg', initial: { x: 260, y: 120, w: 420, h: 320 }, min: { w: 320, h: 220 } });
-    this.body.classList.add('quest');
+    this.body.classList.add('quest', 'game-scroll');
   }
 
   open(d: QuestDialog) {

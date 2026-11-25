@@ -10,7 +10,7 @@ export class NpcMenu {
   private open = false;
 
   constructor(parent: HTMLElement) {
-    this.el.className = 'npc-menu';
+    this.el.className = 'npc-menu game-scroll';
     this.el.hidden = true;
     this.el.setAttribute('role', 'menu');
     parent.appendChild(this.el);
@@ -20,8 +20,9 @@ export class NpcMenu {
 
   get visible() { return this.open; }
 
-  /** mostra perto do ponto de tela (x, y) */
-  show(title: string, options: NpcMenuOption[], x: number, y: number) {
+  /** mostra perto do ponto de tela (x, y); `light` = fundo claro (menu de NPC) */
+  show(title: string, options: NpcMenuOption[], x: number, y: number, light = false) {
+    this.el.classList.toggle('light', light);
     this.el.replaceChildren();
     this.el.setAttribute('aria-label', title);
     for (const o of options) {
