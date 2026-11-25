@@ -35,7 +35,7 @@ import type { MoverProp } from './world';
 import { COLO_ENTRY, COLO_EXIT, COLO_SPAWN, ColoMatch, loadColoRules } from './colosseum';
 import { UpgradeRules, type SmithResult } from './upgrade';
 import type { InvEdit } from '../character/inventory';
-import { QuestBook, type QuestLog } from './quests';
+import { QuestBook, cleanLog, type QuestLog } from './quests';
 import { QuestFlow } from './questflow';
 import { EventScheduler } from './events';
 import { setRateBoost } from '../common/rates';
@@ -97,6 +97,7 @@ import { setRateBoost } from '../common/rates';
  *   { t: 'petFilter', f, n } ↔                       filtro do pet (o cliente manda para gravar; o servidor manda ao entrar, n = nome e ícone dos itens das listas)
  *   { t: 'petFind', q } → { t: 'petFind', list }     busca de itens para as listas do filtro: [id, nome, ícone]
  *   { t: 'weather', kind }                          clima do mapa onde você está ('rain' | 'clear'), ao entrar e quando muda (servers/world/events.ts)
+ *   { t: 'questMarks', marks }                       "!"/"?" por NPC (characterKey minúsculo → 1 disponível, 2 em andamento, 3 pronta, 4 em até 5 níveis)
  *   { t: 'questDlg', id, key, name, st, text, goals, reward } / { t: 'quests', list }   diálogo da quest (offer|active|ready|done) / diário de quests em andamento
  *   { t: 'clock', now, fixed }                       relógio do servidor (dia e noite) e a hora fixada pelo GM (null = andando)
  *   { t: 'friends', list: FriendView[] } / { t: 'friendOn', id, on } / { t: 'friendReq', id, name }
@@ -196,6 +197,7 @@ interface PlayerCombat {
   /** pontos de atributo livres (m_nRemainGP) */ points: number;
   /** próxima vez que pode usar um item de cada grupo (comida/poção/refresher), ms */ readyAt: Map<number, number>;
   /** skills: níveis aprendidos, pontos livres e quando cada uma pode ser lançada de novo */ skills: Map<number, number>; skillPoints: number; skillReady: Map<number, number>;
+  /** pontos de skill ganhos em quests originais (somam aos do nível) */ questSp?: number;
   /** buffs ativos (skill → nível, fim e os efeitos DST que somam aos atributos de luta) */ buffs: Map<number, { lv: number; until: number; dst: [number, number][] }>;
   /** atributos de TESTE de um GM (painel de GM): enquanto existir, `f.base` tem os valores de teste e aqui ficam os verdadeiros — só na memória, o banco sempre recebe estes */
   realBase?: { str: number; sta: number; dex: number; int: number };
@@ -469,7 +471,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         if (!s || !lin.has(s.job)) { cb.skills.delete(id); continue; }
         spent += lv * skillCat.cost(s);
       }
-      cb.skillPoints = Math.max(0, skillCat.totalAt(level) - spent);
+      cb.skillPoints = Math.max(0, skillCat.totalAt(level) + (cb.questSp ?? 0) - spent);
     }
     const b = cb.realBase ?? cb.f.base;
     cb.points = Math.max(0, rules.totalGp(level) - ((b.str - 15) + (b.sta - 15) + (b.dex - 15) + (b.int - 15)));
@@ -787,12 +789,12 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     cb.dirty = true;
   }
 
-  /** exp ganha (já com a taxa de EXP do servidor): sobe de nível quantas vezes der (HP cheio a cada nível), avisa todos do nível novo */
-  function addExp(c: Conn, amount: number) {
+  /** exp ganha (com a taxa de EXP do servidor e os bônus, salvo `raw`): sobe de nível quantas vezes der (HP cheio a cada nível), avisa todos do nível novo */
+  function addExp(c: Conn, amount: number, raw = false) {
     const cb = c.cb, p = c.player;
     if (!cb || !p || !rules || amount <= 0) return;
     const expBonus = Math.max(0, cb.f.dst.get(D('DST_EXPERIENCE')) ?? 0); // DST_EXPERIENCE (%): Beginner Amplification, Premium, capa de exp…
-    cb.exp += Math.max(1, Math.floor(amount * rates().exp * (1 + expBonus / 100)));
+    cb.exp += Math.max(1, Math.floor(raw ? amount : amount * rates().exp * (1 + expBonus / 100)));
     let up = false;
     const cap = rules.levelCap(cb.f.job);
     while (p.level < cap && rules.expToNext[p.level] > 0 && cb.exp >= rules.expToNext[p.level]) { cb.exp -= rules.expToNext[p.level]; p.level++; cb.points += rules.gpAt[p.level] ?? 2; if (skillCat) cb.skillPoints += skillCat.gainAt(p.level); up = true; }
@@ -2225,8 +2227,10 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   const reply = (c: Conn, text: string) => send(c.ws, { t: 'chat', id: 0, name: '', text });
 
   // ---------- quests (servers/world/quests.ts = data/quests.json; questflow.ts = aceitar, progresso, entregar) ----------
+  const questBook = inventory ? new QuestBook(inventory.catalog) : null;
+  questBook?.all(); // lê já na subida: o log mostra quantas entraram, e o 1º login não espera
   const quests = inventory ? new QuestFlow<Conn>({
-    inventory, book: new QuestBook(inventory.catalog),
+    inventory, book: questBook!,
     send: (c, msg) => send(c.ws, msg), say: reply, addExp,
     party: (c) => { const p = c.player ? parties.of(c.player.id) : null; return p ? { size: p.members.length, leader: p.leader } : null; },
     near: (c, key) => !!c.player && !!W(c).shops?.near(key, c.player.p[0], c.player.p[2]),
@@ -2240,7 +2244,25 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       return point && !pt ? `Ponto "${point}" não existe em ${world}: você foi para a chegada do mapa.` : null;
     },
     runEvent: (id) => { if (!events.run(id, 'quest')) console.warn(`quests: evento "${id}" não existe em data/events.json`); },
+    npcName: (c, key) => W(c).shops?.npcNames.get(key.toLowerCase()) ?? key,
+    partyNear: (c, x, z) => (c.player ? parties.of(c.player.id)?.members ?? [] : []).filter((id) => id !== c.player!.id).map((id) => liveConn(id))
+      .filter((o): o is Conn => !!o?.player && !!o.cb && !o.cb.dead && o.player.w === c.player!.w && Math.hypot(o.player.p[0] - x, o.player.p[2] - z) <= PARTY_RANGE),
+    addSkillPoints: (c, n) => {
+      const cb = c.cb, p = c.player;
+      if (!cb || !p) return;
+      cb.questSp = (cb.questSp ?? 0) + n;
+      reconcileSkills(cb, p.level);
+      cb.dirty = true;
+      send(c.ws, skillsMsg(c));
+      void saveCombat(p.id, cb, p.level).catch((e) => console.error('realtime: salvar pontos de quest', e));
+    },
   }) : null;
+
+  // "!" e "?" sobre os NPCs: nível, bolsa e party mudam sem passar pelas quests, então confere de tempos em tempos (só manda se mudou)
+  const questTick = setInterval(() => {
+    for (const c of conns) if (c.player && c.ws.readyState === WebSocket.OPEN) void quests?.pushMarks(c).catch((e) => console.error('realtime: marcadores de quest', e));
+  }, 2000);
+  http.on('close', () => clearInterval(questTick));
 
   // ---------- eventos e clima (servers/world/events.ts = data/events.json) ----------
   /** o mundo (aberto) pelo nome da pasta, define WI_* ou nome do runtime; abre o mapa se ainda não está carregado */
@@ -2699,7 +2721,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       c.cb = { f, maxHp, maxMp, maxFp, hp: Math.min(maxHp, ch.hp || maxHp), mp: Math.min(maxMp, ch.mp || maxMp), fp: Math.min(maxFp, ch.fp || maxFp),
         exp: Number(ch.exp) || 0, dead: false, nextAtk: 0, lastHurt: 0, dirty: false, points: ch.stat_points ?? 0, readyAt: new Map(),
         skills: new Map(Object.entries(ch.skills ?? {}).map(([k, v]) => [Number(k), Number(v)] as [number, number]).filter(([k, v]) => Number.isInteger(k) && v > 0)),
-        skillPoints: ch.skill_points ?? 0, skillReady: new Map(), buffs };
+        skillPoints: ch.skill_points ?? 0, skillReady: new Map(), buffs, questSp: quests?.skillBonus(cleanLog(ch.quests)) ?? 0 };
       reconcileSkills(c.cb, ch.level);
     }
     c.onlineSet = query('UPDATE characters SET online = true WHERE id = $1', [id]).then(() => {}, () => {}); // o site mostra quem está online
@@ -2959,7 +2981,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
               return pct === 100 ? 'Normal speed.' : `Speed at ${pct}% of normal (until you leave the game or use //speed 100).`;
             },
             where: () => baseOf(W(c)),
-            quest: (op, id) => (!quests ? Promise.resolve('No quests on this server.') : op === 'reset' ? quests.reset(c, id) : Promise.resolve(quests.list(c))),
+            quest: (op, id) => (!quests ? Promise.resolve('No quests on this server.') : op === 'reset' ? quests.reset(c, id) : op === 'info' ? quests.info(c, id!) : Promise.resolve(op === 'npc' ? quests.npcQuests(id!) : quests.list(c))),
             point: (q) => {
               const wr = W(c), pts = pointsOf(wr), p = c.player;
               if (!q) return pts.length ? `Points in ${wr.base ?? wr.name}: ${pts.map((x) => x.name).join(', ')}. Usage: //point <name>` : 'This map has no marked points (use the editor\'s "Points" tool).';

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ROOT } from '../common/config';
 import type { ItemCatalog } from '../common/items';
+import { loadOriginalQuests, moverNames, origId, type OrigQuest } from './origquests';
 
 /**
  * Quests, definidas em `data/quests.json` (editável à mão; o servidor relê o arquivo quando ele muda, sem reiniciar).
@@ -27,6 +28,8 @@ import type { ItemCatalog } from '../common/items';
  *                   "event": "cw_chefe" }      // dispara um evento de data/events.json ao concluir
  *   } ] }
  * Símbolos inválidos (item/monstro inexistente) são avisados no log e a quest fica de fora.
+ *
+ * Junto delas entram as quests originais dos propQuest*.inc (origquests.ts), com ids `o<número>`.
  */
 export interface QuestGoal { item: number; count: number }
 export interface QuestKill { mobs: number[] | null; label: string; sym: string; count: number }
@@ -35,6 +38,8 @@ export interface QuestDef {
   id: string; name: string; npc: string; minLevel: number; maxLevel: number; requires?: string; repeatable: boolean;
   /** exige party (mínimo de jogadores) e, com leaderOnly, que quem fala com o NPC seja o líder */ party?: { min: number; leaderOnly: boolean };
   text: { offer: string; progress: string; done: string };
+  /** quem recebe a entrega (nas do quests.json é o próprio `npc`) */ ender: string;
+  /** quest original do FlyFF: requisitos, objetivos e recompensas vêm daqui (need/kill/drops/reward ficam vazios) */ orig?: OrigQuest;
   need: QuestGoal[]; kill: QuestKill[]; drops: QuestDrop[];
   reward: { exp: number; penya: number; items: { item: number; count: number }[]; teleport?: { world: string; point?: string }; event?: string };
 }
@@ -63,8 +68,29 @@ export class QuestBook {
   private quests = new Map<string, QuestDef>();
   private mtime = -1;
   private checkedAt = 0;
+  private originals: Map<string, QuestDef> | null = null;
+  private npcIndex: Map<string, QuestDef[]> | null = null;
+  private movers: ((id: number) => string) | null = null;
 
   constructor(private items: ItemCatalog) {}
+
+  /** as originais são lidas uma vez (a Resource é só leitura); ORIGINAL_QUESTS=0 desliga */
+  private original(): Map<string, QuestDef> {
+    if (this.originals) return this.originals;
+    this.originals = new Map();
+    if (process.env.ORIGINAL_QUESTS === '0') return this.originals;
+    const r = loadOriginalQuests(this.items.resDir, this.items);
+    for (const q of r.quests.values()) {
+      const say = (...n: number[]) => n.map((i) => q.say[i]).filter(Boolean).join('\n\n');
+      this.originals.set(origId(q.num), {
+        id: origId(q.num), name: q.title, npc: q.giver, ender: q.ender, orig: q, minLevel: q.begin.levelMin || 1, maxLevel: q.begin.levelMax || 999, repeatable: q.repeat,
+        text: { offer: say(0, 1, 2, 3, 4) || q.desc, progress: say(10, 11, 12) || q.desc, done: say(7, 8, 9) },
+        need: [], kill: [], drops: [], reward: { exp: 0, penya: 0, items: [] },
+      });
+    }
+    console.log(`Quests originais: ${this.originals.size} carregada(s); de fora: ${Object.entries(r.skipped).map(([k, n]) => `${n} ${k}`).join(', ') || 'nenhuma'}.`);
+    return this.originals;
+  }
 
   private moverId(sym: string) { return this.items.defines.get(sym); }
 
@@ -77,6 +103,7 @@ export class QuestBook {
     try { m = fs.statSync(QUESTS_FILE).mtimeMs; } catch { /* sem arquivo: sem quests */ }
     if (m === this.mtime) return;
     this.mtime = m;
+    this.npcIndex = null;
     this.quests.clear();
     let raw: unknown = null;
     try { raw = JSON.parse(fs.readFileSync(QUESTS_FILE, 'utf8')); } catch (e) { if (m) console.warn('Quests: data/quests.json inválido:', (e as Error).message); }
@@ -116,7 +143,7 @@ export class QuestBook {
     const rw = (j.reward ?? {}) as Record<string, unknown>;
     const tp = rw.teleport as { world?: unknown; point?: unknown } | undefined;
     const q: QuestDef = {
-      id, name: String(j.name ?? id).slice(0, 60), npc, minLevel: num(j.minLevel, 1, 1, 999), maxLevel: num(j.maxLevel, 999, 1, 999),
+      id, name: String(j.name ?? id).slice(0, 60), npc, ender: npc, minLevel: num(j.minLevel, 1, 1, 999), maxLevel: num(j.maxLevel, 999, 1, 999),
       requires: typeof j.requires === 'string' && j.requires ? j.requires : undefined, repeatable: !!j.repeatable,
       ...(j.party && typeof j.party === 'object' ? { party: { min: num((j.party as Record<string, unknown>).min, 2, 2, 8), leaderOnly: (j.party as Record<string, unknown>).leaderOnly !== false } } : {}),
       text: { offer: String(t.offer ?? ''), progress: String(t.progress ?? ''), done: String(t.done ?? '') },
@@ -139,11 +166,24 @@ export class QuestBook {
     return q;
   }
 
-  all(): QuestDef[] { this.refresh(); return [...this.quests.values()]; }
-  get(id: string): QuestDef | undefined { this.refresh(); return this.quests.get(id); }
-  forNpc(key: string): QuestDef[] { const k = key.toLowerCase(); return this.all().filter((q) => q.npc.toLowerCase() === k); }
+  all(): QuestDef[] { this.refresh(); return [...this.quests.values(), ...this.original().values()]; }
+  get(id: string): QuestDef | undefined { this.refresh(); return this.quests.get(id) ?? this.original().get(id); }
+  /** quests em que o NPC `key` oferece ou recebe */
+  forNpc(key: string): QuestDef[] {
+    this.refresh();
+    if (!this.npcIndex) {
+      this.npcIndex = new Map();
+      for (const q of this.all()) {
+        for (const k of new Set([q.npc.toLowerCase(), q.ender.toLowerCase()])) {
+          const list = this.npcIndex.get(k);
+          if (list) list.push(q); else this.npcIndex.set(k, [q]);
+        }
+      }
+    }
+    return this.npcIndex.get(key.toLowerCase()) ?? [];
+  }
   itemName(id: number) { return this.items.byId.get(id)?.name ?? `#${id}`; }
-  mobName(id: number) { return [...this.items.defines].find(([, v]) => v === id)?.[0] ?? `#${id}`; }
+  mobName(id: number) { return (this.movers ??= moverNames(this.items.resDir, this.items))(id); }
 }
 
 /** a quest pode ser oferecida a este personagem agora? */

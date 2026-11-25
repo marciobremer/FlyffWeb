@@ -8,7 +8,7 @@ import { GameWindow } from './ui';
  */
 export interface QuestGoal { label: string; have: number; need: number }
 export interface QuestDialog { id: string; key: string; name: string; st: 'offer' | 'active' | 'ready' | 'done'; text: string; goals: QuestGoal[]; reward: string[]; /** requisitos (party…) */ req?: string[]; /** motivo de não poder aceitar/entregar agora */ blocked?: string | null }
-export interface QuestEntry { id: string; name: string; npc: string; goals: QuestGoal[]; ready: boolean }
+export interface QuestEntry { id: string; name: string; npc: string; goals: QuestGoal[]; ready: boolean; /** texto do diário e categoria (quests originais) */ desc?: string; category?: string; canAbandon?: boolean }
 
 const goalList = (goals: QuestGoal[]) => {
   const ul = document.createElement('ul');
@@ -93,18 +93,31 @@ export class QuestLogWindow extends GameWindow {
   private render() {
     const b = questPane(this.body);
     if (!this.list.length) { const p = document.createElement('p'); p.className = 'quest-text'; p.textContent = 'Nenhuma quest em andamento. Fale com os NPCs com "❗" no menu.'; b.append(p); return; }
-    for (const q of this.list) {
+    // agrupadas por categoria (SetHeadQuest do original); as do servidor, sem categoria, vêm primeiro
+    let category = '';
+    for (const q of [...this.list].sort((x, y) => (x.category ?? '').localeCompare(y.category ?? ''))) {
+      if (q.category && q.category !== category) {
+        category = q.category;
+        const c = document.createElement('div');
+        c.className = 'quest-category';
+        c.textContent = category;
+        b.append(c);
+      }
       const h = document.createElement('h4');
       h.textContent = `${q.ready ? '✔ ' : ''}${q.name}`;
+      const sub = document.createElement('div');
+      sub.className = 'quest-sub';
+      sub.textContent = q.ready ? `Pronta: volte ao NPC ${q.npc}.` : `NPC: ${q.npc}`;
+      b.append(h, sub);
+      if (q.desc) { const p = document.createElement('p'); p.className = 'quest-text'; p.textContent = q.desc; b.append(p); }
+      if (q.goals.length) b.append(goalList(q.goals));
+      if (q.canAbandon === false) continue;
       const del = document.createElement('button');
       del.type = 'button';
       del.className = 'quest-abandon';
       del.textContent = 'Abandonar';
       del.addEventListener('click', () => { void gameConfirm(`Abandonar "${q.name}"? O progresso se perde.`, 'Abandonar').then((ok) => { if (ok) this.onAbandon(q.id); }); });
-      const sub = document.createElement('div');
-      sub.className = 'quest-sub';
-      sub.textContent = q.ready ? `Pronta: volte ao NPC ${q.npc}.` : `NPC: ${q.npc}`;
-      b.append(h, sub, goalList(q.goals), del);
+      b.append(del);
     }
   }
 }

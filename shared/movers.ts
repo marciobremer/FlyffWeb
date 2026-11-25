@@ -510,6 +510,7 @@ export class MoverInstance {
     this.label = new CSS2DObject(el);
     this.label.position.set(0, this.tpl.height + this.labelLift, 0);
     this.group.add(this.label);
+    if (this.questMark) this.label.add(this.questMark); // nome refeito: o marcador de quest vai junto
   }
 
   /** nome da guild em cima do nome (null tira); `master`: é o mestre da guild (nome dourado) */
@@ -521,6 +522,18 @@ export class MoverInstance {
     if (!tag) { tag = document.createElement('span'); tag.className = 'guild-tag'; el.prepend(tag); }
     tag.textContent = guild;
     tag.classList.toggle('master', master);
+  }
+
+  /** tipo do marcador de quest desenhado (0 = nenhum) */
+  questKind = 0;
+  private questMark: CSS2DObject | null = null;
+  /** "!"/"?" acima do nome (null tira); filho do nome, então some e aparece junto com ele */
+  setQuestMark(el: HTMLElement | null) {
+    this.questMark?.removeFromParent();
+    this.questMark = null;
+    if (!el || !this.label) return;
+    this.questMark = new CSS2DObject(el);
+    this.label.add(this.questMark);
   }
 
   private bubble: CSS2DObject | null = null;
@@ -594,6 +607,22 @@ export class MoverInstance {
 export class MoverManager {
   private templates = new Map<string, Promise<MoverTemplate | null>>();
   private active = new Map<WorldObject, MoverInstance>();
+  /** marcadores de quest por characterKey (minúsculo) e quem desenha cada tipo */
+  private questMarks: Record<string, number> = {};
+  private questMarkOf: (kind: number) => HTMLElement | null = () => null;
+  setQuestMarks(marks: Record<string, number>, element: (kind: number) => HTMLElement | null) {
+    this.questMarks = marks;
+    this.questMarkOf = element;
+    for (const inst of this.active.values()) this.applyQuestMark(inst);
+  }
+  private applyQuestMark(inst: MoverInstance) {
+    if (inst.owner !== 'movers') return;
+    const key = inst.source.characterKey?.trim().toLowerCase();
+    const kind = key ? this.questMarks[key] ?? 0 : 0;
+    if (kind === inst.questKind) return;
+    inst.questKind = kind;
+    inst.setQuestMark(kind ? this.questMarkOf(kind) : null);
+  }
   private pending = new Set<WorldObject>();
   candidates: { obj: WorldObject; entry: ModelEntry; index: number; owner: string; /** área de patrulha (retângulo do respawn) */ area?: RectXZ }[] = [];
   /** fSpeed do propMover (unidades por tique do Neuz, 16 ms) */
@@ -737,6 +766,7 @@ export class MoverManager {
         inst.owner = c.owner;
         const label = this.labelOf(c.owner, c.obj);
         if (label) inst.setLabel(label, this.labelClassOf(c.owner, c.obj), 0.6, this.labelDecor(c.owner, c.obj) ?? undefined);
+        this.applyQuestMark(inst);
         this.parent.add(inst.group);
         this.active.set(c.obj, inst);
         if (grounded && h === null) this.needsHeight.set(c.obj, inst);

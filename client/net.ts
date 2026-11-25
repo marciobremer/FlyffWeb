@@ -460,6 +460,8 @@ export class NetClient {
   onNpcMenu: (m: { key: string; name: string; shop: boolean; buff: boolean; craft: boolean; tower: boolean; colosseum: boolean; smith: string[]; quests: { id: string; name: string; st: 'offer' | 'active' | 'ready' }[] }) => void = () => {};
   onQuestDialog: (d: QuestDialog) => void = () => {};
   onQuests: (list: QuestEntry[]) => void = () => {};
+  /** "!"/"?" por NPC (characterKey minúsculo → 1 a 4) */
+  onQuestMarks: (marks: Record<string, number>) => void = () => {};
   /** clima do mapa onde está: chovendo ou não */
   onWeather: (rain: boolean) => void = () => {};
   /** resultado do ferreiro/martelo: deu certo, efeito (success/fail; null = recusado antes), espaço do item e a mensagem */
@@ -674,6 +676,8 @@ export class NetClient {
         this.onQuestDialog(m as unknown as QuestDialog);
       } else if (m.t === 'weather') {
         this.onWeather(m.kind === 'rain');
+      } else if (m.t === 'questMarks') {
+        this.onQuestMarks((m.marks ?? {}) as Record<string, number>);
       } else if (m.t === 'quests') {
         this.onQuests(Array.isArray(m.list) ? (m.list as QuestEntry[]) : []);
       } else if (m.t === 'smith') {

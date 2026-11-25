@@ -54,8 +54,8 @@ export interface GmContext {
   travel?(world: string): string;
   /** pontos marcados no editor para o mapa de quem digitou: sem nome lista; com nome leva até o ponto; devolve a mensagem */
   point?(name?: string): string;
-  /** quests (data/quests.json): sem op lista e mostra o estado de quem digitou; `reset [id]` zera o andamento */
-  quest?(op: 'list' | 'reset', id?: string): Promise<string>;
+  /** quests: sem op mostra o andamento de quem digitou; `reset [id]` zera; `info <id|nome>` e `npc <characterKey>` consultam */
+  quest?(op: 'list' | 'reset' | 'info' | 'npc', id?: string): Promise<string>;
   /** nome do mapa de quem digitou (para o //pos) */
   where?(): string;
   /** atributo do terreno onde quem digitou está (normal, NoWalk, NoMove…) */
@@ -90,7 +90,7 @@ const HELP = [
   '//speed [10–1000]   your run speed as % of normal (100 = normal; //speed 300 = 3× faster; //speed 100 resets)',
   '//pos   shows your exact position (x, y, z) and the //tp command to come back here',
   '//event [run <id>]   lists the events (data/events.json) / triggers one now · //weather [rain|clear] [minutes]   shows / changes the map weather',
-  '//quest   lists the quests and your progress · //quest reset [id]   resets the progress (one or all)',
+  '//quest   your quest progress · //quest info <id|name> · //quest npc <key> · //quest reset [id]   resets the progress (one or all)',
   '//reset-stats [character]   returns the stat points (STR/STA/DEX/INT go back to 15)',
   '//skills-max [character]   opens every skill of the class at max level, up to the character level (test) · //skills-clear [character] zeroes them',
   '//give-penya [character] <amount>',
@@ -257,8 +257,11 @@ export async function runGmCommand(ctx: GmContext, text: string): Promise<void> 
     return;
   }
   if (name === 'quest' || name === 'quests') {
-    const reset = (args[0] ?? '').toLowerCase() === 'reset';
-    ctx.reply(await (ctx.quest?.(reset ? 'reset' : 'list', reset ? args[1] : undefined) ?? Promise.resolve('No quests on this server.')));
+    const sub = (args[0] ?? '').toLowerCase();
+    const op = sub === 'reset' || sub === 'info' || sub === 'npc' ? sub : 'list';
+    const arg = op === 'list' ? undefined : args.slice(1).join(' ') || undefined;
+    if ((op === 'info' || op === 'npc') && !arg) { ctx.reply('Usage: //quest info <id|name> · //quest npc <characterKey>'); return; }
+    ctx.reply(await (ctx.quest?.(op, arg) ?? Promise.resolve('No quests on this server.')));
     log(`quest ${args.join(' ')}`);
     return;
   }
