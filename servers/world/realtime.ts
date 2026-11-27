@@ -23,6 +23,7 @@ import { skillMode } from '../common/skillmode';
 import { classOfJob, type InstanceRule, type WorldInfo } from './dungeons';
 import { GROUND_MS, OWNER_MS, type DropRules } from './drops';
 import { notifyInventory } from '../character/inventory';
+import { deliverPurchases, shopBuy as itemShopPurchase, shopView } from './shopdelivery';
 import type { ShopCatalog } from './shops';
 import type { SkillCatalog } from './skills';
 import fs from 'node:fs';
@@ -152,7 +153,7 @@ export interface PlayerView { /** mundo onde está (WdMadrigal, WdKebaras…) */
 interface Trade { a: Conn; b: Conn; offer: Map<Conn, TradeOffer>; lock: Set<Conn>; ok: Set<Conn>; busy: boolean }
 /** medidas do navegador (?perf): [mín, máx] do intervalo entre 'states' e entre quaisquer mensagens, fps, ping, maior quadro */
 interface ClientPerf { at: number; sg: [number, number]; mg: [number, number]; fps: number; ping: number | null; fm: number }
-interface Conn { /** última medida enviada pelo navegador com ?perf */ cperf?: ClientPerf; ws: WebSocket; player: PlayerView | null; accountId: number; dirty: boolean; alive: boolean; /** mobs que este cliente conhece */ mobs: Set<number>; /** horários das últimas mensagens de chat */ chatAt: number[]; /** pedidos de inventário em fila (um de cada vez) */ invQueue: Promise<void>; /** gravação do 'online = true' (a saída espera por ela) */ onlineSet?: Promise<void>; /** quando entrou no mundo (ms) — tempo de jogo */ joinedAt: number;
+interface Conn { /** última compra na loja de itens (ms) */ shopAt?: number; /** última medida enviada pelo navegador com ?perf */ cperf?: ClientPerf; ws: WebSocket; player: PlayerView | null; accountId: number; dirty: boolean; alive: boolean; /** mobs que este cliente conhece */ mobs: Set<number>; /** horários das últimas mensagens de chat */ chatAt: number[]; /** pedidos de inventário em fila (um de cada vez) */ invQueue: Promise<void>; /** gravação do 'online = true' (a saída espera por ela) */ onlineSet?: Promise<void>; /** quando entrou no mundo (ms) — tempo de jogo */ joinedAt: number;
   /** combate: atributos, HP/MP/FP, exp, morte, ritmo dos golpes */ cb: PlayerCombat | null;
   /** itens do chão que este cliente conhece */ ground: Set<number>;
   /** partes do visual escondidas pelo jogador (máscara de bits, shared/look.ts) */ hide: number;
@@ -757,7 +758,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       str: cb.f.base.str, sta: cb.f.base.sta, dex: cb.f.base.dex, int: cb.f.base.int, bonus: { str: cb.f.str - cb.f.base.str, sta: cb.f.sta - cb.f.base.sta, dex: cb.f.dex - cb.f.base.dex, int: cb.f.int - cb.f.base.int },
       acc: rules ? rules.accuracy(cb.f) : 0, dodge: rules ? rules.dodge(cb.f) : 0, spd: rules ? Math.floor(Math.floor(rules.attackSpeed(cb.f) * 100) / 2) : 0, points: cb.points, job: cb.f.job, jobOpts: rules ? rules.jobOptions(cb.f.job, lv) : [],
       mv: +((rules ? rules.runSpeed(cb.f, c.player!.sex) : 6) * ((c.speedPct ?? 100) / 100) * mountMul(c.player!)).toFixed(3), fx: rules ? rules.bonusList(cb.f) : [],
-      /** Premium Scroll ativo (janela de personagem) */ premium: cb.buffs.has(ITEM_BUFF + (inventory?.catalog.bySymbol.get('II_SCR_PREMIUM_01')?.id ?? -1)) };
+      /** Premium Scroll ativo (janela de personagem) */ premium: ['01', '07', '15', '30'].some((n) => cb.buffs.has(ITEM_BUFF + (inventory?.catalog.bySymbol.get('II_SCR_PREMIUM_' + n)?.id ?? -1))) };
   }
 
   /** painel de GM: atributos base de um jogador online (os de teste, se houver) e se são de teste */
@@ -2144,16 +2145,19 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
    * pelo dwDestParam/nAdjParamVal; acima do limite dwAbilityMin a cura cai para 30 %; espera dwSkillReady (mín. 1 s) por grupo.
    */
   /** pergaminhos que dão um buff (símbolo II_* → DST_* com valor e duração em ms) */
-  const ITEM_BUFFS: Record<string, { dst: [string | number, number][]; ms: number; /** enche MP/FP ao usar */ fill?: 'mp' | 'fp' }> = {
+  /** efeito do Premium Scroll por `days` dias; só um Premium vale por vez (não soma) */
+  const premium = (days: number) => ({ dst: [['DST_STAT_ALLUP', 15], ['DST_EXPERIENCE', 50]] as [string, number][], ms: days * 86_400_000, group: 'premium' });
+  const ITEM_BUFFS: Record<string, { dst: [string | number, number][]; ms: number; /** enche MP/FP ao usar */ fill?: 'mp' | 'fp'; /** só um efeito do grupo por vez */ group?: string }> = {
     II_CHR_SYS_SCR_UPCUTSTONE: { dst: [['DST_ATKPOWER_RATE', 20]], ms: 1800_000 }, // Upcut Stone: +20% de ATK por 30 min
     II_SYS_SYS_SCR_EXPSCROLL05: { dst: [['DST_EXPERIENCE', 50]], ms: 3600_000 }, // Beginner Amplification: +50% de EXP por 1 hora
-    II_SCR_PREMIUM_01: { dst: [['DST_STAT_ALLUP', 15], ['DST_EXPERIENCE', 50]], ms: 86_400_000 }, // Premium Scroll (24 Hours): todos os atributos +15 e EXP +50% por 24 h
+    // Premium Scroll (24 horas, 7, 15 e 30 dias): todos os atributos +15 e EXP +50%
+    II_SCR_PREMIUM_01: premium(1), II_SCR_PREMIUM_07: premium(7), II_SCR_PREMIUM_15: premium(15), II_SCR_PREMIUM_30: premium(30),
     II_CHR_REF_REF_HOLD: { dst: [[DST_UNLIMITED_MP, 1]], ms: 1800_000, fill: 'mp' }, // Refresher Hold: MP ilimitado por 30 min
     II_CHR_POT_DRI_VITALX: { dst: [[DST_UNLIMITED_FP, 1]], ms: 1800_000, fill: 'fp' }, // Vital Drink X: enche o FP e FP ilimitado por 30 min
     II_CHR_SYS_SCR_ACTIVITION: { dst: [[DST_UNLIMITED_SLOT, 1]], ms: 1800_000 }, // Activition: skills da Action Slot ilimitadas por 30 min (sem custo de MP/FP)
   };
   /** "30 minutos" / "1 hora" / "24 horas" */
-  const fmtBuffTime = (ms: number) => { const m = Math.round(ms / 60000); return m >= 60 ? `${m / 60} hora${m / 60 === 1 ? '' : 's'}` : `${m} minutos`; };
+  const fmtBuffTime = (ms: number) => { const m = Math.round(ms / 60000); if (m > 1440) return `${Math.round(m / 1440)} dias`; return m >= 60 ? `${m / 60} hora${m / 60 === 1 ? '' : 's'}` : `${m} minutos`; };
   function useItem(c: Conn, slot: number) {
     const p = c.player, cb = c.cb;
     if (!p || !cb || !inventory || cb.dead) return;
@@ -2187,6 +2191,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         // já ativo (mesmo pergaminho): não gasta outro, só avisa
         const active = cb.buffs.get(ITEM_BUFF + d.id);
         if (active && active.until > Date.now()) { reply(c, `${d.name} já está ativado.`); return; }
+        const sameGroup = ib.group && [...cb.buffs].some(([id, b]) => id >= ITEM_BUFF && b.until > Date.now() && ITEM_BUFFS[inventory.catalog.byId.get(id - ITEM_BUFF)?.symbol ?? '']?.group === ib.group);
+        if (sameGroup) { reply(c, 'Você já tem um Premium ativo: espere ele acabar para usar outro.'); return; }
         const dst = ib.dst.map(([name, v]) => [typeof name === 'number' ? name : D(name), v] as [number, number]);
         const after = await inventory.consume(p.id, slot);
         if (!after) return;
@@ -2226,6 +2232,40 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
 
   // ---------- lojas dos NPCs (server/shops.ts) ----------
   const reply = (c: Conn, text: string) => send(c.ws, { t: 'chat', id: 0, name: '', text });
+
+  // ---------- loja de itens (servers/world/shopdelivery.ts): a mesma do site ----------
+  const shopFull = new Set<number>();
+  /** entrega o que está pendente para estes personagens e avisa no chat */
+  async function deliverShop(ids: number[]) {
+    if (!inventory) return;
+    try {
+      for (const d of await deliverPurchases(inventory, ids)) for (const c of conns) {
+        if (c.player?.id !== d.characterId) continue;
+        if (d.delivered) { shopFull.delete(d.characterId); reply(c, `Compra da loja entregue: ${d.delivered}x ${d.name}.`); pushInventory(d.characterId, false); }
+        else if (!shopFull.has(d.characterId)) { shopFull.add(d.characterId); reply(c, `Sua bolsa está cheia: libere espaço para receber ${d.name} (compra da loja).`); }
+      }
+    } catch (e) { console.error('realtime: loja de itens', (e as Error).message); }
+  }
+  /** `itemShop` abre a vitrine; `itemShopBuy` compra (pontos da conta) e entrega na hora ao personagem */
+  async function itemShopMsg(c: Conn, msg: Record<string, unknown>) {
+    const p = c.player;
+    if (!p) return;
+    try {
+      let error: string | null = null, bought = false;
+      if (msg.t === 'itemShopBuy') {
+        const now = Date.now();
+        if (now - (c.shopAt ?? 0) < 800) return; // clique repetido
+        c.shopAt = now;
+        error = await itemShopPurchase(c.accountId, p.id, Number(msg.id) || 0, Number(msg.price), Number(msg.n));
+        bought = !error;
+        if (bought) await deliverShop([p.id]);
+      }
+      send(c.ws, { t: 'itemShop', ...(await shopView(c.accountId)), ...(error ? { error } : {}), ...(bought ? { bought: true } : {}) });
+    } catch (e) {
+      console.error('realtime: loja de itens', (e as Error).message);
+      send(c.ws, { t: 'itemShop', items: [], cash: 0, votepoint: 0, error: 'A loja está indisponível no momento.' });
+    }
+  }
 
   // ---------- quests (servers/world/quests.ts = data/quests.json; questflow.ts = aceitar, progresso, entregar) ----------
   const questBook = inventory ? new QuestBook(inventory.catalog) : null;
@@ -2791,6 +2831,10 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     };
     void listen();
     http.on('close', () => { stopped = true; });
+
+    // compras da loja de itens (feitas no site ou no jogo): entrega a quem está online (a cada 5 s)
+    const shopTick = setInterval(() => void deliverShop([...conns].map((c) => c.player?.id).filter((x): x is number => x !== undefined)), 5000);
+    http.on('close', () => clearInterval(shopTick));
   }
 
   wss.on('connection', (ws: WebSocket) => {
@@ -3145,6 +3189,8 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         if (msg.op === 'start') coloStart(c, Number(msg.diff), Number(msg.menu));
         else if (msg.op === 'join' && m && m.phase === 'wait' && (m.menu === 1 || c.guild?.id === m.guild)) void coloEnter(c, m);
         else if (msg.op === 'go' && m && party?.leader === c.player.id) m.startNow(Date.now());
+      } else if ((msg.t === 'itemShop' || msg.t === 'itemShopBuy') && c.player) {
+        void itemShopMsg(c, msg);
       } else if (msg.t === 'tower' && c.player) {
         towerList(c);
       } else if (msg.t === 'towerGo' && c.player && Number.isInteger(msg.k)) {

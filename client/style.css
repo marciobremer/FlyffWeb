@@ -129,7 +129,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #14161a; col
 
 /* ---------- interface do jogo: botão menu, menu (WndTaskMenu.tga 192×496) e janela de status (WndStatus1.tga 192×112) ---------- */
 /* menu e botão ficam acima de qualquer janela (.gwnd sobe a partir de 20 a cada clique); só o tooltip de item (100000) passa por cima */
-#menuBtn { position: fixed; left: 0; bottom: 0; z-index: 99991; width: 100px; height: 16px; padding: 0; border: 0; cursor: pointer; background: #333 no-repeat 33.333% 0 / 400% 100%; color: transparent; font: 10px system-ui; image-rendering: pixelated; }
+/* o botão do menu (ButtStart.tga, 4 quadros de 77×28, na cor do tema) fica na ponta esquerda da barra de atalhos e acompanha a escala dela */
+#menuBtn { position: fixed; left: max(0px, calc(50% - 637px)); bottom: 10px; z-index: 99991; width: 77px; height: 28px; padding: 0; border: 0; cursor: pointer; background: #333 no-repeat 33.333% 0 / 400% 100%; color: transparent; font: 10px system-ui; image-rendering: pixelated; }
 #menuBtn:not([style*="background-image"]) { color: #fc6; }
 #menuBtn span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 #menuBtn:not([style*="background-image"]) span { position: static; width: auto; height: auto; clip: auto; }
@@ -137,7 +138,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #14161a; col
 #menuBtn:active { background-position: 66.667% 0; }
 /* WndTaskMenu.tga em 3 faixas (border-image): cabeçalho com o logo (70 px) e rodapé (24 px) inteiros, o meio liso estica
    para caber todos os itens; em tela baixa os itens encolhem (até 14 px) em vez de sair do menu */
-#taskMenu { position: fixed; left: 0; bottom: 20px; z-index: 99990; width: 192px; box-sizing: border-box; border-style: solid; border-width: 70px 14px 24px; border-image-slice: 70 14 24 fill; border-image-repeat: stretch; border-color: #f3f3f0; background: #f3f3f0; font: 13px/1 Tahoma, Verdana, system-ui, sans-serif; color: #222; filter: drop-shadow(0 2px 6px rgb(0 0 0 / .4)); --mi: clamp(14px, calc((100vh - 150px) / 25), 19px); }
+#taskMenu { position: fixed; left: max(0px, calc(50% - 637px)); bottom: 40px; z-index: 99990; width: 192px; box-sizing: border-box; border-style: solid; border-width: 70px 14px 24px; border-image-slice: 70 14 24 fill; border-image-repeat: stretch; border-color: #f3f3f0; background: #f3f3f0; font: 13px/1 Tahoma, Verdana, system-ui, sans-serif; color: #222; filter: drop-shadow(0 2px 6px rgb(0 0 0 / .4)); --mi: clamp(14px, calc((100vh - 150px) / 25), 19px); }
+@media (max-width: 1310px) { #menuBtn { left: max(0px, calc(50% - 477px)); bottom: 7px; transform: scale(.75); transform-origin: 0 100%; } #taskMenu { left: max(0px, calc(50% - 477px)); } }
+@media (max-width: 990px) { #menuBtn { left: max(0px, calc(50% - 318px)); bottom: 5px; transform: scale(.5); } #taskMenu { left: max(0px, calc(50% - 318px)); } }
 #taskMenu[style*="border-image-source"] { background: none; }
 #taskMenu > ul { margin: -14px 0 -10px; padding: 2px 0; list-style: none; }
 #taskMenu li { position: relative; display: flex; align-items: center; gap: 5px; height: var(--mi); padding: 0 4px; cursor: pointer; white-space: nowrap; }
@@ -153,6 +156,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #14161a; col
 #taskMenu li.has-sub:hover > .submenu { display: block; }
 #taskMenu li.has-sub::after { content: ''; position: absolute; left: 100%; top: 0; width: 18px; height: 100%; } /* ponte: o mouse chega ao submenu sem fechar */
 #taskMenu .submenu li { height: 21px; }
+/* o item pai em destaque deixa o texto branco: os do submenu têm cor própria (senão o ativo some no fundo claro) */
+#taskMenu .submenu li:not([aria-disabled="true"]):not(:hover) { color: #222; }
 #statusWnd { transform: scale(1.2); transform-origin: 0 0; position: fixed; left: 6px; top: 6px; z-index: 6; width: 244px; height: 108px; background: none; touch-action: none; cursor: move; user-select: none; font: 12px/1 Tahoma, Verdana, system-ui, sans-serif; }
 #statusWnd.dragging { opacity: .9; }
 /* moldura da WndStatus1.tga em 9 fatias (o miolo é limpo pelo hud.ts): estica sem borrar os cantos nem deixar fundo quadrado atrás deles */
@@ -1037,3 +1042,38 @@ body.ingame #langPick { display: none; }
 
 /* "!" e "?" sobre os NPCs (client/questmarks.ts): quadro de 32×32 acima do nome */
 .quest-mark { width: 32px; height: 32px; margin-top: -26px; background-image: var(--quest-marks); background-repeat: no-repeat; pointer-events: none; image-rendering: pixelated; }
+
+/* loja de itens: categorias, cartões e detalhes (escura, como a do original) */
+.gwnd-body.is { flex-direction: row; gap: 0; padding: 0; }
+.is-left, .is-mid, .is-detail { display: flex; flex-direction: column; gap: 6px; padding: 8px; min-height: 0; background: #1d1420; color: #f1e6d0; font: 12px/1.35 Tahoma, Verdana, system-ui, sans-serif; }
+.is-left { flex: none; width: 150px; }
+.is-mid { flex: 1; min-width: 0; background: #2a1d2b; }
+.is-detail { flex: none; width: 230px; overflow: auto; background: #0c0a10; border-left: 2px solid #3d5c9a; align-items: stretch; text-align: center; }
+.is button { cursor: pointer; font: inherit; }
+.is-cats { display: flex; flex-direction: column; gap: 2px; overflow: auto; min-height: 0; }
+.is-cats button { padding: 6px; border: 1px solid #4a3a2c; border-radius: 4px; background: #171014; color: #cbbd9c; font-weight: 700; }
+.is-cats button.on { background: #6d7b3a; color: #fff; }
+.is-wallet { margin-top: auto; font-weight: 700; }
+.is-recharge, .is-buy { padding: 8px; border: 1px solid #c9a24a; border-radius: 5px; background: #3c4220; color: #ffe9a8; font-weight: 700; }
+.is-buy { background: #7a2414; }
+.is-search { flex: none; padding: 5px 10px; border: 1px solid #5a4a30; border-radius: 12px; background: #1a1210; color: #fff; font: inherit; user-select: text; }
+.is-count { color: #cbbd9c; }
+.is-msg { color: #8dff8a; font-weight: 700; }
+.is-msg:empty { display: none; }
+.is-msg.error { color: #ff8d8d; }
+.is-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; align-content: start; overflow: auto; min-height: 0; }
+.is-card { position: relative; display: flex; gap: 10px; align-items: center; min-height: 76px; padding: 8px 10px; overflow: hidden; text-align: left; border: 2px solid #8a7248; border-radius: 6px; background: #c9ad84; color: #3a2008; }
+.is-card:hover { filter: brightness(1.08); }
+.is-card.on { background: #a8c070; }
+.is-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.is-price { display: flex; flex-direction: column; }
+.is-price s { color: #6a4a2a; font-size: 11px; }
+.is-icon { flex: none; width: 32px; height: 32px; image-rendering: pixelated; }
+.is-detail .is-icon { width: 48px; height: 48px; align-self: center; }
+.is-off { position: absolute; right: -22px; bottom: 6px; width: 70px; transform: rotate(-45deg); background: #2e7a2e; color: #fff; font-size: 11px; font-weight: 700; text-align: center; }
+.is-detail h4 { margin: 0; font-size: 13px; color: #fff; }
+.is-desc { flex: 1; margin: 0; padding: 6px; border: 1px solid #3a3440; border-radius: 4px; text-align: left; white-space: pre-wrap; }
+.is-hint { margin: auto 0; color: #9a90a4; }
+.is-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; text-align: left; }
+.is-qty { width: 56px; padding: 3px 6px; border: 1px solid #5a4a30; border-radius: 3px; background: #000; color: #fff; font: inherit; user-select: text; }
+.is-step { width: 24px; height: 24px; border: 1px solid #c9a24a; border-radius: 4px; background: #222; color: #fff; }

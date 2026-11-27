@@ -5,6 +5,7 @@ import os from 'node:os';
 import { resourceMiddleware } from './common/resources';
 import { soundMiddleware } from './common/sounds';
 import { DIST, GAME_PORT, RES_DIR, RES_ROOTS, ROOT, SITE_DIR, SITE_PORT, pageAlias } from './common/config';
+import { shopCatalog } from './shopcatalog';
 import { apiMiddleware } from './api';
 import net from 'node:net';
 import { saveOnSignals, startWorld } from './world/start';
@@ -79,6 +80,7 @@ let internal: ReturnType<typeof internalMiddleware> | null = null;
 const server = http.createServer((req, res) => {
   const route = () => {
     const p = (req.url ?? '/').split('?')[0];
+    if (shopCatalog(req, res)) return; // ícones e dados de itens para a loja do site
     if (siteEnabled && !isGamePath(p)) proxyToSite(req, res); else serveStatic(req, res);
   };
   const rest = () => api(req, res, () => sounds(req, res, () => resources(req, res, route)));

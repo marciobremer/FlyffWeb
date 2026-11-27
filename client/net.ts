@@ -488,6 +488,8 @@ export class NetClient {
   /** Wikipedia de itens: uma página da lista e a dica completa de um item */
   onWiki: (m: { req: number; off: number; total: number; rows: (number | string)[][] }) => void = () => {};
   onWikiTip: (item: ItemView) => void = () => {};
+  /** vitrine da loja de itens (e o resultado de uma compra) */
+  onItemShop: (m: Record<string, unknown>) => void = () => {};
   onCraft: (m: Record<string, unknown>) => void = () => {};
   onCool: (list: { name: string; left: number }[]) => void = () => {};
   onCraftResult: (m: Record<string, unknown>) => void = () => {};
@@ -575,6 +577,8 @@ export class NetClient {
         this.onGmOpen(Array.isArray(m.maps) ? (m.maps as { name: string; id: number }[]) : undefined);
       } else if (m.t === 'wiki') {
         this.onWiki(m as never);
+      } else if (m.t === 'itemShop') {
+        this.onItemShop(m);
       } else if (m.t === 'wikiTip') {
         this.onWikiTip(m.item as ItemView);
       } else if (m.t === 'cool') {
@@ -819,6 +823,8 @@ export class NetClient {
   /** painel de GM: busca no catálogo de itens (nome/símbolo, categoria) */
   wiki(p: { req: number; q: string; cat: string; job: number; sex: number; lo: number; hi: number; sort: string; desc: boolean; off: number; n: number }) { return this.raw({ t: 'wiki', ...p }); }
   wikiTip(id: number) { return this.raw({ t: 'wikiTip', id }); }
+  itemShop() { return this.raw({ t: 'itemShop' }); }
+  itemShopBuy(id: number, price: number, n: number) { return this.raw({ t: 'itemShopBuy', id, price, n }); }
   /** craft: pede receitas e estado / pede fabricar a receita */
   craftOpen() { return this.raw({ t: 'craftOpen' }); }
   /** espera das masmorras (janela Duração do Item) */

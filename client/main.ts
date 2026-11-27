@@ -54,6 +54,7 @@ import { OT } from '../shared/formats/types';
 import { PLAYER_LABEL_LIFT, rankOf } from '../shared/rank';
 import { lookList, type LookPiece } from '../shared/look';
 import { netStats } from '../shared/netstats';
+import { ItemShopWindow, type ItemShopData } from './itemshop';
 
 initLang(); // idioma do jogador (client/lang.ts): traduz o HTML da página e liga o seletor PT-BR | EN
 
@@ -140,9 +141,12 @@ view.serverMobs = true;
 /** morto não anda nem seleciona */
 view.inputBlocked = () => !!view.player?.dead;
 /** menu + janela de status (só aparecem dentro do jogo); Desconectar volta ao login */
-const hud = new GameHud(document.body, () => logout.start(), () => inventory.toggle(), () => charWnd.toggle(), () => skillWnd.toggle());
+const hud = new GameHud(document.body, () => { quitToSite = false; logout.start(); }, () => inventory.toggle(), () => charWnd.toggle(), () => skillWnd.toggle());
 /** contagem de 4 s antes de sair do jogo (Desconectar do menu) */
-const logout = new LogoutCountdown(document.body, () => void backToLogin());
+/** Sair do menu: mesma contagem do Desconectar, mas no fim abre o site em vez de ficar na tela de login */
+let quitToSite = false;
+const logout = new LogoutCountdown(document.body, () => void backToLogin().then(() => { if (quitToSite) location.href = '/'; }));
+hud.onQuit = () => { quitToSite = true; logout.start(); };
 /** inventário (tecla I), barra de atalhos (1…0) e chat (Enter) — ver game/ui.ts */
 const inventory = new InventoryWindow(document.body);
 /** Teleporter (tecla V, como o APP_ZCK_TELEPORTEUR do cliente) */
@@ -745,6 +749,12 @@ ground.onHover = (it, ev) => {
 ground.onHoverMove = (ev) => { groundEv = { clientX: ev.clientX, clientY: ev.clientY }; moveItemTip(ev); };
 ground.onLeave = () => { groundWant = null; hideItemTip(); };
 hud.onWiki = () => wikiWnd.toggle();
+/** loja de itens (a mesma do site) */
+const itemShopWnd = new ItemShopWindow(document.body);
+hud.onItemShop = () => itemShopWnd.toggle();
+itemShopWnd.onLoad = () => { if (!net.itemShop()) chat.system(t('Sem conexão com o servidor.')); };
+itemShopWnd.onBuy = (item, n) => { if (!net.itemShopBuy(item.id, item.final, n)) chat.system(t('Sem conexão com o servidor.')); };
+net.onItemShop = (m) => itemShopWnd.set(m as unknown as ItemShopData);
 net.onFriends = (list) => friendsWnd.set(list);
 net.onFriendOn = (id, on) => friendsWnd.online(id, on);
 net.onFriendNew = (f) => friendsWnd.add(f);
@@ -1629,12 +1639,13 @@ async function backToLogin() {
   view.controls.enabled = true;
   try { sessionStorage.removeItem('flyff.token'); } catch { /* sem armazenamento */ }
   view.playerControl = false;
+  view.releaseGameCamera(); // antes de posar a câmera do login (senão o zoom máximo do jogo a joga para baixo do chão)
   view.selectTarget(null);
   view.player?.remove();
   view.labelRenderer.domElement.hidden = false;
   hud.hide();
   coloUi.stop();
-  inventory.hide(); inventory.clear(); delBox.hide(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); miniMap.hide(); worldMap.hide(); smithWnd.hide(); shopWnd.hide(); skillWnd.hide(); teleportWnd.hide(); towerWnd.hide(); questDlg.hide(); questLog.hide(); questLog.set([]); view.moverMgr.setQuestMarks({}, questMarkElement); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
+  inventory.hide(); inventory.clear(); delBox.hide(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); miniMap.hide(); worldMap.hide(); smithWnd.hide(); shopWnd.hide(); skillWnd.hide(); teleportWnd.hide(); towerWnd.hide(); itemShopWnd.hide(); questDlg.hide(); questLog.hide(); questLog.set([]); view.moverMgr.setQuestMarks({}, questMarkElement); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
   $('charScreen').hidden = true;
   $('loginScreen').hidden = false;
   $('loginScreen').classList.remove('leaving');

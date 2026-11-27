@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import Swal from 'sweetalert2'
+import ItemShop from '@/components/ItemShop'
 
 function safeString(value) {
   return String(value || '').trim()
@@ -53,7 +54,7 @@ function getImageUrl(item) {
 
 function ShopSkeleton() {
   return (
-    <section className="min-h-screen bg-black px-4 py-24 text-white">
+    <section className="min-h-screen bg-black px-4 pt-6 pb-24 text-white">
       <div className="max-w-7xl mx-auto space-y-8">
         <div className="h-24 rounded-2xl bg-gray-900 border border-gray-800 animate-pulse" />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -66,7 +67,7 @@ function ShopSkeleton() {
   )
 }
 
-export default function ItemMall() {
+function PointPacks() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -217,32 +218,46 @@ export default function ItemMall() {
       return
     }
 
+    // os personagens da conta logada: o jogador escolhe quem recebe, sem digitar o nome
+    const shop = await fetch('/api/shop', { cache: 'no-store' }).then((r) => r.json()).catch(() => null)
+    const dark = { background: '#111827', color: '#fff' }
+    if (!shop) {
+      Swal.fire({ ...dark, title: 'Loja indisponível', text: 'Não foi possível carregar seus personagens. Tente de novo.', icon: 'error' })
+      return
+    }
+    if (!shop.account) {
+      const login = await Swal.fire({ ...dark, title: 'Entre na sua conta', text: 'Para comprar pontos, faça o login primeiro.', icon: 'info', showCancelButton: true, confirmButtonText: 'Entrar', cancelButtonText: 'Cancelar' })
+      if (login.isConfirmed) window.location.href = '/login'
+      return
+    }
+    if (!shop.account.characters.length) {
+      Swal.fire({ ...dark, title: 'Nenhum personagem', text: 'Crie um personagem no jogo antes de comprar pontos.', icon: 'warning' })
+      return
+    }
+
+    const escapeHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
+    const radios = shop.account.characters.map((c, i) => `
+      <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;margin-top:6px;border:1px solid #374151;border-radius:8px;cursor:pointer">
+        <input type="radio" name="shop-character" value="${escapeHtml(c.name)}" ${i === 0 ? 'checked' : ''} />
+        <span style="color:#fff;font-weight:700">${escapeHtml(c.name)}</span>
+        <span style="margin-left:auto;color:#9ca3af">Nv. ${Number(c.level)}</span>
+      </label>`).join('')
+
     const result = await Swal.fire({
-      title: 'Nome do personagem',
+      ...dark,
+      title: 'Escolha o personagem',
       html: `
         <div style="text-align:left;font-size:14px;line-height:1.5;color:#d1d5db">
-          <p><b style="color:#fbbf24">${safeString(item.name)}</b></p>
+          <p><b style="color:#fbbf24">${escapeHtml(item.name)}</b></p>
           <p>${safeNumber(item.points).toLocaleString()} ${getPointLabel(item)} - ${formatPrice(item.price)} EUR</p>
-          <p style="margin-top:10px">Digite o <b>nome exato do personagem</b> que vai receber os pontos.</p>
+          <p style="margin-top:10px">Quem vai receber os pontos?</p>
+          <div style="max-height:220px;overflow-y:auto">${radios}</div>
         </div>
       `,
-      input: 'text',
-      inputPlaceholder: 'Nome do personagem no jogo',
-      inputAttributes: {
-        maxlength: '32',
-        autocapitalize: 'off',
-        autocorrect: 'off'
-      },
       showCancelButton: true,
       confirmButtonText: 'Continuar para o PayPal',
       cancelButtonText: 'Cancelar',
-      background: '#111827',
-      color: '#fff',
-      inputValidator: (value) => {
-        const name = safeString(value)
-        if (!name || name.length < 2) return 'Digite um nome de personagem válido.'
-        return null
-      }
+      preConfirm: () => document.querySelector('input[name="shop-character"]:checked')?.value || (Swal.showValidationMessage('Escolha um personagem.'), false)
     })
 
     if (!result.isConfirmed) {
@@ -288,7 +303,7 @@ export default function ItemMall() {
 
   if (error) {
     return (
-      <section className="min-h-screen bg-black px-4 py-24 text-white flex items-center justify-center">
+      <section className="min-h-screen bg-black px-4 pt-6 pb-24 text-white flex items-center justify-center">
         <div className="max-w-lg w-full rounded-2xl border border-red-500/40 bg-gray-900 p-8 text-center">
           <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-red-300 mb-2">Erro na loja</h1>
@@ -305,7 +320,7 @@ export default function ItemMall() {
   }
 
   return (
-    <section className="min-h-screen bg-black px-4 py-24 text-white relative overflow-hidden">
+    <section className="min-h-screen bg-black px-4 pt-6 pb-24 text-white relative overflow-hidden">
       <div className="absolute inset-0 bg-[url('/bg.png')] bg-cover bg-center opacity-20" />
       <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/70 to-black" />
 
@@ -318,7 +333,7 @@ export default function ItemMall() {
               </div>
               <h1 className="text-3xl md:text-4xl font-black text-white mb-2">Loja Cash Shop</h1>
               <p className="text-gray-300 max-w-2xl">
-                Escolha um pacote, digite o nome exato do personagem e pague com PayPal: os pontos são creditados automaticamente na loja do jogo.
+                Escolha um pacote, escolha o personagem e pague com PayPal: os pontos são creditados automaticamente na loja do jogo.
               </p>
             </div>
 
@@ -463,5 +478,41 @@ export default function ItemMall() {
         </div>
       </div>
     </section>
+  )
+}
+
+// Lojas: os itens comprados com pontos e os pacotes de pontos pagos com PayPal
+export default function ShopsPage() {
+  const [tab, setTab] = useState('items')
+
+  // volta do PayPal (?paypal=...): quem confirma o pagamento é a tela dos pacotes
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    if (q.get('paypal') || q.get('tab') === 'points') setTab('points')
+  }, [])
+
+  const button = (id, label) => (
+    <button type="button" aria-pressed={tab === id} onClick={() => setTab(id)}
+      className={`rounded-xl border px-5 py-2 text-sm font-bold ${tab === id ? 'border-amber-500 bg-amber-500 text-black' : 'border-gray-700 bg-gray-900 text-white'}`}>
+      {label}
+    </button>
+  )
+
+  return (
+    <div className="bg-black">
+      <div className="flex justify-center gap-2 px-4 pt-24">
+        {button('items', 'Itens')}
+        {button('points', 'Doar / comprar pontos')}
+      </div>
+      {tab === 'items' ? (
+        <section className="min-h-screen px-4 pt-6 pb-24 text-white">
+          <div className="max-w-5xl mx-auto">
+            <ItemShop />
+          </div>
+        </section>
+      ) : (
+        <PointPacks />
+      )}
+    </div>
   )
 }

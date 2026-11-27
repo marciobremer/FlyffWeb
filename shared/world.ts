@@ -1155,6 +1155,12 @@ export class WorldView {
     this.camShownDist = Infinity; this.camShortened = false;
   }
 
+  /**
+   * Solta a câmera do jogo na hora (limites de zoom/pitch e o encurtamento por obstáculo). Sem isso, quem reposiciona a câmera logo
+   * depois de sair do personagem (tela de login) ainda pega o zoom máximo do jogo: a distância é cortada e a câmera vai para baixo do chão.
+   */
+  releaseGameCamera() { this.setGameCamera(false); this.camFix = null; this.camOff = 1.8; }
+
   /** altura do terreno no ponto Three (x, z), ou null fora dos tiles carregados */
   private groundY(p: Vector3) { return this.sampleHeight(p.x, -p.z); }
 

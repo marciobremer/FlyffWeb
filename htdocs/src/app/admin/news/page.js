@@ -45,19 +45,19 @@ export default function NewsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-yellow-400">📰 Gestion des actualites</h1>
+      <h1 className="text-2xl font-bold text-yellow-400">📰 Gerenciamento de notícias</h1>
 
       <div className="space-y-2">
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Titre de l actualite"
+          placeholder="Título da notícia"
           className="w-full px-4 py-2 rounded bg-gray-100 text-black"
         />
         <textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          placeholder="Contenu de l actualite"
+          placeholder="Conteúdo da notícia"
           rows={6}
           className="w-full px-4 py-2 rounded bg-gray-100 text-black"
         />
@@ -65,7 +65,7 @@ export default function NewsPage() {
           onClick={handleSubmit}
           className="bg-yellow-500 hover:bg-yellow-600 text-black font-semibold px-6 py-2 rounded"
         >
-          {editing ? 'Mettre a jour' : 'Ajouter'} l actualite
+          {editing ? 'Atualizar' : 'Adicionar'} notícia
         </button>
       </div>
 

@@ -204,10 +204,15 @@ function bindParams(text, inputs, types = new Map()) {
   return { text: showStrings(sql, lits), values: names.map((n) => (inputs.has(n) ? inputs.get(n) : null)) }
 }
 
+/** tipos que aparecem depois de AS em CAST(x AS tipo): não são nomes de coluna */
+const SQL_TYPES = new Set(['date', 'datetime', 'datetime2', 'time', 'timestamp', 'int', 'bigint', 'smallint', 'bit', 'decimal', 'numeric', 'float', 'real', 'char', 'varchar', 'nchar', 'nvarchar', 'text'])
+
 /** a caixa que o site escreveu: primeiro token do SQL original com o mesmo nome em minúsculas */
 function caseMap(sqlText) {
   const map = new Map()
   for (const m of sqlText.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)) if (!map.has(m[0].toLowerCase())) map.set(m[0].toLowerCase(), m[0])
+  // o nome dado com AS vale mais: em `COUNT(*) as count` o primeiro token é a função, e a coluna voltava como `COUNT`
+  for (const m of sqlText.matchAll(/\bAS\s+\[?([A-Za-z_][A-Za-z0-9_]*)\]?/gi)) if (!SQL_TYPES.has(m[1].toLowerCase())) map.set(m[1].toLowerCase(), m[1])
   return map
 }
 // colunas do jogo/site cujo nome tem maiúsculas (vale para `SELECT *` e colunas sem aparecer no texto)

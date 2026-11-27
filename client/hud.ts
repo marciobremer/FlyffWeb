@@ -53,6 +53,11 @@ export class GameHud {
   }
 
   // ---------- menu ----------
+  /** Sair: desconecta e volta para o site */
+  onQuit: () => void = () => {};
+  /** Itens especiais → Loja de itens */
+  onItemShop: () => void = () => {};
+
   private items(): MenuItem[] {
     return [
       { label: t('Status'), key: 'T', icon: 'icon_MenuStatus.dds', action: () => this.toggleStatus() },
@@ -81,7 +86,7 @@ export class GameHud {
       { label: t('Ajuda'), icon: 'icon_MenuHelp.dds', sub: [t('Ajuda'), t('Dicas'), t('FAQ')] },
       { label: t('Opções'), icon: 'icon_MenuOption.dds', action: () => this.onOptions() },
       { label: t('Desconectar'), icon: 'icon_MenuLogout.dds', action: () => this.onDisconnect() },
-      { label: t('Sair'), icon: 'icon_MenuQuit.dds' },
+      { label: t('Sair'), icon: 'icon_MenuQuit.dds', action: () => this.onQuit() },
     ];
   }
 
@@ -92,7 +97,7 @@ export class GameHud {
     b.setAttribute('aria-label', 'Menu');
     b.setAttribute('aria-expanded', 'false');
     b.innerHTML = '<span>menu</span>';
-    void themeImage('ButtMainMenu.tga').then((u) => { if (u) b.style.backgroundImage = `url(${u})`; });
+    void themeImage('ButtStart.tga').then((u) => { if (u) b.style.backgroundImage = `url(${u})`; });
     b.addEventListener('click', () => this.toggle(!this.open));
 
     const m = this.menu;
@@ -134,9 +139,13 @@ export class GameHud {
           const si = document.createElement('li');
           si.textContent = s;
           si.setAttribute('role', 'menuitem');
-          si.setAttribute('aria-label', `${s} (${t('em breve')})`);
-          si.setAttribute('aria-disabled', 'true');
-          si.title = t('Em breve');
+          if (s === t('Loja de itens')) {
+            si.addEventListener('click', (e) => { e.stopPropagation(); this.toggle(false); this.onItemShop(); });
+          } else {
+            si.setAttribute('aria-label', `${s} (${t('em breve')})`);
+            si.setAttribute('aria-disabled', 'true');
+            si.title = t('Em breve');
+          }
           sub.appendChild(si);
         }
         li.appendChild(sub);

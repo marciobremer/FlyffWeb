@@ -515,7 +515,8 @@ export class ItemCatalog {
   /** o que o cliente precisa para desenhar (nome, ícone, empilhamento, onde equipa) */
   /** dados do item para o cliente (inclui o que a dica do item mostra: ataque/defesa, velocidade, classe, bônus de atributo) */
   static view(d: ItemDef) {
-    const fx = d.dest.map((k, i) => [k, d.adj[i]]).filter(([k, v]) => k > 0 && v !== 0);
+    // Premium Scroll (IK3 251): os números do propItem não são o efeito (a descrição diz +15 e +50%): não vão para a dica
+    const fx = d.kind3 === 251 ? [] : d.dest.map((k, i) => [k, d.adj[i]]).filter(([k, v]) => k > 0 && v !== 0);
     return { id: d.id, sym: d.symbol, name: d.name, icon: d.icon, pack: d.packMax, parts: d.parts, sex: d.sex, lv: d.level, cost: d.cost,
       k1: d.kind1, k2: d.kind2, k3: d.kind3, amin: d.abilityMin, amax: d.abilityMax, aspd: d.attackSpeed, rare: d.rare, wt: d.weaponType, gr: d.grade, job: d.job, hand: d.handed, fx, ...(d.fly ? { fly: d.fly } : {}),
       // arma geral/unique/ultimate (0/1/2) e elemento da carta de elemento — para o ferreiro e o martelo

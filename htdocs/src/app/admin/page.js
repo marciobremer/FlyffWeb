@@ -7,6 +7,7 @@ import { SiMega, SiMediafire } from 'react-icons/si'
 import { FaGoogleDrive } from 'react-icons/fa'
 import DataTable from 'react-data-table-component'
 import { useRouter } from 'next/navigation'
+import ShopItemsAdmin from '@/components/ShopItemsAdmin'
 export default function AdminPanelPage() {
   const router = useRouter()
   const [isAuthorized, setIsAuthorized] = useState(false)
@@ -90,14 +91,14 @@ export default function AdminPanelPage() {
           if (data.role?.toLowerCase() === 'super') {
             setIsAuthorized(true)
           } else {
-            await Swal.fire('Acces refuse', 'Vous n etes pas autorise a acceder a cette page.', 'warning')
+            await Swal.fire('Acesso negado', 'Você não tem permissão para acessar esta página.', 'warning')
             router.push('/')
           }
         } else {
           router.push('/')
         }
       } catch (err) {
-        console.error('Echec de la verification des autorisations', err)
+        console.error('Falha ao verificar as permissões', err)
         router.push('/')
       }
     }
@@ -138,7 +139,7 @@ export default function AdminPanelPage() {
       const data = await res.json()
       setDownloadLinks(data)
     } catch (err) {
-      console.error('Impossible de charger les liens de telechargement', err)
+      console.error('Não foi possível carregar os links de download', err)
     } finally {
       setLoading(false)
     }
@@ -151,7 +152,7 @@ export default function AdminPanelPage() {
       setUserList(data)
       setFilteredUsers(data)
     } catch (err) {
-      console.error('Impossible de charger les utilisateurs :', err)
+      console.error('Não foi possível carregar os usuários :', err)
     }
   }
 
@@ -161,7 +162,7 @@ export default function AdminPanelPage() {
       const data = await res.json()
       setNewsPosts(data)
     } catch (err) {
-      console.error('Impossible de charger les actualites :', err)
+      console.error('Não foi possível carregar as notícias :', err)
     }
   }
 
@@ -171,7 +172,7 @@ export default function AdminPanelPage() {
       const data = await res.json()
       setTopupItems(data)
     } catch (err) {
-      console.error('Impossible de charger les articles top-up :', err)
+      console.error('Não foi possível carregar os pacotes de recarga :', err)
     }
   }
 
@@ -194,7 +195,7 @@ export default function AdminPanelPage() {
 
       if (!res.ok) {
         const errorData = await res.json()
-        throw new Error(errorData.error || 'Impossible de charger les logs d echange')
+        throw new Error(errorData.error || 'Não foi possível carregar o histórico de trocas')
       }
 
       const data = await res.json()
@@ -206,10 +207,10 @@ export default function AdminPanelPage() {
         activePlayers: data.activePlayers || 0
       })
     } catch (err) {
-      console.error('Impossible de charger les logs d echange :', err)
+      console.error('Não foi possível carregar o histórico de trocas :', err)
       Swal.fire({
-        title: 'Erreur',
-        text: err.message || 'Impossible de charger les logs d echange. Veuillez reessayer.',
+        title: 'Erro',
+        text: err.message || 'Não foi possível carregar o histórico de trocas. Tente novamente.',
         icon: 'error'
       })
       setTradeLogs([])
@@ -243,7 +244,7 @@ export default function AdminPanelPage() {
 
       if (!res.ok) {
         const errorData = await res.json()
-        throw new Error(errorData.error || 'Impossible de charger les logs de courrier')
+        throw new Error(errorData.error || 'Não foi possível carregar o histórico do correio')
       }
 
       const data = await res.json()
@@ -255,10 +256,10 @@ export default function AdminPanelPage() {
         activeUsers: data.activeUsers || 0
       })
     } catch (err) {
-      console.error('Impossible de charger les logs de courrier :', err)
+      console.error('Não foi possível carregar o histórico do correio :', err)
       Swal.fire({
-        title: 'Erreur',
-        text: err.message || 'Impossible de charger les logs de courrier. Veuillez reessayer.',
+        title: 'Erro',
+        text: err.message || 'Não foi possível carregar o histórico do correio. Tente novamente.',
         icon: 'error'
       })
       setMailLogs([])
@@ -285,16 +286,16 @@ export default function AdminPanelPage() {
 
       if (!res.ok) {
         const errorData = await res.json()
-        throw new Error(errorData.error || 'Impossible de charger les statistiques du tableau de bord')
+        throw new Error(errorData.error || 'Não foi possível carregar as estatísticas do painel')
       }
 
       const data = await res.json()
       setDashboardStats(data)
     } catch (err) {
-      console.error('Impossible de charger les statistiques du tableau de bord :', err)
+      console.error('Não foi possível carregar as estatísticas do painel :', err)
       Swal.fire({
-        title: 'Erreur',
-        text: 'Impossible de charger les statistiques du tableau de bord',
+        title: 'Erro',
+        text: 'Não foi possível carregar as estatísticas do painel',
         icon: 'error'
       })
     } finally {
@@ -314,7 +315,7 @@ export default function AdminPanelPage() {
 
   const handleAdd = async () => {
     if (!newLink.name || !newLink.url || !newLink.size) {
-        return Swal.fire('Informations manquantes', 'Veuillez remplir tous les champs.', 'warning')
+        return Swal.fire('Faltam informações', 'Preencha todos os campos.', 'warning')
     }
   
     setIsSaving(true)
@@ -328,13 +329,13 @@ export default function AdminPanelPage() {
       if (res.ok) {
         fetchDownloads()
         setNewLink({ name: '', url: '', size: '', icon_type: 'default' })
-        Swal.fire('Succes', 'Lien de telechargement ajoute !', 'success')
+        Swal.fire('Sucesso', 'Link de download adicionado!', 'success')
       } else {
-        Swal.fire('Erreur', 'Impossible d ajouter le lien de telechargement.', 'error')
+        Swal.fire('Erro', 'Não foi possível adicionar o link de download.', 'error')
       }
     } catch (err) {
       console.error(err)
-      Swal.fire('Erreur', 'Une erreur est survenue.', 'error')
+      Swal.fire('Erro', 'Ocorreu um erro.', 'error')
     } finally {
       setIsSaving(false)
     }
@@ -358,7 +359,7 @@ export default function AdminPanelPage() {
 
   const handleSave = async (id, updated) => {
     if (!updated.name || !updated.url || !updated.size) {
-      return Swal.fire('Informations manquantes', 'Veuillez remplir tous les champs.', 'warning')
+      return Swal.fire('Faltam informações', 'Preencha todos os campos.', 'warning')
     }
   
     setIsSaving(true)
@@ -372,13 +373,13 @@ export default function AdminPanelPage() {
       if (res.ok) {
         fetchDownloads()
         setEditingId(null)
-        Swal.fire('Mis a jour', 'Lien de telechargement mis a jour avec succes !', 'success')
+        Swal.fire('Atualizado', 'Link de download atualizado com sucesso!', 'success')
       } else {
-        Swal.fire('Erreur', 'Impossible de mettre a jour le lien.', 'error')
+        Swal.fire('Erro', 'Não foi possível atualizar o link.', 'error')
       }
     } catch (err) {
       console.error(err)
-      Swal.fire('Erreur', 'Une erreur est survenue.', 'error')
+      Swal.fire('Erro', 'Ocorreu um erro.', 'error')
     } finally {
       setIsSaving(false)
     }
@@ -386,30 +387,30 @@ export default function AdminPanelPage() {
   
   const handleDelete = async (id) => {
     const result = await Swal.fire({
-      title: 'Etes-vous sur ?',
-      text: 'Cela supprimera definitivement le lien.',
+      title: 'Tem certeza?',
+      text: 'Isso apagará o link definitivamente.',
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#d33',
       cancelButtonColor: '#3085d6',
-      confirmButtonText: 'Oui, supprimer !',
+      confirmButtonText: 'Sim, excluir!',
     })
 
     if (result.isConfirmed) {
       try {
         await fetch(`/api/downloads/${id}`, { method: 'DELETE' })
         fetchDownloads()
-        Swal.fire('Supprime !', 'Le lien de telechargement a ete supprime.', 'success')
+        Swal.fire('Excluído!', 'O link de download foi excluído.', 'success')
       } catch (err) {
         console.error(err)
-        Swal.fire('Erreur', 'Impossible de supprimer le lien.', 'error')
+        Swal.fire('Erro', 'Não foi possível excluir o link.', 'error')
       }
     }
   }
 
   const handleNewsSubmit = async () => {
     if (!form.title || !form.content || !form.imageFile) {
-      return Swal.fire('Champs manquants', 'Veuillez remplir tous les champs.', 'warning')
+      return Swal.fire('Faltam campos', 'Preencha todos os campos.', 'warning')
     }
 
     setIsSaving(true)
@@ -429,15 +430,15 @@ export default function AdminPanelPage() {
 
       if (res.ok) {
         await fetchNews()
-        Swal.fire('Succes', editingPostId ? 'Article mis a jour !' : 'Article ajoute !', 'success')
+        Swal.fire('Sucesso', editingPostId ? 'Item atualizado!' : 'Item adicionado!', 'success')
         setForm({ title: '', content: '', imageFile: null })
         setEditingPostId(null)
       } else {
-        Swal.fire('Erreur', 'Impossible d enregistrer l article.', 'error')
+        Swal.fire('Erro', 'Não foi possível salvar o item.', 'error')
       }
     } catch (err) {
       console.error(err)
-      Swal.fire('Erreur', 'Une erreur est survenue.', 'error')
+      Swal.fire('Erro', 'Ocorreu um erro.', 'error')
     } finally {
       setIsSaving(false)
     }
@@ -445,20 +446,20 @@ export default function AdminPanelPage() {
 
   const handleNewsDelete = async (id) => {
     const confirm = await Swal.fire({
-      title: 'Etes-vous sur ?',
-      text: 'Cela supprimera definitivement l article.',
+      title: 'Tem certeza?',
+      text: 'Isso apagará o item definitivamente.',
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonText: 'Oui, supprimer !'
+      confirmButtonText: 'Sim, excluir!'
     })
 
     if (confirm.isConfirmed) {
       try {
         await fetch(`/api/posts/delete-post/${id}`, { method: 'DELETE' })
         fetchNews()
-        Swal.fire('Supprime !', 'Article supprime.', 'success')
+        Swal.fire('Excluído!', 'Item excluído.', 'success')
       } catch (err) {
-        Swal.fire('Erreur', 'Impossible de supprimer l article.', 'error')
+        Swal.fire('Erro', 'Não foi possível excluir o item.', 'error')
       }
     }
   }
@@ -466,7 +467,7 @@ export default function AdminPanelPage() {
   const handleTopupSubmit = async (e) => {
     e.preventDefault()
     if (!newTopupItem.name || !newTopupItem.price || !newTopupItem.points) {
-      return Swal.fire('Champs manquants', 'Veuillez remplir tous les champs obligatoires.', 'warning')
+      return Swal.fire('Faltam campos', 'Preencha todos os campos obrigatórios.', 'warning')
     }
 
     setIsSaving(true)
@@ -506,14 +507,14 @@ export default function AdminPanelPage() {
         })
         setEditingTopupId(null)
         setShowTopupModal(false)
-        Swal.fire('Succes', editingTopupId ? 'Article mis a jour !' : 'Article ajoute !', 'success')
+        Swal.fire('Sucesso', editingTopupId ? 'Item atualizado!' : 'Item adicionado!', 'success')
       } else {
         const data = await res.json()
-        Swal.fire('Erreur', data.error || 'Impossible d enregistrer l article.', 'error')
+        Swal.fire('Erro', data.error || 'Não foi possível salvar o item.', 'error')
       }
     } catch (err) {
       console.error(err)
-      Swal.fire('Erreur', 'Une erreur est survenue.', 'error')
+      Swal.fire('Erro', 'Ocorreu um erro.', 'error')
     } finally {
       setIsSaving(false)
     }
@@ -521,23 +522,23 @@ export default function AdminPanelPage() {
 
   const handleTopupDelete = async (id) => {
     const result = await Swal.fire({
-      title: 'Etes-vous sur ?',
-      text: 'Cela supprimera definitivement cet article top-up.',
+      title: 'Tem certeza?',
+      text: 'Isso apagará este pacote de recarga definitivamente.',
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#d33',
       cancelButtonColor: '#3085d6',
-      confirmButtonText: 'Oui, supprimer !'
+      confirmButtonText: 'Sim, excluir!'
     })
 
     if (result.isConfirmed) {
       try {
         await fetch(`/api/topup/${id}`, { method: 'DELETE' })
         fetchTopupItems()
-        Swal.fire('Supprime !', 'Article top-up supprime.', 'success')
+        Swal.fire('Excluído!', 'Pacote de recarga excluído.', 'success')
       } catch (err) {
         console.error(err)
-        Swal.fire('Erreur', 'Impossible de supprimer l article.', 'error')
+        Swal.fire('Erro', 'Não foi possível excluir o item.', 'error')
       }
     }
   }
@@ -622,18 +623,18 @@ export default function AdminPanelPage() {
 
   const handleChangePassword = async (account) => {
     const { value: newPassword } = await Swal.fire({
-      title: `Changer le mot de passe de ${account}`,
+      title: `Alterar a senha de ${account}`,
       input: 'password',
-      inputLabel: 'Nouveau mot de passe',
-      inputPlaceholder: 'Entrez le nouveau mot de passe',
+      inputLabel: 'Nova senha',
+      inputPlaceholder: 'Digite a nova senha',
       inputAttributes: {
         minlength: 4,
         autocapitalize: 'off',
         autocorrect: 'off'
       },
       showCancelButton: true,
-      confirmButtonText: 'Changer',
-      cancelButtonText: 'Annuler'
+      confirmButtonText: 'Alterar',
+      cancelButtonText: 'Cancelar'
     })
   
     if (newPassword) {
@@ -645,35 +646,35 @@ export default function AdminPanelPage() {
         })
   
         if (res.ok) {
-          Swal.fire('Succes', 'Mot de passe mis a jour avec succes !', 'success')
+          Swal.fire('Sucesso', 'Senha atualizada com sucesso!', 'success')
         } else {
-          Swal.fire('Erreur', 'Impossible de mettre a jour le mot de passe.', 'error')
+          Swal.fire('Erro', 'Não foi possível atualizar a senha.', 'error')
         }
       } catch (err) {
         console.error(err)
-        Swal.fire('Erreur', 'Une erreur est survenue.', 'error')
+        Swal.fire('Erro', 'Ocorreu um erro.', 'error')
       }
     }
   }
   
   const handleHoldCharacter = async (characterName) => {
     const result = await Swal.fire({
-      title: 'Suspendre le personnage',
-      text: `Etes-vous sur de vouloir suspendre ${characterName} ?`,
+      title: 'Suspender personagem',
+      text: `Tem certeza de que quer suspender ${characterName}?`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#d33',
       cancelButtonColor: '#3085d6',
-      confirmButtonText: 'Oui, suspendre !'
+      confirmButtonText: 'Sim, suspender!'
     })
 
     if (result.isConfirmed) {
       try {
         await fetch(`/api/users/hold-character/${characterName}`, { method: 'POST' })
-        Swal.fire('Succes', 'Personnage suspendu avec succes !', 'success')
+        Swal.fire('Sucesso', 'Personagem suspenso com sucesso!', 'success')
       } catch (err) {
         console.error(err)
-        Swal.fire('Erreur', 'Impossible de suspendre le personnage.', 'error')
+        Swal.fire('Erro', 'Não foi possível suspender o personagem.', 'error')
       }
     }
   } 
@@ -682,7 +683,7 @@ export default function AdminPanelPage() {
     return (
       <section className="min-h-screen bg-black/70 text-white flex items-center justify-center pt-24 relative overflow-hidden">
         <div className="absolute inset-0 bg-[url('/bg.png')] bg-cover bg-center opacity-20" />
-        <p className="text-lg animate-pulse text-amber-400 relative z-10">Verification de l acces administrateur...</p>
+        <p className="text-lg animate-pulse text-amber-400 relative z-10">Verificando o acesso de administrador...</p>
       </section>
     )
   }
@@ -696,43 +697,43 @@ export default function AdminPanelPage() {
             <LayoutDashboard className="w-6 h-6 text-amber-400" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-white">Panneau administrateur</h1>
-            <p className="text-sm text-gray-400">Gestion de Reborn-MMO</p>
+            <h1 className="text-xl font-bold text-white">Painel do administrador</h1>
+            <p className="text-sm text-gray-400">Gerenciamento do ReactioN MMO</p>
           </div>
         </div>
 
         <div className="flex gap-2 mb-6 flex-wrap">
           <button className={tabClasses('dashboard')} onClick={() => setActiveTab('dashboard')}>
             <LayoutDashboard className="inline mr-2" size={14} />
-            Tableau de bord
+            Visão geral
           </button>
           <button className={tabClasses('downloads')} onClick={() => setActiveTab('downloads')}>
             <Download className="inline mr-2" size={14} />
-            Telechargements
+            Downloads
           </button>
           <button className={tabClasses('users')} onClick={() => setActiveTab('users')}>
             <Users className="inline mr-2" size={14} />
-            Utilisateurs
+            Usuários
           </button>
           <button className={tabClasses('posts')} onClick={() => setActiveTab('posts')}>
             <FileText className="inline mr-2" size={14} />
-            Actualites
+            Notícias
           </button>
 		  <button className={tabClasses('topup')} onClick={() => setActiveTab('topup')}>
 		  <ShoppingBag className="inline mr-2" size={14} />
-		  Boutique
+		  Loja
 		  </button>
           <button className={tabClasses('trade-logs')} onClick={() => setActiveTab('trade-logs')}>
             <FileText className="inline mr-2" size={14} />
-            Echanges
+            Trocas
           </button>
           <button className={tabClasses('mail-logs')} onClick={() => setActiveTab('mail-logs')}>
             <FileText className="inline mr-2" size={14} />
-            Courrier
+            Correio
           </button>
           <button className={tabClasses('settings')} onClick={() => setActiveTab('settings')}>
             <Settings className="inline mr-2" size={14} />
-            Parametres
+            Configurações
           </button>
         </div>
 
@@ -742,11 +743,11 @@ export default function AdminPanelPage() {
         {activeTab === 'downloads' && (
           <>
             <h2 className="text-lg font-bold text-amber-400 mb-4 flex items-center gap-2">
-              <Download size={18} /> Liens de telechargement
+              <Download size={18} /> Links de download
             </h2>
 
             {loading ? (
-              <p className="text-center text-gray-400 py-8">Chargement...</p>
+              <p className="text-center text-gray-400 py-8">Carregando...</p>
             ) : (
               <div className="grid md:grid-cols-3 gap-4 mb-6">
                 {downloadLinks.map(link => (
@@ -793,7 +794,7 @@ export default function AdminPanelPage() {
                           }
                           className="mt-2 w-full bg-gray-700 border border-gray-600 rounded-lg px-2 py-1 text-white text-center text-sm"
                         >
-                          <option value="default">Defaut</option>
+                          <option value="default">Padrão</option>
                           <option value="mega">MEGA</option>
                           <option value="mediafire">Mediafire</option>
                           <option value="google">Google Drive</option>
@@ -808,7 +809,7 @@ export default function AdminPanelPage() {
                           ) : (
                             <>
                               <Save size={14} />
-                              Enregistrer
+                              Salvar
                             </>
                           )}
                         </button>
@@ -824,14 +825,14 @@ export default function AdminPanelPage() {
                             className="bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1"
                           >
                             <Edit2 size={12} />
-                            Modifier
+                            Editar
                           </button>
                           <button
                             onClick={() => handleDelete(link.id)}
                             className="bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1"
                           >
                             <Trash2 size={14} />
-                            Supprimer
+                            Excluir
                           </button>
                         </div>
                       </>
@@ -842,11 +843,11 @@ export default function AdminPanelPage() {
             )}
 
             <div className="bg-gray-800/50 border border-gray-700 p-4 rounded-xl">
-              <h3 className="text-sm font-semibold text-amber-400 mb-3">Ajouter un nouveau lien</h3>
+              <h3 className="text-sm font-semibold text-amber-400 mb-3">Adicionar novo link</h3>
               <div className="grid md:grid-cols-4 gap-3">
                 <input
                   type="text"
-                  placeholder="Nom (ex : MEGA)"
+                  placeholder="Nome (ex.: MEGA)"
                   value={newLink.name}
                   onChange={(e) => setNewLink({ ...newLink, name: e.target.value })}
                   className="p-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-sm placeholder-gray-500"
@@ -860,7 +861,7 @@ export default function AdminPanelPage() {
                 />
                 <input
                   type="text"
-                  placeholder="Taille (ex : 1.2 GB)"
+                  placeholder="Tamanho (ex.: 1,2 GB)"
                   value={newLink.size}
                   onChange={(e) => setNewLink({ ...newLink, size: e.target.value })}
                   className="p-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-sm placeholder-gray-500"
@@ -870,7 +871,7 @@ export default function AdminPanelPage() {
                   onChange={(e) => setNewLink({ ...newLink, icon_type: e.target.value })}
                   className="p-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-sm"
                 >
-                  <option value="default">Defaut</option>
+                  <option value="default">Padrão</option>
                   <option value="mega">MEGA</option>
                   <option value="mediafire">Mediafire</option>
                   <option value="google">Google Drive</option>
@@ -884,7 +885,7 @@ export default function AdminPanelPage() {
                 {isSaving ? (
                   <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
                 ) : (
-                  'Ajouter le lien'
+                  'Adicionar link'
                 )}
               </button>
             </div>
@@ -894,13 +895,13 @@ export default function AdminPanelPage() {
         {activeTab === 'users' && (
         <>
             <h2 className="text-lg font-bold text-amber-400 mb-4 flex items-center gap-2">
-              <Users size={18} /> Gestion des utilisateurs
+              <Users size={18} /> Gerenciamento de usuários
             </h2>
 
             <div className="bg-gray-800/50 border border-gray-700 p-4 rounded-xl overflow-hidden">
             <input
                 type="text"
-                placeholder="Rechercher par compte ou personnage..."
+                placeholder="Buscar por conta ou personagem..."
                 className="mb-4 px-3 py-2 w-full md:w-1/3 text-sm rounded-lg bg-gray-800 border border-gray-600 text-white placeholder-gray-500"
                 onChange={(e) => {
                 const keyword = e.target.value.toLowerCase()
@@ -919,40 +920,40 @@ export default function AdminPanelPage() {
             <DataTable
                 columns={[
                 {
-                    name: 'Compte',
+                    name: 'Conta',
                     selector: row => row.account,
                     sortable: true,
                 },
                 {
-                    name: 'Nom du personnage',
+                    name: 'Nome do personagem',
                     selector: row => row.character_name || '—',
                     sortable: true,
                 },
                 {
-                    name: 'Mot de passe',
+                    name: 'Senha',
                     selector: row => row.password || '—',
                     sortable: true,
                 },
                 {
-                    name: 'Creation',
+                    name: 'Criação',
                     selector: row => new Date(row.CreateTime).toLocaleString(),
                     sortable: true,
                 },
                 {
-                    name: 'Actions',
+                    name: 'Ações',
                     cell: row => (
                         <div className="flex gap-2 justify-end w-full">
                             <button
                                 className="bg-amber-600 hover:bg-amber-500 text-white p-1.5 rounded-lg"
                                 onClick={() => handleChangePassword(row.account)}
-                                title="Changer le mot de passe"
+                                title="Alterar senha"
                             >
                                 <Lock size={14} />
                             </button>
                             <button
                                 className="bg-red-600 hover:bg-red-500 text-white p-1.5 rounded-lg"
                                 onClick={() => handleHoldCharacter(row.character_name)}
-                                title="Suspendre le personnage"
+                                title="Suspender personagem"
                             >
                                 <PauseCircle size={16} />
                             </button>
@@ -975,7 +976,7 @@ export default function AdminPanelPage() {
         {activeTab === 'posts' && (
           <div className="text-white">
             <h2 className="text-lg font-bold text-amber-400 mb-4 flex items-center gap-2">
-              <FilePlus size={18} /> Articles d actualites
+              <FilePlus size={18} /> Notícias
             </h2>
 
             <div className="grid md:grid-cols-3 gap-4 mb-6">
@@ -989,13 +990,13 @@ export default function AdminPanelPage() {
                       className="bg-amber-600 hover:bg-amber-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1"
                       onClick={() => handleEdit(post.id, 'post')}
                     >
-                      <Edit2 size={12} /> Modifier
+                      <Edit2 size={12} /> Editar
                     </button>
                     <button
                       className="bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1"
                       onClick={() => handleNewsDelete(post.id)}
                     >
-                      <Trash2 size={12} /> Supprimer
+                      <Trash2 size={12} /> Excluir
                     </button>
                   </div>
                 </div>
@@ -1003,11 +1004,11 @@ export default function AdminPanelPage() {
             </div>
 
             <div className="bg-gray-800/50 border border-gray-700 p-4 rounded-xl">
-              <h3 className="text-sm font-semibold text-amber-400 mb-3">{editingPostId ? 'Modifier l article' : 'Ajouter un nouvel article'}</h3>
+              <h3 className="text-sm font-semibold text-amber-400 mb-3">{editingPostId ? 'Editar item' : 'Adicionar novo item'}</h3>
               <div className="grid md:grid-cols-3 gap-3">
                 <input
                   type="text"
-                  placeholder="Titre"
+                  placeholder="Título"
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                   className="p-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-sm placeholder-gray-500"
@@ -1018,7 +1019,7 @@ export default function AdminPanelPage() {
                   className="p-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-sm"
                 />
                 <textarea
-                  placeholder="Contenu"
+                  placeholder="Conteúdo"
                   value={form.content}
                   onChange={(e) => setForm({ ...form, content: e.target.value })}
                   className="p-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-sm col-span-full placeholder-gray-500"
@@ -1035,7 +1036,7 @@ export default function AdminPanelPage() {
                 ) : (
                   <>
                     <Save size={16} />
-                    {editingPostId ? 'Mettre a jour l article' : 'Ajouter l article'}
+                    {editingPostId ? 'Atualizar item' : 'Adicionar item'}
                   </>
                 )}
               </button>
@@ -1047,7 +1048,7 @@ export default function AdminPanelPage() {
           <>
             <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
 			<h2 className="text-lg font-bold text-amber-400 flex items-center gap-2">
-			<ShoppingBag size={18} /> Boutique
+			<ShoppingBag size={18} /> Pacotes de pontos (PayPal)
 			</h2>
               <button
                 type="button"
@@ -1055,7 +1056,7 @@ export default function AdminPanelPage() {
                 className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-semibold rounded-lg text-sm flex items-center gap-2"
               >
                 <FilePlus size={16} />
-                Ajouter un nouvel article
+                Adicionar pacote
               </button>
             </div>
 
@@ -1082,10 +1083,10 @@ export default function AdminPanelPage() {
                   
                   <div className="flex items-center gap-2 mb-1">
                     <DollarSign size={14} className="text-amber-400" />
-                    <span className="text-base font-bold text-white">₱{parseFloat(item.price).toFixed(2)}</span>
+                    <span className="text-base font-bold text-white">€{parseFloat(item.price).toFixed(2)}</span>
                     {item.is_on_sale && (
                       <span className="text-xs line-through text-gray-500">
-                        ₱{(parseFloat(item.price) * (100 / (100 - item.sale_percentage))).toFixed(2)}
+                        €{(parseFloat(item.price) * (100 / (100 - item.sale_percentage))).toFixed(2)}
                       </span>
                     )}
                   </div>
@@ -1099,13 +1100,13 @@ export default function AdminPanelPage() {
                       onClick={() => handleEditTopup(item)}
                       className="flex-1 bg-amber-600 hover:bg-amber-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1"
                     >
-                      <Edit2 size={12} /> Modifier
+                      <Edit2 size={12} /> Editar
                     </button>
                     <button
                       onClick={() => handleTopupDelete(item.id)}
                       className="flex-1 bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1"
                     >
-                      <Trash2 size={14} /> Supprimer
+                      <Trash2 size={14} /> Excluir
                     </button>
                   </div>
                 </div>
@@ -1120,30 +1121,30 @@ export default function AdminPanelPage() {
                 <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                   <div className="sticky top-0 bg-gray-900 border-b border-gray-700 px-5 py-3 flex items-center justify-between">
                     <h3 className="text-base font-semibold text-amber-400">
-					{editingTopupId ? 'Modifier un article' : 'Ajouter un article'}
+					{editingTopupId ? 'Editar item' : 'Adicionar item'}
                     </h3>
                     <button
                       type="button"
                       onClick={closeTopupModal}
                       className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800"
-                      aria-label="Fermer"
+                      aria-label="Fechar"
                     >
                       <X size={20} />
                     </button>
                   </div>
                   <form onSubmit={handleTopupSubmit} className="p-5 grid md:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-1">Nom</label>
+                      <label className="block text-xs font-medium text-gray-400 mb-1">Nome</label>
                       <input
                         type="text"
-                        placeholder="ex : 1000 Cash Points"
+                        placeholder="ex.: 1000 Cash Points"
                         value={newTopupItem.name}
                         onChange={(e) => setNewTopupItem({ ...newTopupItem, name: e.target.value })}
                         className="w-full p-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-sm placeholder-gray-500"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-1">Categorie</label>
+                      <label className="block text-xs font-medium text-gray-400 mb-1">Categoria</label>
                       <select
                         value={newTopupItem.category}
                         onChange={(e) => setNewTopupItem({ ...newTopupItem, category: e.target.value })}
@@ -1151,11 +1152,11 @@ export default function AdminPanelPage() {
                       >
                         <option value="cash">Cash Points</option>
                         <option value="vote">Vote Points</option>
-                        <option value="special">Objets speciaux</option>
+                        <option value="special">Itens especiais</option>
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-1">Prix (₱)</label>
+                      <label className="block text-xs font-medium text-gray-400 mb-1">Preço (€)</label>
                       <input
                         type="number"
                         step="0.01"
@@ -1166,7 +1167,7 @@ export default function AdminPanelPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-1">Points</label>
+                      <label className="block text-xs font-medium text-gray-400 mb-1">Pontos</label>
                       <input
                         type="number"
                         placeholder="1000"
@@ -1176,9 +1177,9 @@ export default function AdminPanelPage() {
                       />
                     </div>
                     <div className="col-span-2">
-                      <label className="block text-xs font-medium text-gray-400 mb-1">Description</label>
+                      <label className="block text-xs font-medium text-gray-400 mb-1">Descrição</label>
                       <textarea
-                        placeholder="Description de l article..."
+                        placeholder="Descrição do item..."
                         value={newTopupItem.description}
                         onChange={(e) => setNewTopupItem({ ...newTopupItem, description: e.target.value })}
                         className="w-full p-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-sm placeholder-gray-500"
@@ -1186,7 +1187,7 @@ export default function AdminPanelPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-1">Image</label>
+                      <label className="block text-xs font-medium text-gray-400 mb-1">Imagem</label>
                       <input
                         type="file"
                         accept="image/*"
@@ -1194,7 +1195,7 @@ export default function AdminPanelPage() {
                         className="w-full p-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-sm file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-amber-600 file:text-white"
                       />
                       {editingTopupId && (
-                        <p className="text-xs text-gray-500 mt-1">Laissez vide pour conserver l image actuelle</p>
+                        <p className="text-xs text-gray-500 mt-1">Deixe vazio para manter a imagem atual</p>
                       )}
                     </div>
                     <div className="flex items-center gap-4">
@@ -1205,13 +1206,13 @@ export default function AdminPanelPage() {
                           onChange={(e) => setNewTopupItem({ ...newTopupItem, isOnSale: e.target.checked })}
                           className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-amber-500"
                         />
-                        <span className="text-sm font-medium text-gray-300">En promotion</span>
+                        <span className="text-sm font-medium text-gray-300">Em promoção</span>
                       </label>
                       {newTopupItem.isOnSale && (
                         <div className="flex-1">
                           <input
                             type="number"
-                            placeholder="Reduction %"
+                            placeholder="Desconto %"
                             value={newTopupItem.salePercentage}
                             onChange={(e) => setNewTopupItem({ ...newTopupItem, salePercentage: e.target.value })}
                             className="w-full p-2 rounded-lg bg-gray-800 border border-gray-600 text-white text-sm placeholder-gray-500"
@@ -1227,7 +1228,7 @@ export default function AdminPanelPage() {
                         onClick={closeTopupModal}
                         className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg text-sm"
                       >
-                        Annuler
+                        Cancelar
                       </button>
                       <button
                         type="submit"
@@ -1239,7 +1240,7 @@ export default function AdminPanelPage() {
                         ) : (
                           <>
                             <Save size={16} />
-                            {editingTopupId ? 'Mettre a jour l article' : 'Ajouter l article'}
+                            {editingTopupId ? 'Atualizar item' : 'Adicionar item'}
                           </>
                         )}
                       </button>
@@ -1249,42 +1250,43 @@ export default function AdminPanelPage() {
               </div>,
               document.body
             )}
+            <ShopItemsAdmin />
           </>
         )}
 
         {activeTab === 'trade-logs' && (
           <>
             <h2 className="text-lg font-bold text-amber-400 mb-4 flex items-center gap-2">
-              <FileText size={18} /> Logs d echange
+              <FileText size={18} /> Histórico de trocas
             </h2>
 
             <div className="bg-gray-800/50 border border-gray-700 p-4 rounded-xl overflow-hidden">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
                 <div className="bg-gray-800 border border-gray-700 p-3 rounded-lg">
-                  <h3 className="text-sm font-semibold text-gray-400 mb-1">Total des echanges</h3>
+                  <h3 className="text-sm font-semibold text-gray-400 mb-1">Total de trocas</h3>
                   <p className="text-xl font-bold text-amber-400">
                     {isLoadingTrades ? (
-                      <span className="animate-pulse">Chargement...</span>
+                      <span className="animate-pulse">Carregando...</span>
                     ) : (
                       Number(tradeStats.total || 0).toLocaleString()
                     )}
                   </p>
                 </div>
                 <div className="bg-gray-800 border border-gray-700 p-3 rounded-lg">
-                  <h3 className="text-sm font-semibold text-gray-400 mb-1">Echanges du jour</h3>
+                  <h3 className="text-sm font-semibold text-gray-400 mb-1">Trocas de hoje</h3>
                   <p className="text-xl font-bold text-amber-400">
                     {isLoadingTrades ? (
-                      <span className="animate-pulse">Chargement...</span>
+                      <span className="animate-pulse">Carregando...</span>
                     ) : (
                       Number(tradeStats.today || 0).toLocaleString()
                     )}
                   </p>
                 </div>
                 <div className="bg-gray-800 border border-gray-700 p-3 rounded-lg">
-                  <h3 className="text-sm font-semibold text-gray-400 mb-1">Joueurs actifs</h3>
+                  <h3 className="text-sm font-semibold text-gray-400 mb-1">Jogadores ativos</h3>
                   <p className="text-xl font-bold text-amber-400">
                     {isLoadingTrades ? (
-                      <span className="animate-pulse">Chargement...</span>
+                      <span className="animate-pulse">Carregando...</span>
                     ) : (
                       Number(tradeStats.activePlayers || 0).toLocaleString()
                     )}
@@ -1295,13 +1297,13 @@ export default function AdminPanelPage() {
               <div className="flex gap-3 mb-4">
                 <input
                   type="text"
-                  placeholder="Rechercher par joueur..."
+                  placeholder="Buscar por jogador..."
                   className="px-3 py-2 w-full md:w-1/3 text-sm rounded-lg bg-gray-800 border border-gray-600 text-white placeholder-gray-500"
                   onChange={(e) => handleTradeSearch('player', e.target.value)}
                 />
                 <input
                   type="text"
-                  placeholder="Rechercher par objet..."
+                  placeholder="Buscar por item..."
                   className="px-3 py-2 w-full md:w-1/3 text-sm rounded-lg bg-gray-800 border border-gray-600 text-white placeholder-gray-500"
                   onChange={(e) => handleTradeSearch('item', e.target.value)}
                 />
@@ -1310,17 +1312,17 @@ export default function AdminPanelPage() {
               <DataTable
                 columns={[
                   {
-                    name: 'ID echange',
+                    name: 'ID da troca',
                     selector: row => row.TradeID,
                     sortable: true,
                   },
                   {
-                    name: 'Date',
+                    name: 'Data',
                     selector: row => row.TradeDt,
                     sortable: true,
                   },
                   {
-                    name: 'Joueur 1',
+                    name: 'Jogador 1',
                     selector: row => row.Player1,
                     sortable: true,
                     cell: row => (
@@ -1328,7 +1330,7 @@ export default function AdminPanelPage() {
                     ),
                   },
                   {
-                    name: 'Objets du joueur 1',
+                    name: 'Itens do jogador 1',
                     selector: row => row.ItemsFromPlayer1,
                     wrap: true,
                     cell: row => (
@@ -1338,7 +1340,7 @@ export default function AdminPanelPage() {
                     ),
                   },
                   {
-                    name: 'Joueur 2',
+                    name: 'Jogador 2',
                     selector: row => row.Player2,
                     sortable: true,
                     cell: row => (
@@ -1346,7 +1348,7 @@ export default function AdminPanelPage() {
                     ),
                   },
                   {
-                    name: 'Objets du joueur 2',
+                    name: 'Itens do jogador 2',
                     selector: row => row.ItemsFromPlayer2,
                     wrap: true,
                     cell: row => (
@@ -1386,36 +1388,36 @@ export default function AdminPanelPage() {
         {activeTab === 'mail-logs' && (
           <>
             <h2 className="text-lg font-bold text-amber-400 mb-4 flex items-center gap-2">
-              <FileText size={18} /> Logs de courrier
+              <FileText size={18} /> Histórico do correio
             </h2>
 
             <div className="bg-gray-800/50 border border-gray-700 p-4 rounded-xl overflow-hidden">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
                 <div className="bg-gray-800 border border-gray-700 p-3 rounded-lg">
-                  <h3 className="text-sm font-semibold text-gray-400 mb-1">Total des courriers</h3>
+                  <h3 className="text-sm font-semibold text-gray-400 mb-1">Total de correios</h3>
                   <p className="text-xl font-bold text-amber-400">
                     {isLoadingMails ? (
-                      <span className="animate-pulse">Chargement...</span>
+                      <span className="animate-pulse">Carregando...</span>
                     ) : (
                       Number(mailStats.total || 0).toLocaleString()
                     )}
                   </p>
                 </div>
                 <div className="bg-gray-800 border border-gray-700 p-3 rounded-lg">
-                  <h3 className="text-sm font-semibold text-gray-400 mb-1">Courriers du jour</h3>
+                  <h3 className="text-sm font-semibold text-gray-400 mb-1">Correios de hoje</h3>
                   <p className="text-xl font-bold text-amber-400">
                     {isLoadingMails ? (
-                      <span className="animate-pulse">Chargement...</span>
+                      <span className="animate-pulse">Carregando...</span>
                     ) : (
                       Number(mailStats.today || 0).toLocaleString()
                     )}
                   </p>
                 </div>
                 <div className="bg-gray-800 border border-gray-700 p-3 rounded-lg">
-                  <h3 className="text-sm font-semibold text-gray-400 mb-1">Utilisateurs actifs</h3>
+                  <h3 className="text-sm font-semibold text-gray-400 mb-1">Usuários ativos</h3>
                   <p className="text-xl font-bold text-amber-400">
                     {isLoadingMails ? (
-                      <span className="animate-pulse">Chargement...</span>
+                      <span className="animate-pulse">Carregando...</span>
                     ) : (
                       Number(mailStats.activeUsers || 0).toLocaleString()
                     )}
@@ -1426,19 +1428,19 @@ export default function AdminPanelPage() {
               <div className="flex flex-wrap gap-3 mb-4">
                 <input
                   type="text"
-                  placeholder="Rechercher par expediteur..."
+                  placeholder="Buscar por remetente..."
                   className="px-3 py-2 w-full md:w-1/3 text-sm rounded-lg bg-gray-800 border border-gray-600 text-white placeholder-gray-500"
                   onChange={(e) => handleMailSearch('sender', e.target.value)}
                 />
                 <input
                   type="text"
-                  placeholder="Rechercher par destinataire..."
+                  placeholder="Buscar por destinatário..."
                   className="px-3 py-2 w-full md:w-1/3 text-sm rounded-lg bg-gray-800 border border-gray-600 text-white placeholder-gray-500"
                   onChange={(e) => handleMailSearch('receiver', e.target.value)}
                 />
                 <input
                   type="text"
-                  placeholder="Rechercher par ID objet..."
+                  placeholder="Buscar por ID do item..."
                   className="px-3 py-2 w-full md:w-1/3 text-sm rounded-lg bg-gray-800 border border-gray-600 text-white placeholder-gray-500"
                   onChange={(e) => handleMailSearch('item', e.target.value)}
                 />
@@ -1447,7 +1449,7 @@ export default function AdminPanelPage() {
               <DataTable
                 columns={[
                   {
-                    name: 'Date',
+                    name: 'Data',
                     selector: row => row.CreatedAt,
                     sortable: true,
                     cell: row => (
@@ -1455,7 +1457,7 @@ export default function AdminPanelPage() {
                     ),
                   },
                   {
-                    name: 'Expediteur',
+                    name: 'Remetente',
                     selector: row => row.Sender,
                     sortable: true,
                     cell: row => (
@@ -1463,7 +1465,7 @@ export default function AdminPanelPage() {
                     ),
                   },
                   {
-                    name: 'Destinataire',
+                    name: 'Destinatário',
                     selector: row => row.Receiver,
                     sortable: true,
                     cell: row => (
@@ -1471,7 +1473,7 @@ export default function AdminPanelPage() {
                     ),
                   },
                   {
-                    name: 'Titre',
+                    name: 'Título',
                     selector: row => row.Title,
                     sortable: true,
                     cell: row => (
@@ -1479,7 +1481,7 @@ export default function AdminPanelPage() {
                     ),
                   },
                   {
-                    name: 'Message',
+                    name: 'Mensagem',
                     selector: row => row.Message,
                     wrap: true,
                     cell: row => (
@@ -1489,7 +1491,7 @@ export default function AdminPanelPage() {
                     ),
                   },
                   {
-                    name: 'Objet',
+                    name: 'Item',
                     selector: row => row.ItemId,
                     cell: row => row.ItemId ? (
                       <div className="text-green-300">
@@ -1530,55 +1532,55 @@ export default function AdminPanelPage() {
         {activeTab === 'dashboard' && (
           <>
             <h2 className="text-lg font-bold text-amber-400 mb-4 flex items-center gap-2">
-              <Activity size={18} /> Tableau de bord serveur
+              <Activity size={18} /> Painel do servidor
             </h2>
 
             <div className="space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div className="bg-gray-800 border border-gray-700 p-4 rounded-xl">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-medium text-gray-400">Joueurs en ligne</h3>
+                    <h3 className="text-sm font-medium text-gray-400">Jogadores online</h3>
                     <Users className="text-amber-400" size={18} />
                   </div>
                   <p className="text-xl font-bold mt-2 text-amber-400">
                     {isLoadingDashboard ? (
-                      <span className="animate-pulse">Chargement...</span>
+                      <span className="animate-pulse">Carregando...</span>
                     ) : (
                       dashboardStats.online_players.total.toLocaleString()
                     )}
                   </p>
                   <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
-                    <span>Haut : {dashboardStats.online_players.high_level}</span>
+                    <span>Alto: {dashboardStats.online_players.high_level}</span>
                     <span>|</span>
-                    <span>Bas : {dashboardStats.online_players.low_level}</span>
+                    <span>Baixo: {dashboardStats.online_players.low_level}</span>
                   </div>
                 </div>
 
                 <div className="bg-gray-800 border border-gray-700 p-4 rounded-xl">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-medium text-gray-400">Total comptes</h3>
+                    <h3 className="text-sm font-medium text-gray-400">Total de contas</h3>
                     <UserPlus className="text-amber-400" size={18} />
                   </div>
                   <p className="text-xl font-bold mt-2 text-amber-400">
                     {isLoadingDashboard ? (
-                      <span className="animate-pulse">Chargement...</span>
+                      <span className="animate-pulse">Carregando...</span>
                     ) : (
                       dashboardStats.accounts.total.toLocaleString()
                     )}
                   </p>
                   <div className="mt-2 text-xs text-gray-500">
-                    Personnages : {dashboardStats.accounts.total_characters.toLocaleString()}
+                    Personagens: {dashboardStats.accounts.total_characters.toLocaleString()}
                   </div>
                 </div>
 
                 <div className="bg-gray-800 border border-gray-700 p-4 rounded-xl">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-medium text-gray-400">Persos niveau max</h3>
+                    <h3 className="text-sm font-medium text-gray-400">Personagens no nível máximo</h3>
                     <Star className="text-amber-400" size={18} />
                   </div>
                   <p className="text-xl font-bold mt-2 text-amber-400">
                     {isLoadingDashboard ? (
-                      <span className="animate-pulse">Chargement...</span>
+                      <span className="animate-pulse">Carregando...</span>
                     ) : (
                       dashboardStats.accounts.max_level_chars.toLocaleString()
                     )}
@@ -1587,12 +1589,12 @@ export default function AdminPanelPage() {
 
                 <div className="bg-gray-800 border border-gray-700 p-4 rounded-xl">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-medium text-gray-400">Echanges aujourd hui</h3>
+                    <h3 className="text-sm font-medium text-gray-400">Trocas hoje</h3>
                     <Activity className="text-amber-400" size={18} />
                   </div>
                   <p className="text-xl font-bold mt-2 text-amber-400">
                     {isLoadingDashboard ? (
-                      <span className="animate-pulse">Chargement...</span>
+                      <span className="animate-pulse">Carregando...</span>
                     ) : (
                       dashboardStats.today.trades.toLocaleString()
                     )}
@@ -1604,37 +1606,37 @@ export default function AdminPanelPage() {
                 <div className="bg-gray-800/50 border border-gray-700 p-3 rounded-xl">
                   <div className="flex items-center gap-2 text-amber-400">
                     <UserPlus size={16} />
-                    <h3 className="text-sm font-medium">Nouveaux comptes</h3>
+                    <h3 className="text-sm font-medium">Contas novas</h3>
                   </div>
                   <p className="text-xl font-bold mt-1 text-white">{dashboardStats.today.new_accounts}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">Aujourd hui</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Hoje</p>
                 </div>
 
                 <div className="bg-gray-800/50 border border-gray-700 p-3 rounded-xl">
                   <div className="flex items-center gap-2 text-amber-400">
                     <Users size={16} />
-                    <h3 className="text-sm font-medium">Nouveaux personnages</h3>
+                    <h3 className="text-sm font-medium">Personagens novos</h3>
                   </div>
                   <p className="text-xl font-bold mt-1 text-white">{dashboardStats.today.new_characters}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">Aujourd hui</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Hoje</p>
                 </div>
 
                 <div className="bg-gray-800/50 border border-gray-700 p-3 rounded-xl">
                   <div className="flex items-center gap-2 text-amber-400">
                     <ArrowUpRight size={16} />
-                    <h3 className="text-sm font-medium">Echanges</h3>
+                    <h3 className="text-sm font-medium">Trocas</h3>
                   </div>
                   <p className="text-xl font-bold mt-1 text-white">{dashboardStats.today.trades}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">Aujourd hui</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Hoje</p>
                 </div>
 
                 <div className="bg-gray-800/50 border border-gray-700 p-3 rounded-xl">
                   <div className="flex items-center gap-2 text-amber-400">
                     <Mail size={16} />
-                    <h3 className="text-sm font-medium">Courriers</h3>
+                    <h3 className="text-sm font-medium">Correios</h3>
                   </div>
                   <p className="text-xl font-bold mt-1 text-white">{dashboardStats.today.mails}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">Aujourd hui</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Hoje</p>
                 </div>
               </div>
 
@@ -1642,7 +1644,7 @@ export default function AdminPanelPage() {
                 <div className="bg-gray-800/50 border border-gray-700 p-4 rounded-xl">
                   <h3 className="text-base font-semibold mb-3 flex items-center gap-2 text-amber-400">
                     <Star size={16} />
-                    Meilleurs personnages
+                    Melhores personagens
                   </h3>
                   <div className="space-y-2">
                     {dashboardStats.top_characters.map((char, index) => (
@@ -1652,7 +1654,7 @@ export default function AdminPanelPage() {
                           <span className="text-white text-sm">{char.name}</span>
                         </div>
                         <div className="flex items-center gap-3 text-xs">
-                          <span className="text-gray-400">Lvl {char.level}</span>
+                          <span className="text-gray-400">Nv. {char.level}</span>
                           <span className="text-amber-300 flex items-center gap-0.5">
                             <Coins size={12} />
                             {char.gold.toLocaleString()}
@@ -1666,7 +1668,7 @@ export default function AdminPanelPage() {
                 <div className="bg-gray-800/50 border border-gray-700 p-4 rounded-xl">
                   <h3 className="text-base font-semibold mb-3 flex items-center gap-2 text-amber-400">
                     <ArrowUpRight size={16} />
-                    Echanges recents
+                    Trocas recentes
                   </h3>
                   <div className="space-y-2">
                     {dashboardStats.recent_trades.map((trade) => (
@@ -1685,7 +1687,7 @@ export default function AdminPanelPage() {
               </div>
 
               <div className="bg-gray-800/50 border border-gray-700 p-4 rounded-xl">
-                <h3 className="text-base font-semibold mb-3 text-amber-400">Repartition des classes</h3>
+                <h3 className="text-base font-semibold mb-3 text-amber-400">Distribuição das classes</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
                   {dashboardStats.class_distribution.map((classData) => {
                     const pct = dashboardStats.accounts.total_characters
@@ -1715,8 +1717,8 @@ export default function AdminPanelPage() {
             <div className="inline-flex p-4 rounded-xl bg-gray-800 border border-gray-700 mb-4">
               <Settings className="w-10 h-10 text-amber-400" />
             </div>
-            <h2 className="text-lg font-bold text-amber-400 mb-2">Parametres</h2>
-            <p className="text-sm text-gray-400 max-w-sm mx-auto">Les parametres du serveur et du panneau pourront etre configures ici. Bientot disponible.</p>
+            <h2 className="text-lg font-bold text-amber-400 mb-2">Configurações</h2>
+            <p className="text-sm text-gray-400 max-w-sm mx-auto">As configurações do servidor e do painel poderão ser ajustadas aqui. Em breve.</p>
           </div>
         )}
         </div>

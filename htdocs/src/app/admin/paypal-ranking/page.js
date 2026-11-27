@@ -14,7 +14,7 @@ function formatAmount(value) {
 }
 
 function formatNumber(value) {
-  return Number(value || 0).toLocaleString('fr-FR')
+  return Number(value || 0).toLocaleString('pt-BR')
 }
 
 function todayInput() {
@@ -59,7 +59,7 @@ export default function AdminPayPalRankingPage() {
 
         if (!res.ok || data.role?.toLowerCase() !== 'super') {
           setAuthorized(false)
-          await Swal.fire('Acces refuse', 'Vous devez etre super admin.', 'warning')
+          await Swal.fire('Acesso negado', 'Você precisa ser super admin.', 'warning')
           window.location.href = '/'
           return
         }
@@ -93,14 +93,14 @@ export default function AdminPayPalRankingPage() {
       const data = await res.json().catch(() => ({}))
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Impossible de charger le classement PayPal')
+        throw new Error(data.error || 'Não foi possível carregar o ranking PayPal')
       }
 
       setRanking(Array.isArray(data.ranking) ? data.ranking : [])
       setPeriodInfo(data.period || null)
     } catch (err) {
       console.error('[ADMIN PAYPAL RANKING LOAD ERROR]', err)
-      Swal.fire('Erreur', err.message || 'Impossible de charger le classement.', 'error')
+      Swal.fire('Erro', err.message || 'Não foi possível carregar o ranking.', 'error')
     } finally {
       setLoading(false)
     }
@@ -127,30 +127,30 @@ export default function AdminPayPalRankingPage() {
     const itemCount = Number(rewardInputs[rank]?.itemCount || 1)
 
     if (!Number.isInteger(itemId) || itemId <= 0) {
-      Swal.fire('ItemID invalide', 'Entre un ItemID valide pour ce rang.', 'warning')
+      Swal.fire('ItemID inválido', 'Informe um ItemID válido para esta posição.', 'warning')
       return
     }
 
     if (!Number.isInteger(itemCount) || itemCount <= 0) {
-      Swal.fire('Quantite invalide', 'Entre une quantite valide.', 'warning')
+      Swal.fire('Quantidade inválida', 'Informe uma quantidade válida.', 'warning')
       return
     }
 
     const confirm = await Swal.fire({
-      title: `Crediter le rang #${rank} ?`,
+      title: `Premiar a posição #${rank}?`,
       html: `
         <div style="text-align:left;line-height:1.6">
-          <p><b>Personnage :</b> ${safeString(row.character_name)}</p>
+          <p><b>Personagem:</b> ${safeString(row.character_name)}</p>
           <p><b>ItemID :</b> ${itemId}</p>
-          <p><b>Quantite :</b> ${itemCount}</p>
-          <p><b>Periode :</b> ${safeString(periodInfo?.label)}</p>
-          <p style="margin-top:10px;color:#fbbf24">L item sera envoye par courrier en jeu.</p>
+          <p><b>Quantidade:</b> ${itemCount}</p>
+          <p><b>Período:</b> ${safeString(periodInfo?.label)}</p>
+          <p style="margin-top:10px;color:#fbbf24">O item será enviado pelo correio do jogo.</p>
         </div>
       `,
       icon: 'question',
       showCancelButton: true,
-      confirmButtonText: 'Oui, crediter',
-      cancelButtonText: 'Annuler',
+      confirmButtonText: 'Sim, premiar',
+      cancelButtonText: 'Cancelar',
       background: '#111827',
       color: '#fff'
     })
@@ -179,19 +179,19 @@ export default function AdminPayPalRankingPage() {
       const data = await res.json().catch(() => ({}))
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Impossible de crediter la recompense')
+        throw new Error(data.error || 'Não foi possível entregar a recompensa')
       }
 
       await Swal.fire(
-        data.alreadyCredited ? 'Deja credite' : 'Recompense creditee',
-        data.message || 'Operation terminee.',
+        data.alreadyCredited ? 'Já entregue' : 'Recompensa entregue',
+        data.message || 'Operação concluída.',
         data.alreadyCredited ? 'info' : 'success'
       )
 
       await fetchRanking()
     } catch (err) {
       console.error('[ADMIN CREDIT REWARD ERROR]', err)
-      Swal.fire('Erreur', err.message || 'Impossible de crediter la recompense.', 'error')
+      Swal.fire('Erro', err.message || 'Não foi possível entregar a recompensa.', 'error')
     } finally {
       setCreditingRank(null)
     }
@@ -201,7 +201,7 @@ export default function AdminPayPalRankingPage() {
     return (
       <section className="min-h-screen bg-black text-white flex items-center justify-center pt-24">
         <div className="flex items-center gap-3 text-amber-300">
-          <Loader2 className="w-5 h-5 animate-spin" /> Verification admin...
+          <Loader2 className="w-5 h-5 animate-spin" /> Verificando admin...
         </div>
       </section>
     )
@@ -217,7 +217,7 @@ export default function AdminPayPalRankingPage() {
       <div className="relative z-10 max-w-7xl mx-auto space-y-6">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <Link href="/admin" className="inline-flex items-center gap-2 rounded-xl border border-gray-700 bg-gray-900 px-4 py-2 text-sm font-bold text-gray-200 hover:border-amber-400">
-            <ArrowLeft className="w-4 h-4" /> Retour admin
+            <ArrowLeft className="w-4 h-4" /> Voltar ao admin
           </Link>
           <button
             onClick={fetchRanking}
@@ -225,7 +225,7 @@ export default function AdminPayPalRankingPage() {
             className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-black text-black hover:bg-amber-400 disabled:opacity-60"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCcw className="w-4 h-4" />}
-            Actualiser
+            Atualizar
           </button>
         </div>
 
@@ -233,11 +233,11 @@ export default function AdminPayPalRankingPage() {
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-300 mb-4">
-                <Shield className="w-4 h-4" /> Admin recompenses PayPal
+                <Shield className="w-4 h-4" /> Admin de recompensas PayPal
               </div>
-              <h1 className="text-3xl md:text-4xl font-black text-white mb-2">Classement PayPal</h1>
+              <h1 className="text-3xl md:text-4xl font-black text-white mb-2">Ranking PayPal</h1>
               <p className="text-gray-300 max-w-3xl">
-                Top des personnages qui ont achete via PayPal. Le compte Flyff reste masque. Les recompenses sont envoyees par courrier en jeu avec l ItemID choisi.
+                Personagens que mais compraram via PayPal. A conta do jogo fica oculta. As recompensas são enviadas pelo correio do jogo com o ItemID escolhido.
               </p>
             </div>
 
@@ -246,19 +246,19 @@ export default function AdminPayPalRankingPage() {
                 onClick={() => setPeriod('current_month')}
                 className={`rounded-xl px-4 py-2 text-sm font-bold border transition ${period === 'current_month' ? 'bg-amber-500 text-black border-amber-300' : 'bg-gray-900 text-gray-200 border-gray-700 hover:border-amber-400'}`}
               >
-                Mois actuel
+                Mês atual
               </button>
               <button
                 onClick={() => setPeriod('all')}
                 className={`rounded-xl px-4 py-2 text-sm font-bold border transition ${period === 'all' ? 'bg-amber-500 text-black border-amber-300' : 'bg-gray-900 text-gray-200 border-gray-700 hover:border-amber-400'}`}
               >
-                Tout
+                Tudo
               </button>
               <button
                 onClick={() => setPeriod('custom')}
                 className={`rounded-xl px-4 py-2 text-sm font-bold border transition ${period === 'custom' ? 'bg-amber-500 text-black border-amber-300' : 'bg-gray-900 text-gray-200 border-gray-700 hover:border-amber-400'}`}
               >
-                Custom
+                Personalizado
               </button>
             </div>
           </div>
@@ -278,13 +278,13 @@ export default function AdminPayPalRankingPage() {
                 className="rounded-xl border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white"
               />
               <button onClick={fetchRanking} className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-black text-black hover:bg-amber-400">
-                Charger
+                Carregar
               </button>
             </div>
           )}
 
           {periodInfo?.label && (
-            <p className="mt-5 text-sm text-amber-200">Periode active : {periodInfo.label}</p>
+            <p className="mt-5 text-sm text-amber-200">Período ativo: {periodInfo.label}</p>
           )}
         </div>
 
@@ -301,7 +301,7 @@ export default function AdminPayPalRankingPage() {
                   </span>
                   {credited && (
                     <span className="inline-flex items-center gap-1 rounded-full border border-green-400/30 bg-green-500/10 px-3 py-1 text-xs font-bold text-green-300">
-                      <CheckCircle2 className="w-3 h-3" /> Credite
+                      <CheckCircle2 className="w-3 h-3" /> Entregue
                     </span>
                   )}
                 </div>
@@ -330,7 +330,7 @@ export default function AdminPayPalRankingPage() {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-gray-400 mb-1">Quantite</label>
+                        <label className="block text-xs font-bold text-gray-400 mb-1">Quantidade</label>
                         <input
                           type="number"
                           min="1"
@@ -348,11 +348,11 @@ export default function AdminPayPalRankingPage() {
                       className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-3 font-black text-black hover:bg-amber-400 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       {creditingRank === rank ? <Loader2 className="w-4 h-4 animate-spin" /> : <Gift className="w-4 h-4" />}
-                      {credited ? 'Deja credite' : 'Crediter la recompense'}
+                      {credited ? 'Já entregue' : 'Entregar recompensa'}
                     </button>
                   </>
                 ) : (
-                  <p className="text-gray-500">Aucun joueur pour ce rang.</p>
+                  <p className="text-gray-500">Nenhum jogador nesta posição.</p>
                 )}
               </div>
             )
@@ -364,25 +364,25 @@ export default function AdminPayPalRankingPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-900 text-gray-400 uppercase text-xs">
                 <tr>
-                  <th className="px-4 py-3 text-left">Rang</th>
-                  <th className="px-4 py-3 text-left">Personnage</th>
+                  <th className="px-4 py-3 text-left">Posição</th>
+                  <th className="px-4 py-3 text-left">Personagem</th>
                   <th className="px-4 py-3 text-right">Total PayPal</th>
-                  <th className="px-4 py-3 text-right">Points</th>
-                  <th className="px-4 py-3 text-right">Paiements</th>
-                  <th className="px-4 py-3 text-right">Recompense</th>
+                  <th className="px-4 py-3 text-right">Pontos</th>
+                  <th className="px-4 py-3 text-right">Pagamentos</th>
+                  <th className="px-4 py-3 text-right">Recompensa</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800">
                 {loading ? (
                   <tr>
                     <td colSpan="6" className="px-4 py-10 text-center text-gray-400">
-                      <Loader2 className="w-5 h-5 animate-spin inline mr-2 text-amber-400" /> Chargement...
+                      <Loader2 className="w-5 h-5 animate-spin inline mr-2 text-amber-400" /> Carregando...
                     </td>
                   </tr>
                 ) : ranking.length === 0 ? (
                   <tr>
                     <td colSpan="6" className="px-4 py-10 text-center text-gray-400">
-                      Aucun paiement confirme pour cette periode.
+                      Nenhum pagamento confirmado neste período.
                     </td>
                   </tr>
                 ) : ranking.map((row) => (
@@ -396,7 +396,7 @@ export default function AdminPayPalRankingPage() {
                       {row.reward_id ? (
                         <span className="text-green-300 font-bold">Item {row.reward_item_id} x{row.reward_item_count}</span>
                       ) : row.rank_position <= 3 ? (
-                        <span className="text-amber-300">Disponible</span>
+                        <span className="text-amber-300">Disponível</span>
                       ) : (
                         <span className="text-gray-500">-</span>
                       )}
