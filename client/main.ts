@@ -29,6 +29,7 @@ import { MiniMap, WorldMap, type MapDot, type MapView } from './minimap';
 import { SmithWindow, smithOptions, isUpgradeMaterial, isAwakeScroll } from './smith';
 import { ShopWindow } from './shop';
 import { BankWindow } from './bank';
+import { MailWindow } from './mail';
 import { SkillWindow } from './skillwnd';
 import { JobWindow } from './jobwnd';
 import { CaptionBanner } from './caption';
@@ -381,6 +382,7 @@ net.onNpcMenu = (m) => {
   if (m.talk) opts.push({ label: t('Diálogo'), run: () => net.quest('talk', '', m.key) });
   if (m.shop) opts.push({ label: t('Comércio'), run: () => net.shopOpen(m.key) });
   if (m.bank) opts.push({ label: t('Armazém'), run: () => openBank(m.key) });
+  if (m.mail) opts.push({ label: t('Correio'), run: () => openMail(m.key) });
   if (m.buff) {
     opts.push({ label: t('Receber Buffs!'), run: () => net.npcBuff(m.key, 'assist') }); // buffs de Assist liberados no seu nível
     opts.push({ label: t('Buffs de Classe'), run: () => net.npcBuff(m.key, 'class') }); // buffs da sua classe liberados no seu nível
@@ -407,6 +409,17 @@ net.onBank = (m) => {
   bankWnd.set(m);
   if (m.open) { bankWnd.show(); inventory.show(); }
 };
+// ---------- correio (caixa de correio, Comunicação → Correio ou o envelope do Mensageiro) ----------
+const mailWnd = new MailWindow(document.body);
+const mailDo = (ok: boolean) => { if (!ok) chat.system(t('Sem conexão com o servidor.')); };
+function openMail(key: string) { mailWnd.npc = key; mailDo(net.mailList()); mailWnd.show(); }
+mailWnd.bagItem = (slot) => { const it = inventory.all.get(`0:${slot}`), d = it && inventory.def(it.id); return it && d ? { id: it.id, name: d.name, icon: d.icon, n: it.n } : null; };
+mailWnd.onSend = (d) => mailDo(net.mailSend(mailWnd.npc, d));
+mailWnd.onTake = (id, what) => mailDo(net.mailTake(mailWnd.npc, id, what));
+mailWnd.onRead = (id) => mailDo(net.mailRead(id));
+mailWnd.onDelete = (id) => mailDo(net.mailDelete(id));
+net.onMail = (m) => mailWnd.set(m);
+net.onMailNew = () => { if (mailWnd.visible) mailDo(net.mailList()); }; // chegou carta com a janela aberta
 // itens no chão (drops): clicar no item ou no nome anda até ele e pega
 const ground = new GroundItems(view);
 ground.sendPick = (id) => { net.pick(id); };
@@ -456,7 +469,7 @@ net.onChangeWorld = (w, p, force) => {
    try {
     const pl = view.player;
     const sex = pl?.sex ?? 'male', look = pl?.currentLook ?? { equip: lookNow };
-    combat.stop(); ground.clear(); npcMenu.hide(); shopWnd.hide(); bankWnd.hide(); view.selectTarget(null);
+    combat.stop(); ground.clear(); npcMenu.hide(); shopWnd.hide(); bankWnd.hide(); mailWnd.hide(); view.selectTarget(null);
     view.playerControl = false;
     net.pause();
     mapLoading.show(w);
@@ -724,6 +737,7 @@ net.onPartyReq = (id, name) => friendRequestPrompt(document.body, name, (ok) => 
 net.onPartyList = (list) => partyListWnd.set(list);
 /** Mensageiro (tecla E): amigos e conversas privadas */
 const friendsWnd = new FriendsWindow(document.body);
+friendsWnd.onMail = () => openMail('');
 hud.onMessenger = () => friendsWnd.toggle();
 friendsWnd.onRemove = (id) => net.friendDel(id);
 friendsWnd.onSend = (id, text) => { if (!net.pm(id, text)) chat.system(t('Sem conexão com o servidor.')); };
@@ -767,6 +781,7 @@ hud.onWiki = () => wikiWnd.toggle();
 const itemShopWnd = new ItemShopWindow(document.body);
 hud.onItemShop = () => itemShopWnd.toggle();
 hud.onItemTime = () => itemTimeWnd.toggle();
+hud.onMail = () => openMail('');
 hud.onNavigator = () => { miniMap.toggle(); navOpen(miniMap.visible); };
 hud.onWorldMap = () => { if (worldMap.visible) worldMap.hide(); else worldMap.open(); };
 itemShopWnd.onLoad = () => { if (!net.itemShop()) chat.system(t('Sem conexão com o servidor.')); };
@@ -824,6 +839,8 @@ inventory.onUse = (c, s) => {
   const it = inventory.all.get(`${c}:${s}`);
   // com a troca aberta, duplo clique num item da bolsa põe ele na troca
   if (tradeWnd.active) { if (it && c === 0) tradeWnd.offer(s, it.n, inventory.def(it.id)?.name ?? 'Item'); return; }
+  // escrevendo uma carta, duplo clique num item da bolsa anexa
+  if (mailWnd.composing && c === 0) { if (it) mailWnd.attach(s); return; }
   // com o armazém aberto, duplo clique num item da bolsa guarda a pilha
   if (bankWnd.visible && c === 0) { if (it) bankSend([0, s], [2, -1]); return; }
   if (it && rideToggle(it.id)) return;
@@ -939,6 +956,7 @@ net.onInv = (m) => {
   inventory.setState(m.gold, m.bag, m.items, m.defs, m.chips ?? 0);
   mobileUi?.setGold(m.gold);
   smithWnd.refresh();
+  mailWnd.refreshAttachment();
   // prancha/vassoura equipada (PARTS_RIDE = 13): velocidade e giro dela no voo
   const ride = m.items.find(([c, s]) => c === 1 && s === 13);
   view.player?.setFlyParams(ride ? m.defs[ride[2]]?.fly ?? null : null);
@@ -1666,7 +1684,7 @@ async function backToLogin() {
   view.labelRenderer.domElement.hidden = false;
   hud.hide();
   coloUi.stop();
-  inventory.hide(); inventory.clear(); delBox.hide(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); miniMap.hide(); worldMap.hide(); smithWnd.hide(); shopWnd.hide(); bankWnd.hide(); skillWnd.hide(); teleportWnd.hide(); towerWnd.hide(); itemShopWnd.hide(); questDlg.hide(); questLog.hide(); questLog.set([]); view.moverMgr.setQuestMarks({}, questMarkElement); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
+  inventory.hide(); inventory.clear(); delBox.hide(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); miniMap.hide(); worldMap.hide(); smithWnd.hide(); shopWnd.hide(); bankWnd.hide(); mailWnd.hide(); skillWnd.hide(); teleportWnd.hide(); towerWnd.hide(); itemShopWnd.hide(); questDlg.hide(); questLog.hide(); questLog.set([]); view.moverMgr.setQuestMarks({}, questMarkElement); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
   $('charScreen').hidden = true;
   $('loginScreen').hidden = false;
   $('loginScreen').classList.remove('leaving');

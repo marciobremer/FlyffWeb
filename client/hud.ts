@@ -59,6 +59,8 @@ export class GameHud {
   onItemShop: () => void = () => {};
   /** Itens especiais → Itens com tempo (janela Duração do Item, J) */
   onItemTime: () => void = () => {};
+  /** Comunicação → Correio */
+  onMail: () => void = () => {};
   /** mini mapa (N) e mapa grande (M) */
   onNavigator: () => void = () => {};
   onWorldMap: () => void = () => {};
@@ -144,7 +146,7 @@ export class GameHud {
           const si = document.createElement('li');
           si.textContent = s;
           si.setAttribute('role', 'menuitem');
-          const run = s === t('Loja de itens') ? () => this.onItemShop() : s === t('Itens com tempo') ? () => this.onItemTime() : null;
+          const run = s === t('Loja de itens') ? () => this.onItemShop() : s === t('Itens com tempo') ? () => this.onItemTime() : s === t('Correio') ? () => this.onMail() : null;
           if (run) {
             si.addEventListener('click', (e) => { e.stopPropagation(); this.toggle(false); run(); });
           } else {

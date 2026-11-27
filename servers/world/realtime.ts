@@ -24,6 +24,7 @@ import { classOfJob, type InstanceRule, type WorldInfo } from './dungeons';
 import { GROUND_MS, OWNER_MS, type DropRules } from './drops';
 import { notifyInventory } from '../character/inventory';
 import { deliverPurchases, shopBuy as itemShopPurchase, shopView } from './shopdelivery';
+import { deleteMail, mailView, readMail, sendMail, takeMail, unreadCount, type Draft } from './mail';
 import type { ShopCatalog } from './shops';
 import type { SkillCatalog } from './skills';
 import fs from 'node:fs';
@@ -72,6 +73,10 @@ import { setRateBoost } from '../common/rates';
  *   { t: 'bankOpen', key } / { t: 'bankMove', key, from: [c,s], to: [c,s|-1], n? } / { t: 'bankGold', key, gold }
  *                                                   armazém (c: 0 bolsa, 2 armazém; gold > 0 guarda, < 0 retira) — perto do NPC (key), ou GM/Premium
  *                                                   com key ''; resposta { t: 'bank', gold, slots, items, defs } e o 'inv' novo
+ *   { t: 'mailList' } / { t: 'mailRead', id } / { t: 'mailDelete', id }      correio: ler e apagar em qualquer lugar
+ *   { t: 'mailSend', key, to, title, body, s, n, gold } / { t: 'mailTake', key, id, what: 'item'|'gold' }
+ *                                                   enviar/receber na caixa de correio (key), ou GM/Premium; resposta { t: 'mail', list, defs, postage, sent? };
+ *                                                   { t: 'mailNew', n } avisa carta esperando
  *   { t: 'quest', op: 'talk'|'open'|'accept'|'turnIn'|'abandon', id, key } / { t: 'quests' }   quests do NPC `key` (perto dele) → `questDlg` / `quests` (servers/world/questflow.ts)
  *   { t: 'teleports' } → { t: 'teleports', list }   destinos da janela Teleporter (tecla V): nome, imagem, descrição, drops
  *   { t: 'zckTeleport', k }                         teleporte da janela Teleporter: destino `k` da lista
@@ -1537,6 +1542,55 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     }).catch((e) => { console.error('realtime armazém', e); fail('Servidor indisponível.'); });
   }
 
+  // ---------- correio ----------
+  const mailAt = new WeakMap<Conn, number>();
+  /** avisa que há carta esperando (ao entrar e quando chega uma nova) */
+  function mailNotice(c: Conn) {
+    const p = c.player;
+    if (!p) return;
+    void unreadCount(p.id).then((n) => { if (n > 0) { send(c.ws, { t: 'mailNew', n }); reply(c, `Você tem ${n} carta(s) esperando no correio.`); } })
+      .catch((e) => console.error('realtime correio (aviso)', (e as Error).message));
+  }
+  /** mailList / mailRead / mailDelete / mailSend / mailTake; enviar e receber conferem o acesso a cada pedido */
+  function mailMsg(c: Conn, msg: Record<string, unknown>) {
+    const p = c.player!, inv = inventory!;
+    const fail = (error: string) => send(c.ws, { t: 'invError', error });
+    c.invQueue = c.invQueue.then(async () => {
+      let sent = false;
+      const id = Number.isInteger(msg.id) ? (msg.id as number) : 0;
+      if (msg.t === 'mailRead') { await readMail(p.id, id); }
+      else if (msg.t === 'mailDelete') { const e = await deleteMail(p.id, id); if (e) fail(e); }
+      else if (msg.t === 'mailSend' || msg.t === 'mailTake') {
+        const key = String(msg.key ?? '').slice(0, 40), shops = W(c).shops;
+        // aberto pelo menu (key ''): vale estar perto de qualquer caixa de correio
+        const nearBox = !!shops && (key ? [key.toLowerCase()].filter((k) => shops.postboxes.has(k)) : [...shops.postboxes]).some((k) => shops.near(k, p.p[0], p.p[2]));
+        if (!nearBox && !isStaff(c) && !hasPremium(c)) { fail('Chegue perto de uma caixa de correio (ou use um Premium).'); return; }
+        if (c.trade) { fail('Termine a troca antes de usar o correio.'); return; }
+        if (c.cb && c.cb.hp <= 0) { fail('Você não pode usar o correio agora.'); return; }
+        if (msg.t === 'mailTake') {
+          if (msg.what !== 'item' && msg.what !== 'gold') return;
+          const r = await takeMail(inv, p.id, id, msg.what);
+          if ('error' in r) fail(r.error);
+        } else {
+          const now = Date.now();
+          if (now - (mailAt.get(c) ?? 0) < 1000) { fail('Aguarde um instante antes de enviar outra carta.'); return; }
+          mailAt.set(c, now);
+          const r = await sendMail(inv, { id: p.id, name: p.name }, msg as unknown as Draft, c.pet?.item);
+          if ('error' in r) fail(r.error);
+          else {
+            sent = true;
+            console.log(`[correio] ${p.name} (#${p.id}) → ${r.to.name} (#${r.to.id})`);
+            reply(c, `Carta enviada para ${r.to.name}.`);
+            const o = liveConn(r.to.id);
+            if (o) mailNotice(o);
+          }
+        }
+        send(c.ws, inv.view(await inv.state(p.id)));
+      }
+      send(c.ws, { ...(await mailView(inv, p.id)), ...(sent ? { sent: 1 } : {}) });
+    }).catch((e) => { console.error('realtime correio', e); fail('Servidor indisponível.'); });
+  }
+
   // ---------- craft (AegonCrafting.inc): receitas, nível/experiência de craft e fabricar ----------
   const crafting = inventory ? new CraftingRules(inventory.catalog.resDir, inventory.catalog) : null;
   if (crafting) console.log(`Craft: ${crafting.recipes.size} receitas, ${crafting.levels.length} níveis`);
@@ -2814,6 +2868,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
     if (old && old !== c) { for (const o of [...old.viewers]) hideFrom(o, old); for (const o of [...old.seen.values()]) hideFrom(old, o); }
     byId.set(id, c);
     send(c.ws, { t: 'welcome', id, w: me.w, p: me.p, eq: me.eq, mt: me.mt, players: [], online: byId.size });
+    if (inventory) mailNotice(c); // carta esperando
     // GM/admin entra imortal (pode desligar com //god off ou no painel)
     if (isStaff(c)) { c.god = true; send(c.ws, { t: 'god', on: true }); }
     if (inv) send(c.ws, inventory!.view(inv));
@@ -3199,11 +3254,13 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         const key = msg.key.slice(0, 40), k = key.toLowerCase();
         const shops = W(c).shops;
         if (!shops?.near(key, c.player.p[0], c.player.p[2])) return;
-        const base = { t: 'npcMenu', key, name: shops.npcNames.get(k) ?? key, shop: shops.shops.has(k) || shops.tokenShops.has(k), buff: shops.npcBuffs.has(k), bank: shops.banks.has(k), craft: craftNpcs.has(k), tower: k === TOWER_NPC, colosseum: k === COLO_NPC, smith: [...(shops.npcMenus.get(k) ?? [])] };
+        const base = { t: 'npcMenu', key, name: shops.npcNames.get(k) ?? key, shop: shops.shops.has(k) || shops.tokenShops.has(k), buff: shops.npcBuffs.has(k), bank: shops.banks.has(k), mail: shops.postboxes.has(k), craft: craftNpcs.has(k), tower: k === TOWER_NPC, colosseum: k === COLO_NPC, smith: [...(shops.npcMenus.get(k) ?? [])] };
         const script = npcScripts.get(shops.npcDialogs.get(k) ?? k);
         void (quests ? quests.menuFor(c, key) : Promise.resolve([])).then((q) => send(ws, { ...base, talk: !!quests && (q.length > 0 || !!script) })).catch((e) => console.error('realtime: menu do NPC', e));
       } else if ((msg.t === 'bankOpen' || msg.t === 'bankMove' || msg.t === 'bankGold') && c.player && inventory) {
         bankMsg(c, msg);
+      } else if (typeof msg.t === 'string' && /^mail(List|Read|Delete|Send|Take)$/.test(msg.t) && c.player && inventory) {
+        mailMsg(c, msg);
       } else if (msg.t === 'quest' && c.player && typeof msg.id === 'string' && typeof msg.key === 'string' && quests) {
         const id = msg.id.slice(0, 64), key = msg.key.slice(0, 40), op = msg.op, q = quests;
         // um pedido de cada vez por jogador (a entrega confere e tira os itens de uma vez só)

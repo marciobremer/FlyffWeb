@@ -411,6 +411,9 @@ export class NetClient {
   /** loja do NPC aberta pelo servidor */
   onShop: (s: import('./shop').ShopView) => void = () => {};
   /** armazém: estado novo (open = acabou de abrir) */
+  /** correio: a caixa de entrada; e o aviso de carta esperando */
+  onMailNew: () => void = () => {};
+  onMail: (m: import('./mail').MailData) => void = () => {};
   onBank: (m: import('./bank').BankData & { open?: number }) => void = () => {};
   /** você foi revivido no lugar (Resurrection de um Assist) */
   onGetUp: () => void = () => {};
@@ -459,7 +462,7 @@ export class NetClient {
   onEmote: (id: number, motion: string, mode: number) => void = () => {};
   onEmo: (id: number, index: number) => void = () => {};
   /** o que o NPC clicado oferece (abre o menu do NPC) */
-  onNpcMenu: (m: { key: string; name: string; shop: boolean; buff: boolean; craft: boolean; tower: boolean; colosseum: boolean; bank: boolean; smith: string[]; /** tem conversa (quests ou falas) */ talk: boolean }) => void = () => {};
+  onNpcMenu: (m: { key: string; name: string; shop: boolean; buff: boolean; craft: boolean; tower: boolean; colosseum: boolean; bank: boolean; mail: boolean; smith: string[]; /** tem conversa (quests ou falas) */ talk: boolean }) => void = () => {};
   onNpcTalk: (m: NpcTalk) => void = () => {};
   onQuestDialog: (d: QuestDialog) => void = () => {};
   onQuests: (list: QuestEntry[], done: QuestDone[]) => void = () => {};
@@ -678,7 +681,7 @@ export class NetClient {
       } else if (m.t === 'emo') {
         this.onEmo(Number(m.id), Number(m.i));
       } else if (m.t === 'npcMenu') {
-        this.onNpcMenu({ key: String(m.key), name: String(m.name ?? ''), shop: !!m.shop, buff: !!m.buff, bank: !!m.bank, craft: !!m.craft, tower: !!m.tower, colosseum: !!m.colosseum, smith: Array.isArray(m.smith) ? (m.smith as string[]) : [], talk: !!m.talk });
+        this.onNpcMenu({ key: String(m.key), name: String(m.name ?? ''), shop: !!m.shop, buff: !!m.buff, bank: !!m.bank, mail: !!m.mail, craft: !!m.craft, tower: !!m.tower, colosseum: !!m.colosseum, smith: Array.isArray(m.smith) ? (m.smith as string[]) : [], talk: !!m.talk });
       } else if (m.t === 'npcTalk') {
         this.onNpcTalk(m as unknown as NpcTalk);
       } else if (m.t === 'questDlg') {
@@ -691,6 +694,10 @@ export class NetClient {
         this.onQuests(Array.isArray(m.list) ? (m.list as QuestEntry[]) : [], Array.isArray(m.done) ? (m.done as QuestDone[]) : []);
       } else if (m.t === 'smith') {
         this.onSmith(m.ok === true, m.fx === 'success' || m.fx === 'fail' ? m.fx : null, typeof m.s === 'number' ? m.s : null, String(m.text ?? ''));
+      } else if (m.t === 'mailNew') {
+        this.onMailNew();
+      } else if (m.t === 'mail') {
+        this.onMail(m as unknown as import('./mail').MailData);
       } else if (m.t === 'bank') {
         this.onBank(m as unknown as import('./bank').BankData & { open?: number });
       } else if (m.t === 'shop') {
@@ -769,6 +776,11 @@ export class NetClient {
   /** `slot`: lançada pela Action Slot (com a Activition ativa não gasta MP/FP) */
   castSkill(id: number, target: number, slot = false) { return this.raw({ t: 'skill', id, target, ...(slot ? { slot: 1 } : {}) }); }
   /** loja do NPC: abrir (perto dele), comprar, vender */
+  mailList() { return this.raw({ t: 'mailList' }); }
+  mailSend(key: string, d: import('./mail').MailDraft) { return this.raw({ t: 'mailSend', key, ...d }); }
+  mailTake(key: string, id: number, what: 'item' | 'gold') { return this.raw({ t: 'mailTake', key, id, what }); }
+  mailRead(id: number) { return this.raw({ t: 'mailRead', id }); }
+  mailDelete(id: number) { return this.raw({ t: 'mailDelete', id }); }
   bankOpen(key: string) { return this.raw({ t: 'bankOpen', key }); }
   bankMove(key: string, from: [number, number], to: [number, number], n?: number) { return this.raw({ t: 'bankMove', key, from, to, n }); }
   bankGold(key: string, gold: number) { return this.raw({ t: 'bankGold', key, gold }); }

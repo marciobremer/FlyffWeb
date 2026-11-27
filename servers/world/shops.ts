@@ -44,6 +44,8 @@ export class ShopCatalog {
   readonly npcMenus = new Map<string, Set<string>>();
   /** NPCs do armazém (AddMenu MMI_BANKING), por chave */
   readonly banks = new Set<string>();
+  /** caixas de correio (AddMenu MMI_POST), por chave */
+  readonly postboxes = new Set<string>();
 
   constructor(resDir: string, private items: ItemCatalog, world = 'WdMadrigal') {
     const read = (f: string) => {
@@ -122,6 +124,7 @@ export class ShopCatalog {
       let j = k + 2;
       while (j < tokens.length && tokens[j] !== ')') { if (tokens[j] !== ',') args.push(tokens[j]); j++; }
       k = j;
+      if (t === 'AddMenu' && args[0] === 'MMI_POST') { this.postboxes.add(shop.key.toLowerCase()); continue; }
       if (t === 'AddMenu' && args[0] === 'MMI_BANKING') { this.banks.add(shop.key.toLowerCase()); continue; }
       if (t === 'AddMenu' && /^MMI_(PIERCING|SMELT_|CHANGEELEM)/.test(args[0] ?? '')) {
         const k = shop.key.toLowerCase();

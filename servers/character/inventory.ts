@@ -769,17 +769,71 @@ export class Inventory {
 
   /** mensagem do armazém: penya guardado, itens (mesmo formato do inventário) e a definição de cada um */
   bankView(st: InvState) {
-    const items = st.items.filter((i) => i.c === BANK);
+    return { t: 'bank', gold: st.bankGold, slots: BANK_SLOTS, ...this.rowsView(st.items.filter((i) => i.c === BANK)) };
+  }
+
+  // ---------- transferência com algo de fora (correio) ----------
+  /**
+   * Muda a bolsa de um personagem ONLINE e grava junto com `persist` (ex.: criar a carta) numa única transação. `rule` muda a
+   * memória e devolve como desfazer; se a transação falhar, desfaz. Erro com mensagem lançado por `persist` volta ao jogador.
+   */
+  async transfer<T>(characterId: number, rule: (x: InvEdit) => { error: string } | { value: T; undo: (x: InvEdit) => void },
+    persist: (db: pg.PoolClient, value: T) => Promise<void>): Promise<{ value: T } | { error: string }> {
+    const c = this.cache.get(characterId);
+    if (!c) return { error: 'Personagem fora do mundo.' };
+    await this.flush(characterId);
+    const ctx: InvEdit = {
+      state: c.state,
+      touch: (cc, s) => c.pending.slots.add(key(cc, s)),
+      gold: (d) => { c.state.gold = Math.min(GOLD_MAX, Math.max(0, c.state.gold + d)); c.pending.gold += d; },
+      chips: (d) => { c.state.chips = Math.max(0, c.state.chips + d); c.pending.chips += d; },
+      bankGold: (d) => { c.state.bankGold = Math.min(GOLD_MAX, Math.max(0, c.state.bankGold + d)); c.pending.bankGold += d; },
+    };
+    const r = rule(ctx);
+    if ('error' in r) return r;
+    // daqui até pôr em `writing` não há await: a mudança e o que vai ser gravado são os mesmos
+    const taken = c.pending;
+    c.pending = noPending();
+    const run = c.writing.then(() => transaction(async (db) => {
+      await persist(db, r.value);
+      await this.write(db, characterId, c.state, taken.slots, taken.gold, taken.chips, taken.bankGold);
+    }));
+    c.writing = run.catch(() => {});
+    try { await run; return { value: r.value }; }
+    catch (e) {
+      for (const k of taken.slots) c.pending.slots.add(k);
+      c.pending.gold += taken.gold; c.pending.chips += taken.chips; c.pending.bankGold += taken.bankGold;
+      r.undo(ctx);
+      this.schedule(characterId, c);
+      if ((e as Error).constructor.name === 'MailRefused') return { error: (e as Error).message };
+      throw e;
+    }
+  }
+  /** desfaz a saída de um item: volta para o espaço de onde saiu (ou o primeiro livre) */
+  restore(x: InvEdit, item: Omit<InvItem, 'c' | 's'>, slot: number) {
+    const there = x.state.items.find((i) => i.c === BAG && i.s === slot);
+    if (there && there.id === item.id && sameUpgrade(there, { ...item, c: BAG, s: slot })) { there.n += item.n; x.touch(BAG, slot); return; }
+    const free = there ? this.freeSlot(x.state) : slot;
+    const s = free >= 0 ? free : x.state.bag; // bolsa encheu no meio: um espaço além, para não perder o item
+    x.state.items.push({ ...item, c: BAG, s });
+    x.touch(BAG, s);
+  }
+  freeBagSlot(st: InvState) { return this.freeSlot(st); }
+  goldFits(have: number, add: number) { return have + add <= GOLD_MAX; }
+  /** item no formato das mensagens */
+  row(i: InvItem) { return itemRow(i); }
+  /** definição de cada item (e das cartas/joias dele), para as dicas */
+  rowsView(items: InvItem[]) {
     const defs: Record<number, ReturnType<typeof ItemCatalog.view>> = {};
     for (const i of items) {
       for (const id of [i.id, ...(i.p ?? []), ...(i.g ?? [])]) { const d = id ? this.catalog.byId.get(id) : undefined; if (d && !defs[id]) defs[id] = this.catalog.viewFull(d); }
     }
-    return { t: 'bank', gold: st.bankGold, slots: BANK_SLOTS, items: items.map(itemRow), defs };
+    return { items: items.map(itemRow), defs };
   }
 
   // ---------- armazém (OnPutItemBank / OnGetItemBank) ----------
-  /** por que o item não pode ser guardado (null = pode) */
-  private cannotStore(d: ItemDef): string | null {
+  /** por que o item não pode ser guardado nem enviado (null = pode) */
+  cannotStore(d: ItemDef): string | null {
     const k3 = (name: string) => this.catalog.defines.get(name);
     if (d.kind3 === k3('IK3_EVENTMAIN') || d.kind3 === k3('IK3_LINK')) return `${d.name} não pode ser guardado no armazém.`;
     if (d.parts === 13 && d.job === 0) return `${d.name} não pode ser guardado no armazém.`; // montaria de Vagrant (PARTS_RIDE)

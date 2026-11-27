@@ -50,6 +50,8 @@ export class FriendsWindow extends GameWindow {
   private nameEl = document.createElement('b');
   private srvEl = document.createElement('div');
 
+  /** botão do envelope: abre o correio */
+  onMail: () => void = () => {};
   constructor(private parent: HTMLElement) {
     super(parent, { id: 'friendsWnd', title: 'Messenger', store: 'flyff.wnd.friends2', initial: { x: 40, y: 140, w: 372, h: 420 }, min: { w: 340, h: 300 } });
     this.body.classList.add('fr');
@@ -147,7 +149,7 @@ export class FriendsWindow extends GameWindow {
     mail.className = 'fr-tool mail';
     mail.title = 'Correio';
     mail.setAttribute('aria-label', 'Correio');
-    mail.addEventListener('click', () => this.onNotice('O correio ainda não existe.'));
+    mail.addEventListener('click', () => this.onMail());
     foot.append(add, mail);
 
     this.body.append(head, cols, main, tabs, foot);
