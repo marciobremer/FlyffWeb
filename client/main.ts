@@ -28,6 +28,7 @@ import { CharacterWindow } from './charwnd';
 import { MiniMap, WorldMap, type MapDot, type MapView } from './minimap';
 import { SmithWindow, smithOptions, isUpgradeMaterial, isAwakeScroll } from './smith';
 import { ShopWindow } from './shop';
+import { BankWindow } from './bank';
 import { SkillWindow } from './skillwnd';
 import { JobWindow } from './jobwnd';
 import { CaptionBanner } from './caption';
@@ -370,6 +371,7 @@ function npcFrame(now: number) {
   if (npcMenu.visible && shopNpc && Math.hypot(shopNpc[0] - p.pos[0], shopNpc[1] - p.pos[2]) > 12) npcMenu.hide();
   if (questDlg.visible && menuNpc && questDlg.key === menuNpc.key && Math.hypot(menuNpc.inst.source.pos[0] - p.pos[0], menuNpc.inst.source.pos[2] - p.pos[2]) > 14) questDlg.hide();
   if (shopWnd.visible && shopNpc && Math.hypot(shopNpc[0] - p.pos[0], shopNpc[1] - p.pos[2]) > 14) { shopWnd.hide(); shopNpc = null; }
+  if (bankWnd.visible && bankWnd.npc && shopNpc && Math.hypot(shopNpc[0] - p.pos[0], shopNpc[1] - p.pos[2]) > 14) bankWnd.hide();
 }
 /** menu do NPC ao chegar perto: Comércio (loja) e Receber Buffs! (Buff Pang) — o servidor diz o que ele tem */
 const npcMenu = new NpcMenu(document.body);
@@ -378,6 +380,7 @@ net.onNpcMenu = (m) => {
   const opts: NpcMenuOption[] = [];
   if (m.talk) opts.push({ label: t('Diálogo'), run: () => net.quest('talk', '', m.key) });
   if (m.shop) opts.push({ label: t('Comércio'), run: () => net.shopOpen(m.key) });
+  if (m.bank) opts.push({ label: t('Armazém'), run: () => openBank(m.key) });
   if (m.buff) {
     opts.push({ label: t('Receber Buffs!'), run: () => net.npcBuff(m.key, 'assist') }); // buffs de Assist liberados no seu nível
     opts.push({ label: t('Buffs de Classe'), run: () => net.npcBuff(m.key, 'class') }); // buffs da sua classe liberados no seu nível
@@ -392,6 +395,17 @@ net.onNpcMenu = (m) => {
   const inst = menuNpc?.key === m.key ? menuNpc.inst : null;
   const at = inst ? view.screenOf(inst) : null;
   npcMenu.show(m.name, opts, at ? at[0] + 30 : innerWidth / 2, at ? at[1] : innerHeight / 2, true);
+};
+// ---------- armazém (NPC com o menu de banco; GM/Premium abrem em qualquer lugar com /armazem) ----------
+const bankWnd = new BankWindow(document.body);
+const openBank = (key: string) => { bankWnd.npc = key; if (!net.bankOpen(key)) chat.system(t('Sem conexão com o servidor.')); };
+const bankSend = (from: [number, number], to: [number, number], n?: number) => { if (!net.bankMove(bankWnd.npc, from, to, n)) chat.system(t('Sem conexão com o servidor.')); };
+bankWnd.onMove = (from, to) => bankSend(from, to);
+bankWnd.onGold = (delta) => { if (!net.bankGold(bankWnd.npc, delta)) chat.system(t('Sem conexão com o servidor.')); };
+bankWnd.onDropItem = (bagSlot, bankSlot, count) => bankWnd.askAmount(count, (n) => bankSend([0, bagSlot], [2, bankSlot], n));
+net.onBank = (m) => {
+  bankWnd.set(m);
+  if (m.open) { bankWnd.show(); inventory.show(); }
 };
 // itens no chão (drops): clicar no item ou no nome anda até ele e pega
 const ground = new GroundItems(view);
@@ -442,7 +456,7 @@ net.onChangeWorld = (w, p, force) => {
    try {
     const pl = view.player;
     const sex = pl?.sex ?? 'male', look = pl?.currentLook ?? { equip: lookNow };
-    combat.stop(); ground.clear(); npcMenu.hide(); shopWnd.hide(); view.selectTarget(null);
+    combat.stop(); ground.clear(); npcMenu.hide(); shopWnd.hide(); bankWnd.hide(); view.selectTarget(null);
     view.playerControl = false;
     net.pause();
     mapLoading.show(w);
@@ -752,6 +766,9 @@ hud.onWiki = () => wikiWnd.toggle();
 /** loja de itens (a mesma do site) */
 const itemShopWnd = new ItemShopWindow(document.body);
 hud.onItemShop = () => itemShopWnd.toggle();
+hud.onItemTime = () => itemTimeWnd.toggle();
+hud.onNavigator = () => { miniMap.toggle(); navOpen(miniMap.visible); };
+hud.onWorldMap = () => { if (worldMap.visible) worldMap.hide(); else worldMap.open(); };
 itemShopWnd.onLoad = () => { if (!net.itemShop()) chat.system(t('Sem conexão com o servidor.')); };
 itemShopWnd.onBuy = (item, n) => { if (!net.itemShopBuy(item.id, item.final, n)) chat.system(t('Sem conexão com o servidor.')); };
 net.onItemShop = (m) => itemShopWnd.set(m as unknown as ItemShopData);
@@ -783,6 +800,7 @@ chat.onSend = (text) => {
   // /say Nome mensagem (ou /s): mensagem privada — se a pessoa está online abre a janela de conversa
   if (/^\/wiki\s*$/i.test(text.trim())) { wikiWnd.show(); return true; }
   if (/^\/craft\s*$/i.test(text.trim())) { craftWnd.show(); return true; }
+  if (/^\/(armazem|armazém|banco)\s*$/i.test(text.trim())) { openBank(''); return true; }
   const say = /^\/(?:say|s)\s+(\S+)\s+(.+)$/i.exec(text.trim());
   if (say) return net.pmName(say[1], say[2]);
   if (/^\/(?:say|s)(\s|$)/i.test(text.trim())) { chat.system(t('Uso: /say NomeDoJogador mensagem (ou /s NomeDoJogador mensagem)')); return true; }
@@ -795,6 +813,7 @@ net.onEmo = (id, i) => {
   inst?.say(motionWnd.emoticonEl(i), 60, 4000);
 };
 // inventário: o servidor valida e devolve o estado; equipamento muda o visual do próprio personagem
+inventory.onBankDrop = (bankSlot, bagSlot) => bankWnd.askAmount(bankWnd.item(bankSlot)?.n ?? 1, (n) => bankSend([2, bankSlot], [0, bagSlot], n));
 inventory.onMove = (from, to) => {
   // arrastar a prancha para o espaço de montaria também passa pelo preparo
   const it = from[0] === 0 && to[0] === 1 && to[1] === 13 ? inventory.all.get(`0:${from[1]}`) : undefined;
@@ -805,6 +824,8 @@ inventory.onUse = (c, s) => {
   const it = inventory.all.get(`${c}:${s}`);
   // com a troca aberta, duplo clique num item da bolsa põe ele na troca
   if (tradeWnd.active) { if (it && c === 0) tradeWnd.offer(s, it.n, inventory.def(it.id)?.name ?? 'Item'); return; }
+  // com o armazém aberto, duplo clique num item da bolsa guarda a pilha
+  if (bankWnd.visible && c === 0) { if (it) bankSend([0, s], [2, -1]); return; }
   if (it && rideToggle(it.id)) return;
   // carta de piercing: martelinho para escolher a suit da bolsa
   if (it && c === 0 && inventory.def(it.id)?.card) { inventory.startPierce(s); pierceFx(); return; }
@@ -1645,7 +1666,7 @@ async function backToLogin() {
   view.labelRenderer.domElement.hidden = false;
   hud.hide();
   coloUi.stop();
-  inventory.hide(); inventory.clear(); delBox.hide(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); miniMap.hide(); worldMap.hide(); smithWnd.hide(); shopWnd.hide(); skillWnd.hide(); teleportWnd.hide(); towerWnd.hide(); itemShopWnd.hide(); questDlg.hide(); questLog.hide(); questLog.set([]); view.moverMgr.setQuestMarks({}, questMarkElement); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
+  inventory.hide(); inventory.clear(); delBox.hide(); actionBar.hide(); chat.hide(); chat.clear(); gmPanel.hide(); charWnd.hide(); miniMap.hide(); worldMap.hide(); smithWnd.hide(); shopWnd.hide(); bankWnd.hide(); skillWnd.hide(); teleportWnd.hide(); towerWnd.hide(); itemShopWnd.hide(); questDlg.hide(); questLog.hide(); questLog.set([]); view.moverMgr.setQuestMarks({}, questMarkElement); jobWnd.setOptions([]); buffBar.clear(); partyBuffs.set(null);
   $('charScreen').hidden = true;
   $('loginScreen').hidden = false;
   $('loginScreen').classList.remove('leaving');

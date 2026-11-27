@@ -257,6 +257,13 @@ i.elem.e1 { background: #ff5a2a; } i.elem.e2 { background: #3a9bff; } i.elem.e3 
 .inv-ask { position: absolute; left: 8px; right: 8px; bottom: 74px; z-index: 5; padding: 8px; border: 1px solid #c0392b; border-radius: 6px; background: #fffaf7; box-shadow: 0 4px 14px rgb(0 0 0 / .3); font-size: 12px; }
 .inv-ask p { margin: 0 0 6px; color: #5a2a1a; font-weight: 700; }
 .inv-ask div { display: flex; gap: 6px; justify-content: flex-end; }
+/* armazém: 7 × 6 espaços iguais aos do inventário */
+.gwnd-body.bank { position: relative; display: flex; flex-direction: column; gap: 6px; }
+.bank-grid { display: grid; grid-template-columns: repeat(7, 32px); grid-auto-rows: 32px; gap: 2px; justify-content: center; align-content: start; padding: 3px; background: #fff; border: 1px solid #d8c4b8; border-radius: 6px; }
+.bank-total { display: flex; justify-content: space-between; padding: 0 4px; font-size: 12px; font-weight: 700; color: #3a2a22; }
+.bank-bar { display: flex; gap: 6px; }
+.bank-bar input { flex: 1; min-width: 0; height: 22px; padding: 0 6px; border: 1px solid #c9b3a6; border-radius: 10px; background: #fff; font: inherit; color: #222; }
+.bank-ask { bottom: 40px; border-color: #4d64a0; }
 .inv-ask .gm-in.num { width: 64px; margin-right: auto; }
 .gm-btn.danger { background: linear-gradient(#e88b7f, #c0392b 55%, #a93226); border-color: #a93226; text-shadow: 0 1px 0 #6e1d16; }
 .inv-money output { flex: 1; height: 20px; padding: 0 8px; border: 1px solid #c9b3a6; border-radius: 10px; background: #fff; text-align: right; line-height: 18px; font-weight: 700; color: #6b3b1a; }

@@ -174,6 +174,9 @@ const MODEL_RECT = { x: 58, y: 52, w: 184, h: 176 };
 export interface InvItem { c: number; s: number; id: number; n: number; u: number; e: number; el: number; /** piercing: carta por espaço aberto (0 = vazio) */ p?: number[]; /** item de tempo ativado (ticket): vale até (ms) */ x?: number;
   /** arma ultimate: joias engastadas por espaço aberto (0 = vazio) */ g?: number[]; /** raridade da arma (0 = Common) */ r?: number; /** falhas seguidas de upgrade no nível atual */ t?: number;
   /** despertar: [DST, valor, …] */ a?: number[] }
+/** item como o servidor manda: [c, s, id, n, u, e, el, piercing, tempo, joias, raridade, falhas de upgrade, despertar] */
+export type InvRow = [number, number, number, number, number?, number?, number?, number[]?, number?, number[]?, number?, number?, number[]?];
+export const invItem = ([c, s, id, n, u = 0, e = 0, el = 0, p, x, g, r, t, a]: InvRow): InvItem => ({ c, s, id, n, u, e, el, ...(p?.length ? { p } : {}), ...(x ? { x } : {}), ...(g?.length ? { g } : {}), ...(r ? { r } : {}), ...(t ? { t } : {}), ...(a?.length ? { a } : {}) });
 export const ELEMENT_NAMES = ['', 'Fogo', 'Água', 'Elétrico', 'Vento', 'Terra'];
 export interface InvDef extends ItemView {}
 
@@ -250,6 +253,8 @@ export class InventoryWindow extends GameWindow {
   /** pedidos ao servidor: mover [container, slot] → outro, ou "usar" (duplo clique) */
   onMove: (from: [number, number], to: [number, number]) => void = () => {};
   onUse: (c: number, s: number) => void = () => {};
+  /** item arrastado do armazém para um espaço da bolsa */
+  onBankDrop: (bankSlot: number, bagSlot: number) => void = () => {};
   /** caixinhas de mostrar/esconder (capacete, capa, máscara, cash): máscara de bits de shared/look.ts */
   onHide: (mask: number) => void = () => {};
   /** lixeira: apagar `n` do item do espaço `s` da bolsa / organizar a bolsa por tipo */
@@ -386,12 +391,12 @@ export class InventoryWindow extends GameWindow {
   }
 
   /** estado vindo do servidor */
-  setState(gold: number, open: number, items: [number, number, number, number, number?, number?, number?, number[]?, number?, number[]?, number?, number?, number[]?][], defs: Record<number, InvDef>, chips = 0) {
+  setState(gold: number, open: number, items: InvRow[], defs: Record<number, InvDef>, chips = 0) {
     this.penya.value = gold.toLocaleString('pt-BR');
     this.chips.value = chips.toLocaleString('pt-BR');
     for (const d of Object.values(defs)) this.defs.set(d.id, d);
     this.items.clear();
-    for (const [c, s, id, n, u = 0, e = 0, el = 0, p, x, g, r, t, a] of items) this.items.set(keyOf(c, s), { c, s, id, n, u, e, el, ...(p?.length ? { p } : {}), ...(x ? { x } : {}), ...(g?.length ? { g } : {}), ...(r ? { r } : {}), ...(t ? { t } : {}), ...(a?.length ? { a } : {}) });
+    for (const row of items) { const it = invItem(row); this.items.set(keyOf(it.c, it.s), it); }
     // o item separado para apagar sumiu ou mudou: sai da caixa de apagar
     let dropped = false;
     for (const [s, id] of [...this.staged]) if (this.items.get(keyOf(BAG, s))?.id !== id) { this.staged.delete(s); dropped = true; }
@@ -768,6 +773,8 @@ export class InventoryWindow extends GameWindow {
         return;
       }
       const el = at(e.target);
+      // vindo do armazém: só os espaços da bolsa aceitam
+      if (e.dataTransfer?.types.includes('application/x-flyff-bank')) { if (el && Number(el.dataset.c) === BAG) e.preventDefault(); return; }
       if (!from || !el) return;
       e.preventDefault();
       e.dataTransfer!.dropEffect = 'move';
@@ -786,6 +793,8 @@ export class InventoryWindow extends GameWindow {
       // item arrastado da caixa de apagar para o inventário: volta
       const back = e.dataTransfer?.getData('application/x-flyff-staged');
       if (back) { this.unstage(Number(back)); return; }
+      const banked = e.dataTransfer?.getData('application/x-flyff-bank');
+      if (banked) { if (el && Number(el.dataset.c) === BAG) this.onBankDrop(Number(banked), Number(el.dataset.s)); return; }
       if (from && trashAt(e.target)) {
         if (from[0] === BAG) this.askDiscard(from[1]);
         else this.onNotice('Tire o item antes de apagar: só itens da bolsa vão para a lixeira.');

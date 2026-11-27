@@ -58,7 +58,7 @@ async function sheet(where: string, param: unknown, online: (accountId: number) 
   const c = rows[0];
   if (!c) throw new AdminError('Personagem não encontrado.');
   const id = Number(c.id);
-  const items = await query<ItemRow>('SELECT * FROM character_items WHERE character_id = $1 ORDER BY container, slot', [id]);
+  const items = await query<ItemRow>('SELECT * FROM character_items WHERE character_id = $1 AND container < 2 ORDER BY container, slot', [id]);
   const sc = skillCatalog();
   const skillsRaw = (c.skills ?? {}) as Record<string, unknown>;
   const skills = Object.entries(skillsRaw).map(([sid, v]) => {

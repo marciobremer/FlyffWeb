@@ -57,11 +57,16 @@ export class GameHud {
   onQuit: () => void = () => {};
   /** Itens especiais → Loja de itens */
   onItemShop: () => void = () => {};
+  /** Itens especiais → Itens com tempo (janela Duração do Item, J) */
+  onItemTime: () => void = () => {};
+  /** mini mapa (N) e mapa grande (M) */
+  onNavigator: () => void = () => {};
+  onWorldMap: () => void = () => {};
 
   private items(): MenuItem[] {
     return [
       { label: t('Status'), key: 'T', icon: 'icon_MenuStatus.dds', action: () => this.toggleStatus() },
-      { label: t('Navegador'), key: 'N', icon: 'Icon_MenuNavigator.dds' },
+      { label: t('Navegador'), key: 'N', icon: 'Icon_MenuNavigator.dds', action: () => this.onNavigator() },
       { label: t('Personagem'), key: 'H', icon: 'icon_MenuCharacter.dds', action: () => this.onCharacter() },
       { label: t('Inventário'), key: 'I', icon: 'icon_MenuInventory.dds', action: () => this.onInventory() },
       { label: t('Party'), key: 'P', icon: 'icon_MenuParty.dds', action: () => this.onParty() },
@@ -75,7 +80,7 @@ export class GameHud {
       { label: t('Quests'), key: 'Q', icon: 'icon_MenuQuest.dds', action: () => this.onQuests() },
       { label: t('Habilidades'), key: 'K', icon: 'icon_MenuSkill.dds', action: () => this.onSkills() },
       { label: t('Movimento'), key: 'O', icon: 'icon_MenuMotion.dds', action: () => this.onMotion() },
-      { label: t('Mapa do Mundo'), key: 'M', icon: 'icon_MenuWorldmap.dds' },
+      { label: t('Mapa do Mundo'), key: 'M', icon: 'icon_MenuWorldmap.dds', action: () => this.onWorldMap() },
       { label: t('Itens especiais'), icon: 'Icon_Folder.dds', sub: [t('Loja de itens'), t('Itens com tempo'), t('Lootbox')] },
       { label: t('Wikipedia'), key: 'Y', icon: 'icon_MenuHelp.dds', action: () => this.onWiki() },
       { label: t('Mensageiro'), key: 'E', icon: 'icon_MenuMessenger.dds', action: () => this.onMessenger() },
@@ -139,8 +144,9 @@ export class GameHud {
           const si = document.createElement('li');
           si.textContent = s;
           si.setAttribute('role', 'menuitem');
-          if (s === t('Loja de itens')) {
-            si.addEventListener('click', (e) => { e.stopPropagation(); this.toggle(false); this.onItemShop(); });
+          const run = s === t('Loja de itens') ? () => this.onItemShop() : s === t('Itens com tempo') ? () => this.onItemTime() : null;
+          if (run) {
+            si.addEventListener('click', (e) => { e.stopPropagation(); this.toggle(false); run(); });
           } else {
             si.setAttribute('aria-label', `${s} (${t('em breve')})`);
             si.setAttribute('aria-disabled', 'true');

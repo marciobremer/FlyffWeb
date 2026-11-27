@@ -42,6 +42,8 @@ export class ShopCatalog {
   readonly npcDialogs = new Map<string, string>();
   /** menus de ferreiro de cada NPC (AddMenu MMI_PIERCING, MMI_SMELT_*, MMI_CHANGEELEM… do character.inc), por chave */
   readonly npcMenus = new Map<string, Set<string>>();
+  /** NPCs do armazém (AddMenu MMI_BANKING), por chave */
+  readonly banks = new Set<string>();
 
   constructor(resDir: string, private items: ItemCatalog, world = 'WdMadrigal') {
     const read = (f: string) => {
@@ -120,6 +122,7 @@ export class ShopCatalog {
       let j = k + 2;
       while (j < tokens.length && tokens[j] !== ')') { if (tokens[j] !== ',') args.push(tokens[j]); j++; }
       k = j;
+      if (t === 'AddMenu' && args[0] === 'MMI_BANKING') { this.banks.add(shop.key.toLowerCase()); continue; }
       if (t === 'AddMenu' && /^MMI_(PIERCING|SMELT_|CHANGEELEM)/.test(args[0] ?? '')) {
         const k = shop.key.toLowerCase();
         let set = this.npcMenus.get(k);

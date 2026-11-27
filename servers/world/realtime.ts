@@ -69,6 +69,9 @@ import { setRateBoost } from '../common/rates';
  *   { t: 'pierce', card, target }                   piercing: espeta a carta do espaço `card` da bolsa na suit do espaço `target` (também
  *                                                   da bolsa, não equipada) — resposta { t: 'pierced', ok, s } e o inventário novo
  *   { t: 'npcMenu', key } / { t: 'npcBuff', key }     perto do NPC: o que ele oferece (loja, buffs) / receber os buffs (Buff Pang)
+ *   { t: 'bankOpen', key } / { t: 'bankMove', key, from: [c,s], to: [c,s|-1], n? } / { t: 'bankGold', key, gold }
+ *                                                   armazém (c: 0 bolsa, 2 armazém; gold > 0 guarda, < 0 retira) — perto do NPC (key), ou GM/Premium
+ *                                                   com key ''; resposta { t: 'bank', gold, slots, items, defs } e o 'inv' novo
  *   { t: 'quest', op: 'talk'|'open'|'accept'|'turnIn'|'abandon', id, key } / { t: 'quests' }   quests do NPC `key` (perto dele) → `questDlg` / `quests` (servers/world/questflow.ts)
  *   { t: 'teleports' } → { t: 'teleports', list }   destinos da janela Teleporter (tecla V): nome, imagem, descrição, drops
  *   { t: 'zckTeleport', k }                         teleporte da janela Teleporter: destino `k` da lista
@@ -1505,6 +1508,35 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
   }, 10_000);
   http.on('close', () => clearInterval(instanceTick));
 
+  // ---------- armazém ----------
+  /** Premium Scroll ativo? (armazém em qualquer lugar, como o IsPremium do original) */
+  const hasPremium = (c: Conn) => ['01', '07', '15', '30'].some((n) => (c.cb?.buffs.get(ITEM_BUFF + (inventory?.catalog.bySymbol.get('II_SCR_PREMIUM_' + n)?.id ?? -1))?.until ?? 0) > Date.now());
+  /** bankOpen / bankMove / bankGold: o acesso é conferido a cada pedido (não só ao abrir a janela) */
+  function bankMsg(c: Conn, msg: Record<string, unknown>) {
+    const p = c.player!, inv = inventory!;
+    const fail = (error: string) => send(c.ws, { t: 'invError', error });
+    const pair = (v: unknown): [number, number] | null => Array.isArray(v) && v.length === 2 && v.every((x) => Number.isInteger(x)) ? [v[0], v[1]] : null;
+    c.invQueue = c.invQueue.then(async () => {
+      const key = String(msg.key ?? '').slice(0, 40), shops = W(c).shops;
+      const nearBank = !!key && !!shops?.banks.has(key.toLowerCase()) && shops.near(key, p.p[0], p.p[2]);
+      if (!nearBank && !isStaff(c) && !hasPremium(c)) { fail('Chegue perto de um NPC do armazém (ou use um Premium).'); return; }
+      if (c.trade) { fail('Termine a troca antes de usar o armazém.'); return; }
+      if (c.cb && c.cb.hp <= 0) { fail('Você não pode usar o armazém agora.'); return; }
+      if (msg.t === 'bankMove') {
+        const from = pair(msg.from), to = pair(msg.to);
+        if (!from || !to) return;
+        const r = await inv.bankMove(p.id, from, to, Number.isInteger(msg.n) ? (msg.n as number) : undefined, c.pet?.item);
+        if ('error' in r) { if (r.error) fail(r.error); return; }
+        send(c.ws, inv.view(r.state));
+      } else if (msg.t === 'bankGold') {
+        const r = await inv.bankPenya(p.id, Number(msg.gold));
+        if ('error' in r) { fail(r.error); return; }
+        send(c.ws, inv.view(r.state));
+      }
+      send(c.ws, { ...inv.bankView(await inv.state(p.id)), ...(msg.t === 'bankOpen' ? { open: 1 } : {}) });
+    }).catch((e) => { console.error('realtime armazém', e); fail('Servidor indisponível.'); });
+  }
+
   // ---------- craft (AegonCrafting.inc): receitas, nível/experiência de craft e fabricar ----------
   const crafting = inventory ? new CraftingRules(inventory.catalog.resDir, inventory.catalog) : null;
   if (crafting) console.log(`Craft: ${crafting.recipes.size} receitas, ${crafting.levels.length} níveis`);
@@ -1630,7 +1662,7 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
       if (!p || !ticketWorlds.has(p.w) || c.switching || isStaff(c)) continue; // conta de GM/admin entra nos mapas de ticket sem ticket (//map, painel de GM)
       void inventory.state(p.id).then((st) => {
         if (c.player !== p || !ticketWorlds.has(p.w) || c.switching || isStaff(c)) return;
-        const ok = st.items.some((i) => { const sym = inventory.catalog.byId.get(i.id)?.symbol; const t = sym ? tickets.get(sym) : undefined; return t && worldByDefine(t.define)?.name === p.w && i.x && i.x > now; });
+        const ok = st.items.some((i) => { if (i.c === 2) return false; /* no armazém não vale */ const sym = inventory.catalog.byId.get(i.id)?.symbol; const t = sym ? tickets.get(sym) : undefined; return t && worldByDefine(t.define)?.name === p.w && i.x && i.x > now; });
         if (ok) return;
         reply(c, 'Seu ticket deste mapa acabou. Voltando para Flaris…');
         send(c.ws, inventory.view(st));
@@ -3167,9 +3199,11 @@ export function attachRealtime(http: Server, opts: RealtimeOptions = {}) {
         const key = msg.key.slice(0, 40), k = key.toLowerCase();
         const shops = W(c).shops;
         if (!shops?.near(key, c.player.p[0], c.player.p[2])) return;
-        const base = { t: 'npcMenu', key, name: shops.npcNames.get(k) ?? key, shop: shops.shops.has(k) || shops.tokenShops.has(k), buff: shops.npcBuffs.has(k), craft: craftNpcs.has(k), tower: k === TOWER_NPC, colosseum: k === COLO_NPC, smith: [...(shops.npcMenus.get(k) ?? [])] };
+        const base = { t: 'npcMenu', key, name: shops.npcNames.get(k) ?? key, shop: shops.shops.has(k) || shops.tokenShops.has(k), buff: shops.npcBuffs.has(k), bank: shops.banks.has(k), craft: craftNpcs.has(k), tower: k === TOWER_NPC, colosseum: k === COLO_NPC, smith: [...(shops.npcMenus.get(k) ?? [])] };
         const script = npcScripts.get(shops.npcDialogs.get(k) ?? k);
         void (quests ? quests.menuFor(c, key) : Promise.resolve([])).then((q) => send(ws, { ...base, talk: !!quests && (q.length > 0 || !!script) })).catch((e) => console.error('realtime: menu do NPC', e));
+      } else if ((msg.t === 'bankOpen' || msg.t === 'bankMove' || msg.t === 'bankGold') && c.player && inventory) {
+        bankMsg(c, msg);
       } else if (msg.t === 'quest' && c.player && typeof msg.id === 'string' && typeof msg.key === 'string' && quests) {
         const id = msg.id.slice(0, 64), key = msg.key.slice(0, 40), op = msg.op, q = quests;
         // um pedido de cada vez por jogador (a entrega confere e tira os itens de uma vez só)
