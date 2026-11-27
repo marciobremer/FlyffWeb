@@ -345,16 +345,6 @@
  "closedPortals": [
   "WI_DUNGEON_CLOCKWORK"
  ],
- "points": [
-  {
-   "name": "Darken City",
-   "pos": [
-    8320.06,
-    100,
-    3716.3
-   ]
-  }
- ],
  "environment": {
   "hour": 12,
   "sunTilt": 35,

@@ -12,6 +12,6 @@
   "loop": {
     "text": "O Server esta em fase de desenvolvimento!",
     "loops": 1,
-    "every": 10
+    "every": 5
   }
 }
